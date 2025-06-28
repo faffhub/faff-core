@@ -1,0 +1,18 @@
+[package]
+name = "faff-core"
+version = "0.1.0"
+edition = "2021"
+include = [
+    "src/**",
+    "Cargo.toml",
+    "pyproject.toml",
+    "faff_core.pyi"
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "faff_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = "0.25.0"
