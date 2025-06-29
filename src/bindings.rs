@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
-use crate::core::intent::Intent as RustIntent;
+use crate::models::intent::Intent as RustIntent;
 
-#[pyclass]
+#[pyclass(name = "Intent")]
 #[derive(Clone)]
 pub struct PyIntent {
     inner: RustIntent,
