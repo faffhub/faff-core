@@ -13,9 +13,6 @@ fn hello_world() -> PyResult<String> {
 fn faff_core(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(hello_world))?;
 
-    let models_mod = PyModule::new(_py, "models")?;
-    bindings::register(&models_mod)?;
-    m.add_submodule(&models_mod)?;
+    bindings::python::register(&m)?;
     Ok(())
 }
- 

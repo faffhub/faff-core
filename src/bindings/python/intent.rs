@@ -166,6 +166,4 @@ impl PyIntent {
             )
         ))
     }
-
-
 }
