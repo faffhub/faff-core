@@ -18,3 +18,4 @@ fn faff_core(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_submodule(&models_mod)?;
     Ok(())
 }
+ 

@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::types::{PyType, PyDict};
 use crate::models::intent::Intent as RustIntent;
 
 #[pyclass(name = "Intent")]
@@ -56,5 +57,52 @@ impl PyIntent {
     #[getter]
     fn trackers(&self) -> Vec<String> {
         self.inner.trackers.clone()
+    }
+
+    #[classmethod]
+    fn from_dict(_cls: &Bound<'_, PyType>, dict: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let dict = dict.downcast::<PyDict>()?;
+        let alias = match dict.get_item("alias")? {
+            Some(v) => Some(v.extract()?),
+            None => None,
+        };
+
+        let role = match dict.get_item("role")? {
+            Some(v) => Some(v.extract()?),
+            None => None,
+        };
+
+        let objective = match dict.get_item("objective")? {
+            Some(v) => Some(v.extract()?),
+            None => None,
+        };
+
+        let action = match dict.get_item("action")? {
+            Some(v) => Some(v.extract()?),
+            None => None,
+        };
+
+        let subject = match dict.get_item("subject")? {
+            Some(v) => Some(v.extract()?),
+            None => None,
+        };
+
+        let trackers = if let Some(v) = dict.get_item("trackers")? {
+            v.extract()?
+        } else {
+            Vec::new()
+        };
+
+        Ok(Self {
+            inner: RustIntent::new(alias, role, objective, action, subject, trackers),
+        })
+    }
+
+    fn __hash__(&self) -> u64 { 
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        self.inner.hash(&mut hasher);
+        hasher.finish()
     }
 }
