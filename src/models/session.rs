@@ -5,36 +5,46 @@ use std::collections::HashMap;
 use crate::models::intent::Intent;
 use crate::models::valuetype::ValueType;
 
-use chrono::{NaiveDate, NaiveTime, DateTime, TimeZone};
+use chrono::{NaiveDate, NaiveTime, DateTime, TimeZone, Duration};
 use chrono_tz::Tz;
 
 use anyhow::{Result, bail};
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum SessionError {
+    #[error("Cannot compute duration: session has no end time")]
+    MissingEnd,
+    #[error("Cannot compute duration: end time is before start time")]
+    EndBeforeStart,
+}
 
 fn combine_date_time(
     date: NaiveDate,
     tz: Tz,
     time_str: &str,
 ) -> Result<DateTime<Tz>> {
-    // First try to parse time_str as a full time + offset (e.g. 09:30+01:00)
-    if let Ok(dt_fixed) = DateTime::parse_from_rfc3339(&format!("{}T{}", date, time_str)) {
-        // Convert to Tz
-        Ok(dt_fixed.with_timezone(&tz))
-    } else {
-        // Fall back: parse as naive time and localize
-        let time = NaiveTime::parse_from_str(time_str, "%H:%M")
-            .map_err(|_| anyhow::anyhow!("Invalid time format: {}", time_str))?;
-
-        let naive = date.and_time(time);
-
-        // Apply tz — will handle DST correctly
-        Ok(tz.from_local_datetime(&naive)
-            .single()
-            .ok_or_else(|| anyhow::anyhow!(
-                "Ambiguous or nonexistent time for {} in {}",
-                naive,
-                tz
-            ))?)
+    // Don't accept any offset here — only plain time strings
+    if time_str.contains('+') || time_str.contains('-') {
+        bail!(
+            "Fixed-offset time strings like '{}' are not allowed. Use HH:MM format.",
+            time_str
+        );
     }
+
+    let time = NaiveTime::parse_from_str(time_str, "%H:%M")
+        .map_err(|_| anyhow::anyhow!("Invalid time format: {}", time_str))?;
+
+    let naive = date.and_time(time);
+
+    tz.from_local_datetime(&naive)
+        .single()
+        .ok_or_else(|| anyhow::anyhow!(
+            "Ambiguous or nonexistent time for {} in {}",
+            naive,
+            tz
+        ))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
@@ -113,11 +123,24 @@ impl Session {
             note,
         })
     }
-    
+
     pub fn with_end(&self, end: DateTime<Tz>) -> Self {
         Self {
             end: Some(end),
             ..self.clone()
+        }
+    }
+
+    pub fn duration(&self) -> Result<Duration, SessionError> {
+        match self.end {
+            Some(end) => {
+                if end < self.start {
+                    Err(SessionError::EndBeforeStart)
+                } else {
+                    Ok(end - self.start)
+                }
+            }
+            None => Err(SessionError::MissingEnd),
         }
     }
 

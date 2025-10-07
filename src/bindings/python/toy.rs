@@ -1,8 +1,12 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDateTime, PyDateAccess};
-use crate::models::Toy as RustToy;
+use pyo3::types::{PyDateTime};
+use pyo3::exceptions::PyValueError;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+use crate::models::Toy as RustToy;
+use crate::bindings::python::type_mapping;
+
 
 #[pyclass(name = "Toy")]
 pub struct PyToy {
@@ -41,6 +45,31 @@ impl PyToy {
 
     fn __ne__(&self, other: PyRef<PyToy>) -> PyResult<bool> {
         self.__eq__(other).map(|eq| !eq)
+    }
+
+    fn do_a_datetime<'py>(&self, datetime: Bound<'py, PyDateTime>) -> PyResult<String> {
+        let dt = type_mapping::datetime_py_to_rust(datetime)?;
+        self.inner
+            .do_a_datetime(dt)
+            .map_err(|e| PyValueError::new_err(format!("Inner error: {}", e)))        
+            
+    } 
+
+    fn add_days<'py>(
+        &self,
+        py: Python<'py>,
+        datetime: Bound<'py, PyDateTime>,
+        days: i64
+    ) -> PyResult<Bound<'py, PyDateTime>> {
+        let rust_dt = type_mapping::datetime_py_to_rust(datetime)?;
+
+        let result = self.inner.add_days(rust_dt, days);
+
+        match result {
+            Ok(dt) => type_mapping::datetime_rust_to_py(py, &dt),
+            Err(e) => Err(PyValueError::new_err(format!("Inner error: {}", e))),
+        }
+
     }
 
 

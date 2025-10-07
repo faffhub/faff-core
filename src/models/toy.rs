@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveTime, DateTime, TimeZone, FixedOffset};
+use chrono::{DateTime, Duration};
 use chrono_tz::Tz;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -19,6 +19,14 @@ impl Toy {
     pub fn do_a_datetime(&self, datetime: DateTime<Tz>) -> Result<String, std::io::Error>
     {
         Ok(datetime.to_string())
+    }
+
+    pub fn add_days(
+        &self,
+        datetime: DateTime<Tz>,
+        days: i64) -> Result<DateTime<Tz>, std::io::Error>
+    {
+        Ok(datetime + Duration::days(days))
     }
 
 }

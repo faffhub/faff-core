@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 use pyo3::PyResult;
 
+pub mod type_mapping;
+
 pub mod intent;
 pub mod session;
 pub mod toy;

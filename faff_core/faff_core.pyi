@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Optional, List
 
-import pendulum
+from zoneinfo import ZoneInfo
+import datetime
 
 def hello_world() -> str: ...
 
@@ -31,22 +32,25 @@ class models:
 
     class Session:
         intent: models.Intent
-        start: pendulum.DateTime
-        end: Optional[pendulum.DateTime]
+        start: datetime.datetime
+        end: Optional[datetime.datetime]
         note: Optional[str]
 
         def __init__(
             self,
             intent: models.Intent,
-            start: pendulum.DateTime,
-            end: Optional[pendulum.DateTime] = None,
+            start: datetime.datetime,
+            end: Optional[datetime.datetime] = None,
             note: Optional[str] = None
         ) -> None: ...
 
-        @staticmethod
-        def from_dict_with_tz(data: dict, date: pendulum.Date, timezone: pendulum.Timezone | pendulum.FixedTimezone) -> models.Session: ...
+        @property
+        def duration(self) -> datetime.timedelta: ...
 
-        def with_end(self, end: pendulum.DateTime) -> models.Session: ...
+        @staticmethod
+        def from_dict_with_tz(data: dict, date: datetime.date, timezone: ZoneInfo) -> models.Session: ...
+
+        def with_end(self, end: datetime.datetime) -> models.Session: ...
 
     class Toy:
         word: str
@@ -54,3 +58,5 @@ class models:
         def __init__(self, word: str) -> None: ...
 
         def hello(self) -> str: ...
+
+        def add_days(self, datetime: datetime.datetime, days: int) -> datetime.datetime: ...

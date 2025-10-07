@@ -1,57 +1,15 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyType};
-use std::collections::HashMap;
-use pyo3::types::{PyDateTime, PyDateAccess, PyTimeAccess, PyTzInfoAccess, PyTzInfo};
-use crate::bindings::python::intent::PyIntent;
-use crate::models::{Session as RustSession, valuetype::ValueType};
-use chrono::{NaiveDate, DateTime};
-use chrono_tz::Tz;
-use chrono::TimeZone;
-use chrono::Timelike;
 use pyo3::exceptions::PyValueError;
-use pyo3::types::PyTypeMethods;
+use pyo3::prelude::*;
+use pyo3::types::{PyDelta, PyDict, PyType};
+use std::collections::HashMap;
+use pyo3::types::PyDateTime;
+use crate::bindings::python::intent::PyIntent;
+use crate::models::session::SessionError;
+use crate::models::{Session as RustSession, valuetype::ValueType};
+use chrono::NaiveDate;
+use chrono_tz::Tz;
 
-
-fn datetime_to_py<'py>(py: Python<'py>, dt: &DateTime<Tz>) -> PyResult<Bound<'py, PyAny>> {
-    let iso = dt.to_rfc3339();
-    py.import("pendulum")?
-        .call_method1("parse", (iso,))
-}
-
-fn get_timezone(tzinfo: &Bound<'_, PyTzInfo>) -> PyResult<Tz> {
-    let tzname: String = tzinfo.getattr("key")?.extract()?;
-    tzname
-        .to_string()
-        .parse::<Tz>()
-        .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Unknown timezone: {}", tzname)))
-}
-
-fn py_datetime_to_rust_datetime<'py>(py_datetime: Bound<'py, PyDateTime>) -> Result<DateTime<Tz>, PyErr> {
-    // Extract datetime components from PyDateTime
-    let year = py_datetime.get_year();
-    let month = py_datetime.get_month() as u32;
-    let day = py_datetime.get_day() as u32;
-    let hour = py_datetime.get_hour() as u32;
-    let minute = py_datetime.get_minute() as u32;
-    let second = py_datetime.get_second() as u32;
-    let micro = py_datetime.get_microsecond();
-
-    let tzinfo = py_datetime
-        .get_tzinfo()
-        .or_else(|| py_datetime.get_tzinfo())
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No tzinfo found"))?;
-
-    let tz: Tz = get_timezone(&tzinfo)?;
-
-    let dt_tz: DateTime<Tz> = tz
-        .with_ymd_and_hms(year.into(), month, day, hour, minute, second)
-        .single()
-        .ok_or_else(|| PyValueError::new_err("Invalid date or ambiguous due to DST"))?
-        .with_nanosecond(micro * 1000)
-        .ok_or_else(|| PyValueError::new_err("Invalid microseconds"))?;
-
-    Ok(dt_tz)
-}
+use crate::bindings::python::type_mapping;
 
 /// The Python-visible Session class
 #[pyclass(name = "Session")]
@@ -65,30 +23,19 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pyfunction]
-fn frobnicate<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    // Use `downcast` instead of `extract` as turning `PyDowncastError` into `PyErr` is quite costly.
-    if let Ok(list) = value.downcast::<PyList>() {
-        frobnicate_list(list)
-    } else if let Ok(vec) = value.extract::<Vec<Bound<'_, PyAny>>>() {
-        frobnicate_vec(vec)
-    } else {
-        Err(PyTypeError::new_err("Cannot frobnicate that type."))
-    }
-}
-
 #[pymethods]
 impl PySession {
     #[new]
+    #[pyo3(signature = (intent, start, end=None, note=None))]
     fn py_new<'py>(
         intent: PyIntent,
         start: Bound<'py, PyDateTime>,
         end: Option<Bound<'py, PyDateTime>>,
         note: Option<String>,
     ) -> PyResult<Self> {
-        let start = py_datetime_to_rust_datetime(start)?;
+        let start = type_mapping::datetime_py_to_rust(start)?;
         let end = match end {
-            Some(end_dt) => Some(py_datetime_to_rust_datetime(end_dt)?),
+            Some(end_dt) => Some(type_mapping::datetime_py_to_rust(end_dt)?),
             None => None,
         };
         Ok(Self {
@@ -111,72 +58,20 @@ impl PySession {
         Ok(dict.unbind().into())
     }
 
-    fn frobnicate<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-        // Use `downcast` instead of `extract` as turning `PyDowncastError` into `PyErr` is quite costly.
-        if let Ok(list) = value.downcast::<PyList>() {
-            frobnicate_list(list)
-        } else if let Ok(vec) = value.extract::<Vec<Bound<'_, PyAny>>>() {
-            frobnicate_vec(vec)
-        } else {
-            Err(PyTypeError::new_err("Cannot frobnicate that type."))
-        }
-    }
-
-    #[classmethod]
-    fn __setstate__<'py>(_cls: &Bound<'py, PyType>, state: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let dict = state.downcast::<PyDict>()?;
-
-        let intent: PyIntent = dict
-            .get_item("intent")?
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing 'intent'"))?
-            .extract()?;
-
-        let start: String = dict
-            .get_item("start")?
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing 'start'"))?
-            .extract()?;
-        let start = start.parse::<DateTime<Tz>>()
-            .map_err(|_| PyValueError::new_err("Invalid start datetime"))?;
-
-        let end = if let Some(end_val) = dict.get_item("end") {
-            Some(end_val.extract::<String>()?.parse::<DateTime<Tz>>()
-                .map_err(|_| PyValueError::new_err("Invalid end datetime"))?)
-        } else {
-            None
-        };
-
-        let note = dict.get_item("note").and_then(|v| v.extract::<String>().ok());
-
-        Ok(Self {
-            inner: RustSession::new(intent.inner, start, end, note),
-        })
-    }
-
-
-
-    //#[new]
-    //#[pyo3(signature = (intent, start, note))]
-    //fn py_new<'py>(intent: PyIntent, start: Bound<'py, PyDateTime>, note: Option<String>) -> PyResult<Self> {
-    //    let start = py_datetime_to_rust_datetime(start)?;
-    //    Ok(Self {
-    //        inner: RustSession::new(intent.inner, start, note),
-    //    })
-    //}
-
     #[getter]
     fn intent(&self) -> PyIntent {
         PyIntent { inner: self.inner.intent.clone() }
     }
 
     #[getter]
-    fn start<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        datetime_to_py(py, &self.inner.start)
+    fn start<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDateTime>> {
+        type_mapping::datetime_rust_to_py(py, &self.inner.start)
     }
 
     #[getter]
-    fn end<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+    fn end<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDateTime>>> {
         match &self.inner.end {
-            Some(dt) => Ok(Some(datetime_to_py(py, dt)?)),
+            Some(dt) => Ok(Some(type_mapping::datetime_rust_to_py(py, dt)?)),
             None => Ok(None),
         }
     }
@@ -186,8 +81,26 @@ impl PySession {
         self.inner.note.clone()
     }
 
+    #[getter]
+    fn duration<'py>(&self, py: Python<'py>) -> PyResult<pyo3::Bound<'py, pyo3::types::PyDelta>> {
+        match self.inner.duration() {
+            Ok(dur) => {
+                // Convert chrono::Duration to Python timedelta
+                let total_micros = dur.num_microseconds().unwrap_or(0);
+                let days = (total_micros / 86_400_000_000) as i32;
+                let seconds = ((total_micros % 86_400_000_000) / 1_000_000) as i32;
+                let micros = (total_micros % 1_000_000) as i32;
 
-
+                PyDelta::new(py, days, seconds, micros, false)
+            }
+            Err(SessionError::MissingEnd) => Err(PyValueError::new_err(
+                "Cannot compute duration: session has no end time",
+            )),
+            Err(SessionError::EndBeforeStart) => Err(PyValueError::new_err(
+                "Cannot compute duration: end time is before start time",
+            )),
+        }
+    }
 
     #[classmethod]
     fn from_dict_with_tz(
@@ -231,7 +144,7 @@ impl PySession {
     }
 
     fn with_end<'py>(&self, end: Bound<'py, PyDateTime>) -> PyResult<PySession> {
-        let dt_tz = py_datetime_to_rust_datetime(end)?;
+        let dt_tz = type_mapping::datetime_py_to_rust(end)?;
         Ok(PySession {
             inner: self.inner.with_end(dt_tz),
         })
@@ -245,10 +158,10 @@ impl PySession {
             d.set_item("intent", PyIntent { inner: intent.clone() })?;
 
             let start = &self.inner.start;
-            d.set_item("start", datetime_to_py(py, start)?)?;
+            d.set_item("start", type_mapping::datetime_rust_to_py(py, start)?)?;
             
             if let Some(end) = &self.inner.end {
-                d.set_item("end", datetime_to_py(py, end)?)?;
+                d.set_item("end", type_mapping::datetime_rust_to_py(py, end)?)?;
             }
             if let Some(note) = &self.inner.note {
                 d.set_item("note", note)?;
@@ -271,21 +184,6 @@ impl PySession {
         self.__repr__()
     }
 
-    // XXX: I'm acutely aware that I do not know what this is or how it works.
-    // It _is_ needed, however.
-    //fn __reduce__(&self, py: Python) -> PyResult<(PyObject, (Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Vec<String>))> {
-    //    let intent_type = py.get_type::<Self>();
-    //    Ok((
-    //        intent_type.into(),
-    //        (
-    //            self.inner.alias.clone(),
-    //            self.inner.role.clone(),
-    //            self.inner.objective.clone(),
-    //            self.inner.action.clone(),
-    //            self.inner.subject.clone(),
-    //            self.inner.trackers.clone(),
-    //        )
-    //    ))
-    //}
+  
 
 }
