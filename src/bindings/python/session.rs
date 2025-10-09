@@ -23,6 +23,33 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+// Helper function for creating sessions from dicts (used by Log binding)
+pub(crate) fn session_from_dict_internal(
+    dict: &Bound<'_, PyDict>,
+    date: NaiveDate,
+    tz: Tz,
+) -> PyResult<PySession> {
+    let mut data = HashMap::new();
+
+    for (k, v) in dict.iter() {
+        let key: String = k.extract()?;
+        if v.is_instance_of::<pyo3::types::PyString>() {
+            data.insert(key, ValueType::String(v.extract()?));
+        } else if v.is_instance_of::<pyo3::types::PyList>() {
+            data.insert(key, ValueType::List(v.extract()?));
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unsupported type for key '{}'", key
+            )));
+        }
+    }
+
+    let inner = RustSession::from_dict_with_tz(data, date, tz)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+
+    Ok(PySession { inner })
+}
+
 #[pymethods]
 impl PySession {
     #[new]
