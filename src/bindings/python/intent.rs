@@ -16,6 +16,32 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+// Helper function for creating intents from dicts (used by Plan binding)
+pub(crate) fn intent_from_dict_internal(dict: &Bound<'_, PyDict>) -> PyResult<PyIntent> {
+    let mut data = HashMap::new();
+
+    for (k, v) in dict.iter() {
+        let key: String = k.extract()?;
+
+        if v.is_instance_of::<pyo3::types::PyString>() {
+            let s: String = v.extract()?;
+            data.insert(key, ValueType::String(s));
+        } else if v.is_instance_of::<pyo3::types::PyList>() {
+            let list: Vec<String> = v.extract()?;
+            data.insert(key, ValueType::List(list));
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unsupported type for key '{}'", key
+            )));
+        }
+    }
+
+    match RustIntent::from_dict(data) {
+        Ok(intent) => Ok(PyIntent { inner: intent }),
+        Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
+    }
+}
+
 #[pymethods]
 impl PyIntent {
     #[new]

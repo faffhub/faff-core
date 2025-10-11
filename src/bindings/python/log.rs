@@ -52,10 +52,10 @@ impl PyLog {
     }
 
     #[getter]
-    fn timezone<'py>(&self, py: Python<'py>) -> PyResult<PyObject> {
+    fn timezone<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let zoneinfo = py.import("zoneinfo")?;
         let zone_info = zoneinfo.call_method1("ZoneInfo", (self.inner.timezone.name(),))?;
-        Ok(zone_info.into())
+        Ok(zone_info)
     }
 
     #[getter]
@@ -68,8 +68,7 @@ impl PyLog {
     }
 
     #[classmethod]
-    #[pyo3(signature = (data, trackers=None))]
-    fn from_dict(_cls: &Bound<'_, PyType>, data: &Bound<'_, PyDict>, trackers: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
+    fn from_dict(_cls: &Bound<'_, PyType>, data: &Bound<'_, PyDict>) -> PyResult<Self> {
         // Extract date
         let date_str: String = data.get_item("date")?.unwrap().extract()?;
         let naive_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")

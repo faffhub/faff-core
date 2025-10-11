@@ -82,12 +82,18 @@ impl Session {
                         .and_then(|v| v.as_string())
                         .cloned();
 
-        // FIXME: This should work with a list or a single tracker.
+        // Handle trackers as either a string or a list
         let trackers = dict
             .get("trackers")
-            .and_then(|v| v.as_string())
-            .cloned()
-            .map(|s| vec![s])
+            .map(|v| {
+                if let Some(s) = v.as_string() {
+                    vec![s.clone()]
+                } else if let Some(list) = v.as_list() {
+                    list.clone()
+                } else {
+                    vec![]
+                }
+            })
             .unwrap_or_default();
 
         let intent: Intent = Intent::new(alias, role, objective, action, subject, trackers);
@@ -374,6 +380,25 @@ mod tests {
         let session = Session::from_dict_with_tz(dict, date, tz).unwrap();
 
         assert_eq!(session.intent.trackers, vec!["work:admin".to_string()]);
+    }
+
+    #[test]
+    fn test_from_dict_with_tz_multiple_trackers_list() {
+        let mut dict = HashMap::new();
+        dict.insert("start".to_string(), ValueType::String("09:00".to_string()));
+        dict.insert("trackers".to_string(), ValueType::List(vec![
+            "work:admin".to_string(),
+            "personal:study".to_string()
+        ]));
+
+        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+        let tz = Tz::UTC;
+
+        let session = Session::from_dict_with_tz(dict, date, tz).unwrap();
+
+        assert_eq!(session.intent.trackers.len(), 2);
+        assert!(session.intent.trackers.contains(&"work:admin".to_string()));
+        assert!(session.intent.trackers.contains(&"personal:study".to_string()));
     }
 
     #[test]

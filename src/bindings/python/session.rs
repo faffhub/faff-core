@@ -211,6 +211,14 @@ impl PySession {
         self.__repr__()
     }
 
-  
+    fn __eq__(&self, other: &PySession) -> bool {
+        self.inner == other.inner
+    }
+
+    fn __ne__(&self, other: &PySession) -> bool {
+        self.inner != other.inner
+    }
+
+
 
 }

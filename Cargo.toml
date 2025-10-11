@@ -9,9 +9,11 @@ name = "faff_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.25.1"
+pyo3 = "0.26"
+pythonize = "0.26"
 serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = { version = "0.8", features = ["serde"] }
+slug = "0.1.6"
 anyhow = "1.0.98"
 thiserror = "2.0.17"
