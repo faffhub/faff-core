@@ -113,6 +113,66 @@ class models:
         def add_intent(self, intent: models.Intent) -> models.Plan: ...
         def as_dict(self) -> dict: ...
 
+    class TimesheetMeta:
+        audience_id: str
+        submitted_at: Optional[datetime.datetime]
+        submitted_by: Optional[str]
+
+        def __init__(
+            self,
+            audience_id: str,
+            submitted_at: Optional[datetime.datetime] = None,
+            submitted_by: Optional[str] = None
+        ) -> None: ...
+
+        @staticmethod
+        def from_dict(data: dict) -> models.TimesheetMeta: ...
+
+    class Timesheet:
+        actor: dict[str, str]
+        date: datetime.date
+        compiled: datetime.datetime
+        timezone: ZoneInfo
+        timeline: List[models.Session]
+        signatures: dict[str, dict[str, str]]
+        meta: models.TimesheetMeta
+
+        def __init__(
+            self,
+            *,
+            actor: Optional[dict[str, str]] = None,
+            date: datetime.date,
+            compiled: datetime.datetime,
+            timezone: ZoneInfo,
+            timeline: Optional[List[models.Session]] = None,
+            signatures: Optional[dict[str, dict[str, str]]] = None,
+            meta: models.TimesheetMeta
+        ) -> None: ...
+
+        def sign(self, id: str, signing_key: bytes) -> models.Timesheet: ...
+
+        def update_meta(
+            self,
+            audience_id: str,
+            submitted_at: Optional[datetime.datetime] = None,
+            submitted_by: Optional[str] = None
+        ) -> models.Timesheet: ...
+
+        def submittable_timesheet(self) -> models.SubmittableTimesheet: ...
+
+        @staticmethod
+        def from_dict(data: dict) -> models.Timesheet: ...
+
+    class SubmittableTimesheet:
+        actor: dict[str, str]
+        date: datetime.date
+        compiled: datetime.datetime
+        timezone: ZoneInfo
+        timeline: List[models.Session]
+        signatures: dict[str, dict[str, str]]
+
+        def canonical_form(self) -> bytes: ...
+
     class Toy:
         word: str
 

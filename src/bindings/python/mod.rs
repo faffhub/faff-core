@@ -7,12 +7,14 @@ pub mod intent;
 pub mod session;
 pub mod log;
 pub mod plan;
+pub mod timesheet;
 pub mod toy;
 
 pub use intent::PyIntent;
 pub use session::PySession;
 pub use log::PyLog;
 pub use plan::PyPlan;
+pub use timesheet::{PyTimesheet, PyTimesheetMeta, PySubmittableTimesheet};
 pub use toy::PyToy;
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -21,6 +23,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     session::register(&models_mod)?;
     log::register(&models_mod)?;
     plan::register(&models_mod)?;
+    timesheet::register(&models_mod)?;
     toy::register(&models_mod)?;
     m.add_submodule(&models_mod)?;
     Ok(())

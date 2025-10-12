@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDateTime, PyTzInfo, PyTzInfoAccess, PyDateAccess, PyTimeAccess};
-use chrono::{DateTime, Datelike, TimeZone, Timelike};
+use pyo3::types::{PyDateTime, PyDate, PyTzInfo, PyTzInfoAccess, PyDateAccess, PyTimeAccess};
+use chrono::{DateTime, NaiveDate, Datelike, TimeZone, Timelike};
 use chrono_tz::Tz;
 use pyo3::exceptions::PyValueError;
 
@@ -63,4 +63,14 @@ pub fn datetime_rust_to_py<'py>(py: Python<'py>, dt: &DateTime<Tz>) -> PyResult<
         Some(zoneinfo),
         false,
     )
+}
+
+pub fn date_py_to_rust<'py>(py_date: Bound<'py, PyDate>) -> PyResult<NaiveDate> {
+    let date_str: String = py_date.call_method0("isoformat")?.extract()?;
+    NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+pub fn date_rust_to_py<'py>(py: Python<'py>, date: &NaiveDate) -> PyResult<Bound<'py, PyDate>> {
+    PyDate::new(py, date.year(), date.month() as u8, date.day() as u8)
 }

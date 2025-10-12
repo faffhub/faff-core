@@ -1,4 +1,4 @@
-use serde::{Serialize}; // Removed Deserialize since it's a PITA at the moment
+use serde::{Serialize, Serializer}; // Removed Deserialize since it's a PITA at the moment
 
 use std::collections::HashMap;
 
@@ -11,6 +11,35 @@ use chrono_tz::Tz;
 use anyhow::{Result, bail};
 
 use thiserror::Error;
+
+// Custom serializer for DateTime<Tz> that preserves semantic timezone info
+fn serialize_datetime<S>(dt: &DateTime<Tz>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    // Only use Z for actual UTC timezones
+    let tz_name = dt.timezone().name();
+    if tz_name == "UTC" || tz_name == "Etc/UTC" {
+        if dt.timestamp_subsec_micros() > 0 {
+            serializer.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+        } else {
+            serializer.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        }
+    } else {
+        // Always use offset for non-UTC timezones (never Z)
+        serializer.serialize_str(&dt.to_rfc3339())
+    }
+}
+
+fn serialize_optional_datetime<S>(dt: &Option<DateTime<Tz>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match dt {
+        Some(dt) => serialize_datetime(dt, serializer),
+        None => serializer.serialize_none(),
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum SessionError {
@@ -50,7 +79,9 @@ fn combine_date_time(
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Session {
     pub intent: Intent,
+    #[serde(serialize_with = "serialize_datetime")]
     pub start: DateTime<Tz>,
+    #[serde(serialize_with = "serialize_optional_datetime")]
     pub end: Option<DateTime<Tz>>,
     pub note: Option<String>,
 }

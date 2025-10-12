@@ -23,12 +23,48 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-// Helper function for creating sessions from dicts (used by Log binding)
+// Helper function for creating sessions from dicts (used by Log and Timesheet bindings)
 pub(crate) fn session_from_dict_internal(
     dict: &Bound<'_, PyDict>,
     date: NaiveDate,
     tz: Tz,
 ) -> PyResult<PySession> {
+    // Check if there's a nested intent dict (from saved JSON format)
+    if let Some(intent_item) = dict.get_item("intent")? {
+        if let Ok(intent_dict) = intent_item.downcast::<PyDict>() {
+            // Parse the intent first
+            let py_intent = crate::bindings::python::intent::intent_from_dict_internal(intent_dict)?;
+
+            // Extract start/end/note from the session dict
+            // Parse RFC3339 datetime (includes offset) and convert to semantic timezone
+            let start_str: String = dict.get_item("start")?.unwrap().extract()?;
+            let start = chrono::DateTime::parse_from_rfc3339(&start_str)
+                .map_err(|e| PyValueError::new_err(format!("Invalid start datetime: {}", e)))?
+                .with_timezone(&tz);
+
+            let end = dict.get_item("end")?
+                .and_then(|v| if v.is_none() { None } else { Some(v) })
+                .map(|v| v.extract::<String>())
+                .transpose()?
+                .map(|s| {
+                    chrono::DateTime::parse_from_rfc3339(&s)
+                        .map(|dt| dt.with_timezone(&tz))
+                        .map_err(|e| PyValueError::new_err(format!("Invalid end datetime: {}", e)))
+                })
+                .transpose()?;
+
+            let note = dict.get_item("note")?
+                .and_then(|v| if v.is_none() { None } else { Some(v) })
+                .map(|v| v.extract::<String>())
+                .transpose()?;
+
+            return Ok(PySession {
+                inner: RustSession::new(py_intent.inner, start, end, note)
+            });
+        }
+    }
+
+    // Otherwise, use the flat format (for backwards compatibility)
     let mut data = HashMap::new();
 
     for (k, v) in dict.iter() {
@@ -37,11 +73,8 @@ pub(crate) fn session_from_dict_internal(
             data.insert(key, ValueType::String(v.extract()?));
         } else if v.is_instance_of::<pyo3::types::PyList>() {
             data.insert(key, ValueType::List(v.extract()?));
-        } else {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Unsupported type for key '{}'", key
-            )));
         }
+        // Skip non-string/list types
     }
 
     let inner = RustSession::from_dict_with_tz(data, date, tz)
