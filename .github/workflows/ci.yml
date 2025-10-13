@@ -70,4 +70,5 @@ jobs:
       - name: Install and test wheel
         run: |
           pip install dist/*.whl
+          cd /tmp
           python -c "import faff_core; print('Successfully imported faff_core')"
