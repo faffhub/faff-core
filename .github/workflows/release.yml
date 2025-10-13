@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-wheels:
-    name: Build wheels on ${{ matrix.platform.os }}
+    name: Build wheels on ${{ matrix.platform.os }}-${{ matrix.platform.target }}
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
@@ -35,7 +35,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter 3.9 3.10 3.11 3.12
+          args: --release --out dist --interpreter python3.9 python3.10 python3.11 python3.12
           manylinux: auto
           sccache: 'true'
 
