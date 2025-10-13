@@ -1,7 +1,8 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use chrono::{NaiveDate, DateTime, NaiveTime, Datelike, Duration, Local, TimeZone};
 use chrono_tz::Tz;
 use thiserror::Error;
+use std::collections::HashMap;
 
 use crate::models::session::Session;
 
@@ -106,6 +107,258 @@ impl Log {
         }
 
         total
+    }
+
+    /// Parse a Log from Faffage log file format (TOML)
+    pub fn from_log_file(toml_str: &str) -> anyhow::Result<Self> {
+        let toml_value: toml::Value = toml::from_str(toml_str)?;
+
+        // Extract date and timezone
+        let date_str = toml_value.get("date")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'date' field"))?;
+        let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
+
+        let tz_str = toml_value.get("timezone")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'timezone' field"))?;
+        let timezone: Tz = tz_str.parse()
+            .map_err(|e: String| anyhow::anyhow!("Invalid timezone '{}': {}", tz_str, e))?;
+
+        // Parse timeline sessions using Session's from_toml_table method
+        let mut sessions = Vec::new();
+        if let Some(timeline) = toml_value.get("timeline").and_then(|v| v.as_array()) {
+            for entry in timeline {
+                if let Some(table) = entry.as_table() {
+                    sessions.push(Session::from_toml_table(table, date, timezone)?);
+                }
+            }
+        }
+
+        Ok(Log::new(date, timezone, sessions))
+    }
+
+    /// Serialize the Log to Faffage log file format (TOML with comments and formatting)
+    ///
+    /// trackers: map of tracker IDs to human-readable names for comments
+    pub fn to_log_file(&self, trackers: &HashMap<String, String>) -> String {
+        let mut lines = Vec::new();
+
+        // Header comments
+        lines.push("# This is a Faff-format log file - see faffage.com for details.".to_string());
+        lines.push("# It has been generated but can be edited manually.".to_string());
+        lines.push("# Changes to rows starting with '#' will not be saved.".to_string());
+
+        // Metadata
+        lines.push("version = \"1.1\"".to_string());
+        lines.push(format!("date = \"{}\"", self.date));
+        lines.push(format!("timezone = \"{}\"", self.timezone));
+
+        // Date format hint (derived value, becomes comment)
+        let date_format = Self::get_datetime_format(self.date, self.timezone);
+        lines.push(format!("--date_format = \"{}\"", date_format));
+
+        // Timeline entries
+        if self.timeline.is_empty() {
+            lines.push("".to_string());
+            lines.push("# Timeline is empty.".to_string());
+        } else {
+            // Sort by start time
+            let mut sorted_timeline = self.timeline.clone();
+            sorted_timeline.sort_by_key(|s| s.start);
+
+            for session in &sorted_timeline {
+                lines.push("".to_string());
+                lines.push("[[timeline]]".to_string());
+
+                Self::format_session_to_toml(&mut lines, session, trackers, &date_format);
+            }
+        }
+
+        let toml_string = lines.join("\n");
+
+        // Post-process: commentify derived values first, then align equals signs
+        let commented = Self::commentify_derived_values(&toml_string);
+        Self::align_equals(&commented)
+    }
+
+    fn format_session_to_toml(
+        lines: &mut Vec<String>,
+        session: &Session,
+        trackers: &HashMap<String, String>,
+        date_format: &str,
+    ) {
+        // Alias
+        if let Some(alias) = &session.intent.alias {
+            lines.push(format!("alias = \"{}\"", alias));
+        }
+
+        // Optional intent fields
+        if let Some(role) = &session.intent.role {
+            lines.push(format!("role = \"{}\"", role));
+        }
+        if let Some(objective) = &session.intent.objective {
+            lines.push(format!("objective = \"{}\"", objective));
+        }
+        if let Some(action) = &session.intent.action {
+            lines.push(format!("action = \"{}\"", action));
+        }
+        if let Some(subject) = &session.intent.subject {
+            lines.push(format!("subject = \"{}\"", subject));
+        }
+
+        // Trackers
+        let tracker_list = &session.intent.trackers;
+        if !tracker_list.is_empty() {
+            if tracker_list.len() == 1 {
+                let tracker = &tracker_list[0];
+                if let Some(name) = trackers.get(tracker) {
+                    lines.push(format!("trackers = \"{}\" # {}", tracker, name));
+                } else {
+                    lines.push(format!("trackers = \"{}\"", tracker));
+                }
+            } else {
+                lines.push("trackers = [".to_string());
+                for tracker in tracker_list {
+                    if let Some(name) = trackers.get(tracker) {
+                        lines.push(format!("   \"{}\", # {}", tracker, name));
+                    } else {
+                        lines.push(format!("   \"{}\",", tracker));
+                    }
+                }
+                lines.push("]".to_string());
+            }
+        }
+
+        // Start time
+        let start_str = Self::format_datetime_for_log(&session.start, date_format);
+        lines.push(format!("start = \"{}\"", start_str));
+
+        // End time and duration
+        if let Some(end) = session.end {
+            let end_str = Self::format_datetime_for_log(&end, date_format);
+            lines.push(format!("end = \"{}\"", end_str));
+
+            // Duration (derived value, becomes comment)
+            let duration = end - session.start;
+            let duration_str = Self::format_duration(duration);
+            lines.push(format!("--duration = \"{}\"", duration_str));
+        }
+
+        // Note (only include if non-empty)
+        if let Some(note) = &session.note {
+            if !note.is_empty() {
+                lines.push(format!("note = \"{}\"", note));
+            }
+        }
+    }
+
+    fn format_datetime_for_log(dt: &DateTime<Tz>, format: &str) -> String {
+        if format == "HH:mmZ" {
+            // Include timezone offset
+            dt.format("%H:%M%z").to_string()
+        } else {
+            // Just time, no offset
+            dt.format("%H:%M").to_string()
+        }
+    }
+
+    fn format_duration(duration: Duration) -> String {
+        let total_seconds = duration.num_seconds();
+        let hours = total_seconds / 3600;
+        let minutes = (total_seconds % 3600) / 60;
+        let seconds = total_seconds % 60;
+
+        let hour_str = if hours == 1 { "hour" } else { "hours" };
+        let minute_str = if minutes == 1 { "minute" } else { "minutes" };
+        let second_str = if seconds == 1 { "second" } else { "seconds" };
+
+        if hours > 0 {
+            if minutes > 0 {
+                if seconds > 0 {
+                    format!("{} {}, {} {} and {} {}", hours, hour_str, minutes, minute_str, seconds, second_str)
+                } else {
+                    format!("{} {} and {} {}", hours, hour_str, minutes, minute_str)
+                }
+            } else if seconds > 0 {
+                format!("{} {} and {} {}", hours, hour_str, seconds, second_str)
+            } else {
+                format!("{} {}", hours, hour_str)
+            }
+        } else if minutes > 0 {
+            if seconds > 0 {
+                format!("{} {} and {} {}", minutes, minute_str, seconds, second_str)
+            } else {
+                format!("{} {}", minutes, minute_str)
+            }
+        } else {
+            format!("{} {}", seconds, second_str)
+        }
+    }
+
+    fn get_datetime_format(date: NaiveDate, timezone: Tz) -> String {
+        if Self::date_has_dst_event(date, timezone) {
+            "HH:mmZ".to_string()
+        } else {
+            "HH:mm".to_string()
+        }
+    }
+
+    fn date_has_dst_event(date: NaiveDate, timezone: Tz) -> bool {
+        let start = timezone
+            .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+            .single();
+        let end = timezone
+            .with_ymd_and_hms(date.year(), date.month(), date.day(), 23, 59, 0)
+            .single();
+
+        match (start, end) {
+            (Some(start_dt), Some(end_dt)) => {
+                // Compare UTC offsets - if they differ, there was a DST event
+                start_dt.offset() != end_dt.offset()
+            }
+            _ => false, // Ambiguous times during DST transition
+        }
+    }
+
+    fn align_equals(toml_string: &str) -> String {
+        let lines: Vec<&str> = toml_string.lines().collect();
+
+        // Find max key length for alignment
+        let mut max_key_length = 0;
+        for line in &lines {
+            if line.contains('=') && !line.trim_start().starts_with('#') {
+                if let Some(key) = line.split('=').next() {
+                    max_key_length = max_key_length.max(key.trim().len());
+                }
+            }
+        }
+
+        // Align the equals signs
+        let mut aligned_lines = Vec::new();
+        for line in lines {
+            if line.contains('=') && !line.trim_start().starts_with('#') {
+                let parts: Vec<&str> = line.splitn(2, '=').collect();
+                if parts.len() == 2 {
+                    let key = parts[0].trim();
+                    let value = parts[1].trim();
+                    let padding = " ".repeat(max_key_length - key.len());
+                    aligned_lines.push(format!("{}{} = {}", key, padding, value));
+                } else {
+                    aligned_lines.push(line.to_string());
+                }
+            } else {
+                aligned_lines.push(line.to_string());
+            }
+        }
+
+        aligned_lines.join("\n")
+    }
+
+    fn commentify_derived_values(toml_string: &str) -> String {
+        // Replace lines starting with '--variable_name = ' with '# variable_name = '
+        let re = regex::Regex::new(r"(?m)^--([a-zA-Z_-][a-zA-Z0-9_-]*\s*=\s*.+)$").unwrap();
+        re.replace_all(toml_string, "# $1").to_string()
     }
 }
 
@@ -357,5 +610,45 @@ mod tests {
         // From 14:00 to 23:59:59 = 9 hours, 59 minutes, 59 seconds
         let expected = Duration::hours(9) + Duration::minutes(59) + Duration::seconds(59);
         assert_eq!(total, expected);
+    }
+
+    #[test]
+    fn test_to_log_file_empty() {
+        let log = Log::new(sample_date(), chrono_tz::UTC, vec![]);
+        let trackers = HashMap::new();
+        let output = log.to_log_file(&trackers);
+
+        assert!(output.contains("# This is a Faff-format log file"));
+        assert!(output.contains("version  = \"1.1\""));
+        assert!(output.contains("date     = \"2025-03-15\""));
+        assert!(output.contains("timezone = \"UTC\""));
+        assert!(output.contains("# Timeline is empty."));
+    }
+
+    #[test]
+    fn test_to_log_file_with_session() {
+        let intent = sample_intent();
+        let start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let end = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let session = Session::new(intent, start, Some(end), None);
+
+        let log = Log::new(sample_date(), chrono_tz::UTC, vec![session]);
+        let trackers = HashMap::new();
+        let output = log.to_log_file(&trackers);
+
+        assert!(output.contains("[[timeline]]"));
+        assert!(output.contains("alias     = \"work\""));
+        assert!(output.contains("start     = \"09:00\""));
+        assert!(output.contains("end       = \"10:30\""));
+        assert!(output.contains("# duration = \"1 hour and 30 minutes\""));
+    }
+
+    #[test]
+    fn test_format_duration() {
+        assert_eq!(Log::format_duration(Duration::hours(2)), "2 hours");
+        assert_eq!(Log::format_duration(Duration::minutes(45)), "45 minutes");
+        assert_eq!(Log::format_duration(Duration::seconds(30)), "30 seconds");
+        assert_eq!(Log::format_duration(Duration::hours(1) + Duration::minutes(30)), "1 hour and 30 minutes");
+        assert_eq!(Log::format_duration(Duration::hours(2) + Duration::minutes(15) + Duration::seconds(45)), "2 hours, 15 minutes and 45 seconds");
     }
 }

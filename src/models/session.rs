@@ -1,11 +1,12 @@
-use serde::{Serialize, Serializer}; // Removed Deserialize since it's a PITA at the moment
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use serde::de::{self, Visitor, MapAccess};
 
 use std::collections::HashMap;
 
 use crate::models::intent::Intent;
 use crate::models::valuetype::ValueType;
 
-use chrono::{NaiveDate, NaiveTime, DateTime, TimeZone, Duration};
+use chrono::{NaiveDate, NaiveTime, DateTime, TimeZone, Duration, Datelike};
 use chrono_tz::Tz;
 
 use anyhow::{Result, bail};
@@ -178,6 +179,56 @@ impl Session {
                 }
             }
             None => Err(SessionError::MissingEnd),
+        }
+    }
+
+    /// Parse a Session from a TOML table (from log file format)
+    pub fn from_toml_table(
+        table: &toml::map::Map<String, toml::Value>,
+        date: NaiveDate,
+        timezone: Tz,
+    ) -> anyhow::Result<Self> {
+        // Deserialize Intent fields
+        let intent: Intent = toml::from_str(&toml::to_string(table)?)?;
+
+        // Parse start/end times
+        let start_str = table.get("start")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'start' field in session"))?;
+        let start = Self::parse_time_from_toml(start_str, date, timezone)?;
+
+        let end = table.get("end")
+            .and_then(|v| v.as_str())
+            .map(|s| Self::parse_time_from_toml(s, date, timezone))
+            .transpose()?;
+
+        let note = table.get("note").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        Ok(Session::new(intent, start, end, note))
+    }
+
+    fn parse_time_from_toml(time_str: &str, date: NaiveDate, timezone: Tz) -> anyhow::Result<DateTime<Tz>> {
+        // Trim whitespace to handle malformed input
+        let time_str = time_str.trim();
+
+        // Time can be "HH:MM" or "HH:MM+OFFSET"
+        if time_str.contains('+') || (time_str.matches('-').count() > 0 && time_str.len() > 5) {
+            // Has timezone offset
+            let datetime_str = format!("{}T{}", date, time_str);
+            let dt = chrono::DateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M%z")?;
+            Ok(dt.with_timezone(&timezone))
+        } else {
+            // Just time, use the log's timezone
+            let parts: Vec<&str> = time_str.split(':').collect();
+            if parts.len() != 2 {
+                anyhow::bail!("Invalid time format: {}", time_str);
+            }
+            let hour: u32 = parts[0].trim().parse()?;
+            let minute: u32 = parts[1].trim().parse()?;
+
+            timezone.with_ymd_and_hms(date.year(), date.month(), date.day(), hour, minute, 0)
+                .single()
+                .ok_or_else(|| anyhow::anyhow!("Invalid datetime: {} {}:{}", date, hour, minute))
         }
     }
 

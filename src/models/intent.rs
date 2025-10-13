@@ -1,4 +1,5 @@
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Deserializer};
+use serde::de::{self, Visitor};
 use std::collections::{HashSet, HashMap};
 use crate::models::valuetype::ValueType;
 
@@ -9,7 +10,44 @@ pub struct Intent {
     pub objective: Option<String>,
     pub action: Option<String>,
     pub subject: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_trackers")]
     pub trackers: Vec<String>,
+}
+
+/// Custom deserializer for trackers that handles both string and array formats
+fn deserialize_trackers<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct TrackersVisitor;
+
+    impl<'de> Visitor<'de> for TrackersVisitor {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or array of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Vec<String>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![value.to_string()])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Vec<String>, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut trackers = Vec::new();
+            while let Some(value) = seq.next_element()? {
+                trackers.push(value);
+            }
+            Ok(trackers)
+        }
+    }
+
+    deserializer.deserialize_any(TrackersVisitor)
 }
 
 impl Intent {
