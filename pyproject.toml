@@ -13,4 +13,4 @@ classifiers = [
 dynamic = ["version"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
-include = ["faff_core/**"]
+python-source = "."
