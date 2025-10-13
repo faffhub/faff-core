@@ -1,13 +1,14 @@
+use chrono_tz::Tz;
+use pyo3::exceptions::{PyFileNotFoundError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDateTime};
-use pyo3::exceptions::{PyValueError, PyFileNotFoundError};
-use chrono::{NaiveDate, Datelike, DateTime};
-use chrono_tz::Tz;
 use std::sync::Arc;
 
-use crate::managers::LogManager as RustLogManager;
 use crate::bindings::python::storage::PyStorage;
-use crate::bindings::python::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
+use crate::bindings::python::type_mapping::{
+    date_py_to_rust, date_rust_to_py, datetime_py_to_rust,
+};
+use crate::managers::LogManager as RustLogManager;
 
 #[pyclass(name = "LogManager")]
 pub struct PyLogManager {
@@ -25,7 +26,8 @@ impl PyLogManager {
     fn py_new(storage: PyObject, timezone: &Bound<'_, PyAny>) -> PyResult<Self> {
         // Convert timezone
         let tz_str: String = timezone.call_method0("__str__")?.extract()?;
-        let tz: Tz = tz_str.parse()
+        let tz: Tz = tz_str
+            .parse()
             .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {}", e)))?;
 
         // Wrap the Python storage object
@@ -46,23 +48,28 @@ impl PyLogManager {
     /// Read raw log file contents
     fn read_log_raw(&self, date: Bound<'_, PyDate>) -> PyResult<String> {
         let naive_date = date_py_to_rust(date)?;
-        self.inner.read_log_raw(naive_date)
+        self.inner
+            .read_log_raw(naive_date)
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
 
     /// Write raw log file contents
     fn write_log_raw(&self, date: Bound<'_, PyDate>, contents: &str) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        self.inner.write_log_raw(naive_date, contents)
+        self.inner
+            .write_log_raw(naive_date, contents)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// List all log dates
     fn list_log_dates<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDate>>> {
-        let dates = self.inner.list_log_dates()
+        let dates = self
+            .inner
+            .list_log_dates()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        dates.into_iter()
+        dates
+            .into_iter()
             .map(|date| date_rust_to_py(py, &date))
             .collect()
     }
@@ -70,7 +77,8 @@ impl PyLogManager {
     /// Remove a log for a given date
     fn rm(&self, date: Bound<'_, PyDate>) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        self.inner.rm(naive_date)
+        self.inner
+            .rm(naive_date)
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
 
@@ -84,14 +92,21 @@ impl PyLogManager {
     /// Get a log for a given date (returns empty log if file doesn't exist)
     fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<crate::bindings::python::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
-        let log = self.inner.get_log(naive_date)
+        let log = self
+            .inner
+            .get_log(naive_date)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(crate::bindings::python::log::PyLog { inner: log })
     }
 
     /// Write a log to storage
-    fn write_log(&self, log: &crate::bindings::python::log::PyLog, trackers: std::collections::HashMap<String, String>) -> PyResult<()> {
-        self.inner.write_log(&log.inner, &trackers)
+    fn write_log(
+        &self,
+        log: &crate::bindings::python::log::PyLog,
+        trackers: std::collections::HashMap<String, String>,
+    ) -> PyResult<()> {
+        self.inner
+            .write_log(&log.inner, &trackers)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -107,14 +122,9 @@ impl PyLogManager {
         let naive_date = date_py_to_rust(current_date)?;
         let datetime = datetime_py_to_rust(current_time)?;
 
-        self.inner.start_intent_now(
-            intent.inner.clone(),
-            note,
-            naive_date,
-            datetime,
-            &trackers,
-        )
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+        self.inner
+            .start_intent_now(intent.inner.clone(), note, naive_date, datetime, &trackers)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
@@ -127,7 +137,8 @@ impl PyLogManager {
         let naive_date = date_py_to_rust(current_date)?;
         let datetime = datetime_py_to_rust(current_time)?;
 
-        self.inner.stop_current_session(naive_date, datetime, &trackers)
+        self.inner
+            .stop_current_session(naive_date, datetime, &trackers)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 }

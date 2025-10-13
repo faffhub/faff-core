@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
 use chrono::NaiveDate;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use slug::slugify;
+use std::collections::HashMap;
 
 use crate::models::intent::Intent;
 
@@ -108,7 +108,10 @@ mod tests {
         );
 
         assert_eq!(plan.source, "local");
-        assert_eq!(plan.valid_from, NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
+        assert_eq!(
+            plan.valid_from,
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap()
+        );
         assert_eq!(plan.valid_until, None);
         assert!(plan.roles.is_empty());
         assert!(plan.intents.is_empty());
@@ -132,7 +135,10 @@ mod tests {
         );
 
         assert_eq!(plan.source, "https://example.com/plan");
-        assert_eq!(plan.valid_until, Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()));
+        assert_eq!(
+            plan.valid_until,
+            Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap())
+        );
         assert_eq!(plan.roles, vec!["engineer"]);
         assert_eq!(plan.trackers, trackers);
     }

@@ -7,7 +7,6 @@ pub struct Toy {
 }
 
 impl Toy {
-
     pub fn hello(&self) -> Result<String, std::io::Error> {
         Ok(self.word.clone())
     }
@@ -16,17 +15,15 @@ impl Toy {
         Self { word: new_word }
     }
 
-    pub fn do_a_datetime(&self, datetime: DateTime<Tz>) -> Result<String, std::io::Error>
-    {
+    pub fn do_a_datetime(&self, datetime: DateTime<Tz>) -> Result<String, std::io::Error> {
         Ok(datetime.to_string())
     }
 
     pub fn add_days(
         &self,
         datetime: DateTime<Tz>,
-        days: i64) -> Result<DateTime<Tz>, std::io::Error>
-    {
+        days: i64,
+    ) -> Result<DateTime<Tz>, std::io::Error> {
         Ok(datetime + Duration::days(days))
     }
-
 }

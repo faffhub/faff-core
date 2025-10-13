@@ -1,8 +1,8 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyDateTime, PyDate, PyTzInfo, PyTzInfoAccess, PyDateAccess, PyTimeAccess};
-use chrono::{DateTime, NaiveDate, Datelike, TimeZone, Timelike};
+use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Timelike};
 use chrono_tz::Tz;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::{PyDate, PyDateAccess, PyDateTime, PyTimeAccess, PyTzInfo, PyTzInfoAccess};
 
 pub fn datetime_py_to_rust<'py>(py_dt: Bound<'py, PyDateTime>) -> PyResult<DateTime<Tz>> {
     // Extract datetime components
@@ -29,9 +29,9 @@ pub fn datetime_py_to_rust<'py>(py_dt: Bound<'py, PyDateTime>) -> PyResult<DateT
     };
 
     // Convert tz_name to chrono_tz::Tz
-    let tz: Tz = tz_name.parse().map_err(|_| {
-        PyValueError::new_err(format!("Unrecognized timezone '{}'", tz_name))
-    })?;
+    let tz: Tz = tz_name
+        .parse()
+        .map_err(|_| PyValueError::new_err(format!("Unrecognized timezone '{}'", tz_name)))?;
 
     // Build datetime in Rust
     tz.with_ymd_and_hms(year.into(), month, day, hour, minute, second)
@@ -41,7 +41,10 @@ pub fn datetime_py_to_rust<'py>(py_dt: Bound<'py, PyDateTime>) -> PyResult<DateT
         .ok_or_else(|| PyValueError::new_err("Invalid microseconds"))
 }
 
-pub fn datetime_rust_to_py<'py>(py: Python<'py>, dt: &DateTime<Tz>) -> PyResult<Bound<'py, PyDateTime>> {
+pub fn datetime_rust_to_py<'py>(
+    py: Python<'py>,
+    dt: &DateTime<Tz>,
+) -> PyResult<Bound<'py, PyDateTime>> {
     // Get the timezone name from chrono_tz (e.g. "Europe/London")
     let tz_name = dt.timezone().name();
 

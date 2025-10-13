@@ -1,11 +1,11 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyType, PyDict, PyDate, PyDelta};
-use pyo3::exceptions::PyValueError;
-use chrono::{NaiveDate, Datelike};
+use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::{PyDate, PyDelta, PyDict, PyType};
 
-use crate::models::log::{Log as RustLog, LogError};
 use crate::bindings::python::session::PySession;
+use crate::models::log::{Log as RustLog, LogError};
 
 #[pyclass(name = "Log")]
 #[derive(Clone)]
@@ -22,7 +22,11 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 impl PyLog {
     #[new]
     #[pyo3(signature = (date, timezone, timeline=vec![]))]
-    fn py_new(date: Bound<'_, PyDate>, timezone: Bound<'_, PyAny>, timeline: Vec<PySession>) -> PyResult<Self> {
+    fn py_new(
+        date: Bound<'_, PyDate>,
+        timezone: Bound<'_, PyAny>,
+        timeline: Vec<PySession>,
+    ) -> PyResult<Self> {
         // Convert Python date to NaiveDate
         let date_str: String = date.call_method0("isoformat")?.extract()?;
         let naive_date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
@@ -30,7 +34,8 @@ impl PyLog {
 
         // Convert timezone
         let tz_str: String = timezone.call_method0("__str__")?.extract()?;
-        let tz: Tz = tz_str.parse()
+        let tz: Tz = tz_str
+            .parse()
             .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {}", e)))?;
 
         // Convert sessions
@@ -76,29 +81,28 @@ impl PyLog {
 
         // Extract timezone
         let tz_str: String = data.get_item("timezone")?.unwrap().extract()?;
-        let tz: Tz = tz_str.parse()
+        let tz: Tz = tz_str
+            .parse()
             .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {}", e)))?;
 
         // Extract timeline
         let timeline = match data.get_item("timeline")? {
-            Some(timeline_item) => {
-                match timeline_item.downcast::<pyo3::types::PyList>() {
-                    Ok(list) => {
-                        let mut sessions = Vec::new();
-                        for item in list.iter() {
-                            let session_dict = item.downcast::<PyDict>()?;
-                            let session = crate::bindings::python::session::session_from_dict_internal(
-                                session_dict,
-                                naive_date,
-                                tz,
-                            )?;
-                            sessions.push(session.inner);
-                        }
-                        sessions
+            Some(timeline_item) => match timeline_item.downcast::<pyo3::types::PyList>() {
+                Ok(list) => {
+                    let mut sessions = Vec::new();
+                    for item in list.iter() {
+                        let session_dict = item.downcast::<PyDict>()?;
+                        let session = crate::bindings::python::session::session_from_dict_internal(
+                            session_dict,
+                            naive_date,
+                            tz,
+                        )?;
+                        sessions.push(session.inner);
                     }
-                    Err(_) => vec![],
+                    sessions
                 }
-            }
+                Err(_) => vec![],
+            },
             None => vec![],
         };
 
@@ -119,7 +123,10 @@ impl PyLog {
             .map(|s| PySession { inner: s.clone() })
     }
 
-    fn stop_active_session(&self, stop_time: Bound<'_, pyo3::types::PyDateTime>) -> PyResult<PyLog> {
+    fn stop_active_session(
+        &self,
+        stop_time: Bound<'_, pyo3::types::PyDateTime>,
+    ) -> PyResult<PyLog> {
         use crate::bindings::python::type_mapping;
 
         let dt_tz = type_mapping::datetime_py_to_rust(stop_time)?;

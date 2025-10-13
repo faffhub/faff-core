@@ -1,13 +1,13 @@
-use serde::{Serialize, Serializer};
-use std::collections::HashMap;
-use chrono::{NaiveDate, DateTime};
+use anyhow::{bail, Result};
+use chrono::{DateTime, NaiveDate};
 use chrono_tz::Tz;
-use ed25519_dalek::{SigningKey, Signature, Signer};
-use sha2::{Sha256, Digest};
-use anyhow::{Result, bail};
+use ed25519_dalek::{Signature, Signer, SigningKey};
+use serde::{Serialize, Serializer};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 
-use crate::models::Session;
 use crate::models::valuetype::ValueType;
+use crate::models::Session;
 
 // Custom serializer for DateTime<Tz> that uses Z suffix for UTC
 fn serialize_datetime<S>(dt: &DateTime<Tz>, serializer: S) -> Result<S::Ok, S::Error>
@@ -29,7 +29,10 @@ where
     }
 }
 
-fn serialize_optional_datetime<S>(dt: &Option<DateTime<Tz>>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_optional_datetime<S>(
+    dt: &Option<DateTime<Tz>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -61,7 +64,8 @@ impl UnsignedTimesheet {
     ) -> Self {
         Self {
             actor,
-            version: "Faffage-generated timesheet v1.0 please see faffage.com for details".to_string(),
+            version: "Faffage-generated timesheet v1.0 please see faffage.com for details"
+                .to_string(),
             date,
             compiled,
             timezone,
@@ -147,7 +151,8 @@ impl Timesheet {
     ) -> Self {
         Self {
             actor,
-            version: "Faffage-generated timesheet v1.0 please see faffage.com for details".to_string(),
+            version: "Faffage-generated timesheet v1.0 please see faffage.com for details"
+                .to_string(),
             date,
             compiled,
             timezone,
@@ -266,7 +271,7 @@ impl SubmittableTimesheet {
         let mut buf = Vec::new();
         let mut serializer = serde_json::Serializer::with_formatter(
             &mut buf,
-            serde_canonical_json::CanonicalFormatter::new()
+            serde_canonical_json::CanonicalFormatter::new(),
         );
         self.serialize(&mut serializer)?;
         Ok(buf)
@@ -282,7 +287,9 @@ mod tests {
     fn test_create_timesheet() {
         let meta = TimesheetMeta::new("test-audience".to_string(), None, None);
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let compiled = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 18, 30, 0).unwrap();
+        let compiled = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
+            .unwrap();
         let timezone = chrono_tz::Europe::London;
 
         let timesheet = Timesheet::new(
@@ -304,7 +311,9 @@ mod tests {
     fn test_update_meta() {
         let meta = TimesheetMeta::new("audience1".to_string(), None, None);
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let compiled = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 18, 30, 0).unwrap();
+        let compiled = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
+            .unwrap();
         let timezone = chrono_tz::Europe::London;
 
         let timesheet = Timesheet::new(
@@ -317,7 +326,9 @@ mod tests {
             meta,
         );
 
-        let submitted_at = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 19, 0, 0).unwrap();
+        let submitted_at = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 19, 0, 0)
+            .unwrap();
         let updated = timesheet.update_meta(
             "audience2".to_string(),
             Some(submitted_at),
@@ -336,7 +347,9 @@ mod tests {
     fn test_submittable_timesheet() {
         let meta = TimesheetMeta::new("test-audience".to_string(), None, None);
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let compiled = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 18, 30, 0).unwrap();
+        let compiled = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
+            .unwrap();
         let timezone = chrono_tz::Europe::London;
 
         let timesheet = Timesheet::new(
@@ -358,12 +371,15 @@ mod tests {
     #[test]
     fn test_canonical_form() {
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let compiled = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 18, 30, 0).unwrap();
+        let compiled = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
+            .unwrap();
         let timezone = chrono_tz::Europe::London;
 
         let submittable = SubmittableTimesheet {
             actor: HashMap::new(),
-            version: "Faffage-generated timesheet v1.0 please see faffage.com for details".to_string(),
+            version: "Faffage-generated timesheet v1.0 please see faffage.com for details"
+                .to_string(),
             date,
             compiled,
             timezone,

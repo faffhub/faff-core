@@ -39,10 +39,12 @@ pub trait Storage: Send + Sync {
     }
 
     fn timesheet_file_path(&self, audience_id: &str, date: NaiveDate) -> PathBuf {
-        self.timesheet_dir().join(format!("{}.{}.json", audience_id, date))
+        self.timesheet_dir()
+            .join(format!("{}.{}.json", audience_id, date))
     }
 
     fn timesheet_meta_file_path(&self, audience_id: &str, date: NaiveDate) -> PathBuf {
-        self.timesheet_dir().join(format!("{}.{}.meta.json", audience_id, date))
+        self.timesheet_dir()
+            .join(format!("{}.{}.meta.json", audience_id, date))
     }
 }

@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
-use chrono::{NaiveDate, DateTime, NaiveTime, Datelike, Duration, Local, TimeZone};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
 
 use crate::models::session::Session;
 
@@ -45,7 +45,8 @@ impl Log {
     /// Append a session to the timeline, automatically stopping any active session
     pub fn append_session(&self, session: Session) -> Log {
         if self.active_session().is_some() {
-            let stopped_log = self.stop_active_session(session.start)
+            let stopped_log = self
+                .stop_active_session(session.start)
                 .expect("active_session exists, so stop should work");
             stopped_log.append_session(session)
         } else {
@@ -91,10 +92,11 @@ impl Log {
                         now - start
                     } else {
                         // For open sessions on past dates, use end of day
-                        let end_of_day_time = NaiveTime::from_hms_opt(23, 59, 59)
-                            .expect("valid time");
+                        let end_of_day_time =
+                            NaiveTime::from_hms_opt(23, 59, 59).expect("valid time");
                         let end_of_day_naive = self.date.and_time(end_of_day_time);
-                        let end_of_day = self.timezone
+                        let end_of_day = self
+                            .timezone
                             .from_local_datetime(&end_of_day_naive)
                             .single()
                             .expect("valid datetime");
@@ -114,15 +116,18 @@ impl Log {
         let toml_value: toml::Value = toml::from_str(toml_str)?;
 
         // Extract date and timezone
-        let date_str = toml_value.get("date")
+        let date_str = toml_value
+            .get("date")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'date' field"))?;
         let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
 
-        let tz_str = toml_value.get("timezone")
+        let tz_str = toml_value
+            .get("timezone")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'timezone' field"))?;
-        let timezone: Tz = tz_str.parse()
+        let timezone: Tz = tz_str
+            .parse()
             .map_err(|e: String| anyhow::anyhow!("Invalid timezone '{}': {}", tz_str, e))?;
 
         // Parse timeline sessions using Session's from_toml_table method
@@ -276,7 +281,10 @@ impl Log {
         if hours > 0 {
             if minutes > 0 {
                 if seconds > 0 {
-                    format!("{} {}, {} {} and {} {}", hours, hour_str, minutes, minute_str, seconds, second_str)
+                    format!(
+                        "{} {}, {} {} and {} {}",
+                        hours, hour_str, minutes, minute_str, seconds, second_str
+                    )
                 } else {
                     format!("{} {} and {} {}", hours, hour_str, minutes, minute_str)
                 }
@@ -399,7 +407,9 @@ mod tests {
     fn test_create_log_with_session() {
         let intent = sample_intent();
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![session.clone()]);
@@ -418,7 +428,9 @@ mod tests {
     fn test_log_with_completed_session_has_no_active_session() {
         let intent = sample_intent();
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![session]);
@@ -443,7 +455,9 @@ mod tests {
     fn test_only_last_session_matters_for_active() {
         let intent = sample_intent();
         let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end1 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end1 = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session1 = Session::new(intent.clone(), start1, Some(end1), None);
 
         let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
@@ -459,7 +473,9 @@ mod tests {
     fn test_append_to_empty_log() {
         let intent = sample_intent();
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![]);
@@ -475,7 +491,9 @@ mod tests {
     fn test_append_to_log_with_completed_sessions() {
         let intent = sample_intent();
         let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end1 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end1 = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session1 = Session::new(intent.clone(), start1, Some(end1), None);
 
         let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
@@ -516,7 +534,9 @@ mod tests {
 
         let log = Log::new(sample_date(), london_tz(), vec![open_session]);
 
-        let stop_time = london_tz().with_ymd_and_hms(2025, 3, 15, 16, 30, 0).unwrap();
+        let stop_time = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 16, 30, 0)
+            .unwrap();
         let stopped_log = log.stop_active_session(stop_time).unwrap();
 
         assert_eq!(stopped_log.timeline[0].end, Some(stop_time));
@@ -527,7 +547,9 @@ mod tests {
     #[test]
     fn test_stop_empty_log_raises_error() {
         let log = Log::new(sample_date(), london_tz(), vec![]);
-        let stop_time = london_tz().with_ymd_and_hms(2025, 3, 15, 16, 30, 0).unwrap();
+        let stop_time = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 16, 30, 0)
+            .unwrap();
 
         let result = log.stop_active_session(stop_time);
         assert!(matches!(result, Err(LogError::NoTimelineEntries)));
@@ -543,7 +565,9 @@ mod tests {
     fn test_log_with_completed_sessions_is_closed() {
         let intent = sample_intent();
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![session]);
@@ -570,7 +594,9 @@ mod tests {
     fn test_single_completed_session() {
         let intent = sample_intent();
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let end = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![session]);
@@ -587,7 +613,9 @@ mod tests {
         let session1 = Session::new(intent.clone(), start1, Some(end1), None);
 
         let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
-        let end2 = london_tz().with_ymd_and_hms(2025, 3, 15, 15, 30, 0).unwrap();
+        let end2 = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 15, 30, 0)
+            .unwrap();
         let session2 = Session::new(intent, start2, Some(end2), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![session1, session2]);
@@ -628,8 +656,12 @@ mod tests {
     #[test]
     fn test_to_log_file_with_session() {
         let intent = sample_intent();
-        let start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+        let start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
+            .unwrap();
+        let end = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap();
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), chrono_tz::UTC, vec![session]);
@@ -648,7 +680,15 @@ mod tests {
         assert_eq!(Log::format_duration(Duration::hours(2)), "2 hours");
         assert_eq!(Log::format_duration(Duration::minutes(45)), "45 minutes");
         assert_eq!(Log::format_duration(Duration::seconds(30)), "30 seconds");
-        assert_eq!(Log::format_duration(Duration::hours(1) + Duration::minutes(30)), "1 hour and 30 minutes");
-        assert_eq!(Log::format_duration(Duration::hours(2) + Duration::minutes(15) + Duration::seconds(45)), "2 hours, 15 minutes and 45 seconds");
+        assert_eq!(
+            Log::format_duration(Duration::hours(1) + Duration::minutes(30)),
+            "1 hour and 30 minutes"
+        );
+        assert_eq!(
+            Log::format_duration(
+                Duration::hours(2) + Duration::minutes(15) + Duration::seconds(45)
+            ),
+            "2 hours, 15 minutes and 45 seconds"
+        );
     }
 }

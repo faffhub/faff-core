@@ -1,8 +1,7 @@
+use anyhow::{Context, Result};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyString};
+use pyo3::types::PyBytes;
 use std::path::PathBuf;
-use chrono::NaiveDate;
-use anyhow::{Result, Context};
 
 use crate::storage::Storage;
 
@@ -23,7 +22,9 @@ impl PyStorage {
 impl Storage for PyStorage {
     fn root_dir(&self) -> PathBuf {
         Python::with_gil(|py| {
-            let result = self.py_obj.call_method0(py, "root_dir")
+            let result = self
+                .py_obj
+                .call_method0(py, "root_dir")
                 .expect("Failed to call root_dir");
             let path_str: String = result.extract(py).expect("root_dir must return str");
             PathBuf::from(path_str)
@@ -32,7 +33,9 @@ impl Storage for PyStorage {
 
     fn log_dir(&self) -> PathBuf {
         Python::with_gil(|py| {
-            let result = self.py_obj.call_method0(py, "log_dir")
+            let result = self
+                .py_obj
+                .call_method0(py, "log_dir")
                 .expect("Failed to call log_dir");
             let path_str: String = result.extract(py).expect("log_dir must return str");
             PathBuf::from(path_str)
@@ -41,7 +44,9 @@ impl Storage for PyStorage {
 
     fn plan_dir(&self) -> PathBuf {
         Python::with_gil(|py| {
-            let result = self.py_obj.call_method0(py, "plan_dir")
+            let result = self
+                .py_obj
+                .call_method0(py, "plan_dir")
                 .expect("Failed to call plan_dir");
             let path_str: String = result.extract(py).expect("plan_dir must return str");
             PathBuf::from(path_str)
@@ -50,7 +55,9 @@ impl Storage for PyStorage {
 
     fn identity_dir(&self) -> PathBuf {
         Python::with_gil(|py| {
-            let result = self.py_obj.call_method0(py, "identity_dir")
+            let result = self
+                .py_obj
+                .call_method0(py, "identity_dir")
                 .expect("Failed to call identity_dir");
             let path_str: String = result.extract(py).expect("identity_dir must return str");
             PathBuf::from(path_str)
@@ -59,7 +66,9 @@ impl Storage for PyStorage {
 
     fn timesheet_dir(&self) -> PathBuf {
         Python::with_gil(|py| {
-            let result = self.py_obj.call_method0(py, "timesheet_dir")
+            let result = self
+                .py_obj
+                .call_method0(py, "timesheet_dir")
                 .expect("Failed to call timesheet_dir");
             let path_str: String = result.extract(py).expect("timesheet_dir must return str");
             PathBuf::from(path_str)
@@ -68,7 +77,9 @@ impl Storage for PyStorage {
 
     fn config_file(&self) -> PathBuf {
         Python::with_gil(|py| {
-            let result = self.py_obj.call_method0(py, "config_file")
+            let result = self
+                .py_obj
+                .call_method0(py, "config_file")
                 .expect("Failed to call config_file");
             let path_str: String = result.extract(py).expect("config_file must return str");
             PathBuf::from(path_str)
@@ -77,11 +88,13 @@ impl Storage for PyStorage {
 
     fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
         Python::with_gil(|py| {
-            let path_str = path.to_str()
-                .context("Path contains invalid UTF-8")?;
-            let result = self.py_obj.call_method1(py, "read_bytes", (path_str,))
+            let path_str = path.to_str().context("Path contains invalid UTF-8")?;
+            let result = self
+                .py_obj
+                .call_method1(py, "read_bytes", (path_str,))
                 .context("Failed to call read_bytes")?;
-            let bytes = result.downcast_bound::<PyBytes>(py)
+            let bytes = result
+                .downcast_bound::<PyBytes>(py)
                 .map_err(|e| anyhow::anyhow!("read_bytes must return bytes: {}", e))?;
             Ok(bytes.as_bytes().to_vec())
         })
@@ -89,9 +102,10 @@ impl Storage for PyStorage {
 
     fn read_string(&self, path: &PathBuf) -> Result<String> {
         Python::with_gil(|py| {
-            let path_str = path.to_str()
-                .context("Path contains invalid UTF-8")?;
-            let result = self.py_obj.call_method1(py, "read_string", (path_str,))
+            let path_str = path.to_str().context("Path contains invalid UTF-8")?;
+            let result = self
+                .py_obj
+                .call_method1(py, "read_string", (path_str,))
                 .context("Failed to call read_string")?;
             result.extract(py).context("read_string must return str")
         })
@@ -99,10 +113,10 @@ impl Storage for PyStorage {
 
     fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
         Python::with_gil(|py| {
-            let path_str = path.to_str()
-                .context("Path contains invalid UTF-8")?;
+            let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let py_bytes = PyBytes::new(py, data);
-            self.py_obj.call_method1(py, "write_bytes", (path_str, py_bytes))
+            self.py_obj
+                .call_method1(py, "write_bytes", (path_str, py_bytes))
                 .context("Failed to call write_bytes")?;
             Ok(())
         })
@@ -110,9 +124,9 @@ impl Storage for PyStorage {
 
     fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
         Python::with_gil(|py| {
-            let path_str = path.to_str()
-                .context("Path contains invalid UTF-8")?;
-            self.py_obj.call_method1(py, "write_string", (path_str, data))
+            let path_str = path.to_str().context("Path contains invalid UTF-8")?;
+            self.py_obj
+                .call_method1(py, "write_string", (path_str, data))
                 .context("Failed to call write_string")?;
             Ok(())
         })
@@ -120,9 +134,10 @@ impl Storage for PyStorage {
 
     fn exists(&self, path: &PathBuf) -> bool {
         Python::with_gil(|py| {
-            let path_str = path.to_str()
-                .expect("Path contains invalid UTF-8");
-            let result = self.py_obj.call_method1(py, "exists", (path_str,))
+            let path_str = path.to_str().expect("Path contains invalid UTF-8");
+            let result = self
+                .py_obj
+                .call_method1(py, "exists", (path_str,))
                 .expect("Failed to call exists");
             result.extract(py).expect("exists must return bool")
         })
@@ -130,9 +145,9 @@ impl Storage for PyStorage {
 
     fn create_dir_all(&self, path: &PathBuf) -> Result<()> {
         Python::with_gil(|py| {
-            let path_str = path.to_str()
-                .context("Path contains invalid UTF-8")?;
-            self.py_obj.call_method1(py, "create_dir_all", (path_str,))
+            let path_str = path.to_str().context("Path contains invalid UTF-8")?;
+            self.py_obj
+                .call_method1(py, "create_dir_all", (path_str,))
                 .context("Failed to call create_dir_all")?;
             Ok(())
         })
@@ -140,11 +155,15 @@ impl Storage for PyStorage {
 
     fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>> {
         Python::with_gil(|py| {
-            let dir_str = dir.to_str()
+            let dir_str = dir
+                .to_str()
                 .context("Directory path contains invalid UTF-8")?;
-            let result = self.py_obj.call_method1(py, "list_files", (dir_str, pattern))
+            let result = self
+                .py_obj
+                .call_method1(py, "list_files", (dir_str, pattern))
                 .context("Failed to call list_files")?;
-            let paths: Vec<String> = result.extract(py)
+            let paths: Vec<String> = result
+                .extract(py)
                 .context("list_files must return list of str")?;
             Ok(paths.into_iter().map(PathBuf::from).collect())
         })

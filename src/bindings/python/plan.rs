@@ -1,11 +1,11 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyType, PyDict, PyDate, PyList};
+use chrono::{Datelike, NaiveDate};
 use pyo3::exceptions::PyValueError;
-use chrono::{NaiveDate, Datelike};
+use pyo3::prelude::*;
+use pyo3::types::{PyDate, PyDict, PyList, PyType};
 use std::collections::HashMap;
 
-use crate::models::plan::Plan as RustPlan;
 use crate::bindings::python::intent::PyIntent;
+use crate::models::plan::Plan as RustPlan;
 
 #[pyclass(name = "Plan")]
 #[derive(Clone)]
@@ -40,8 +40,10 @@ impl PyPlan {
 
         let valid_until_date = if let Some(date) = valid_until {
             let date_str: String = date.call_method0("isoformat")?.extract()?;
-            Some(NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                .map_err(|e| PyValueError::new_err(e.to_string()))?)
+            Some(
+                NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?,
+            )
         } else {
             None
         };
@@ -140,30 +142,37 @@ impl PyPlan {
         let valid_until = match data.get_item("valid_until")? {
             Some(item) => {
                 let date_str: String = item.extract()?;
-                Some(NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?)
+                Some(
+                    NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?,
+                )
             }
             None => None,
         };
 
         // Extract lists (with defaults)
-        let roles: Vec<String> = data.get_item("roles")?
+        let roles: Vec<String> = data
+            .get_item("roles")?
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
-        let actions: Vec<String> = data.get_item("actions")?
+        let actions: Vec<String> = data
+            .get_item("actions")?
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
-        let objectives: Vec<String> = data.get_item("objectives")?
+        let objectives: Vec<String> = data
+            .get_item("objectives")?
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
-        let subjects: Vec<String> = data.get_item("subjects")?
+        let subjects: Vec<String> = data
+            .get_item("subjects")?
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
-        let trackers: HashMap<String, String> = data.get_item("trackers")?
+        let trackers: HashMap<String, String> = data
+            .get_item("trackers")?
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
@@ -174,7 +183,8 @@ impl PyPlan {
                 let mut rust_intents = Vec::new();
                 for item in intents_list.iter() {
                     let intent_dict = item.downcast::<PyDict>()?;
-                    let py_intent = crate::bindings::python::intent::intent_from_dict_internal(intent_dict)?;
+                    let py_intent =
+                        crate::bindings::python::intent::intent_from_dict_internal(intent_dict)?;
                     rust_intents.push(py_intent.inner);
                 }
                 rust_intents
@@ -208,10 +218,7 @@ impl PyPlan {
     }
 
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
-        Python::with_gil(|py| {
-            pythonize::pythonize(py, &self.inner)?
-                .extract()
-        })
+        Python::with_gil(|py| pythonize::pythonize(py, &self.inner)?.extract())
     }
 
     fn __repr__(&self) -> PyResult<String> {

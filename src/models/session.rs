@@ -1,15 +1,15 @@
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
-use serde::de::{self, Visitor, MapAccess};
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use std::collections::HashMap;
 
 use crate::models::intent::Intent;
 use crate::models::valuetype::ValueType;
 
-use chrono::{NaiveDate, NaiveTime, DateTime, TimeZone, Duration, Datelike};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 use thiserror::Error;
 
@@ -32,7 +32,10 @@ where
     }
 }
 
-fn serialize_optional_datetime<S>(dt: &Option<DateTime<Tz>>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_optional_datetime<S>(
+    dt: &Option<DateTime<Tz>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -50,11 +53,7 @@ pub enum SessionError {
     EndBeforeStart,
 }
 
-fn combine_date_time(
-    date: NaiveDate,
-    tz: Tz,
-    time_str: &str,
-) -> Result<DateTime<Tz>> {
+fn combine_date_time(date: NaiveDate, tz: Tz, time_str: &str) -> Result<DateTime<Tz>> {
     // Don't accept any offset here — only plain time strings
     if time_str.contains('+') || time_str.contains('-') {
         bail!(
@@ -70,11 +69,7 @@ fn combine_date_time(
 
     tz.from_local_datetime(&naive)
         .single()
-        .ok_or_else(|| anyhow::anyhow!(
-            "Ambiguous or nonexistent time for {} in {}",
-            naive,
-            tz
-        ))
+        .ok_or_else(|| anyhow::anyhow!("Ambiguous or nonexistent time for {} in {}", naive, tz))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
@@ -88,31 +83,35 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(intent: Intent, start: DateTime<Tz>, end: Option<DateTime<Tz>>, note: Option<String>) -> Self {
-        Self { intent, start, end, note }
+    pub fn new(
+        intent: Intent,
+        start: DateTime<Tz>,
+        end: Option<DateTime<Tz>>,
+        note: Option<String>,
+    ) -> Self {
+        Self {
+            intent,
+            start,
+            end,
+            note,
+        }
     }
 
     // def from_dict_with_tz(cls, data: dict, date: pendulum.Date, timezone: pendulum.Timezone | pendulum.FixedTimezone) -> Session:
-    pub fn from_dict_with_tz(dict: HashMap<String, ValueType>, date: chrono::NaiveDate, timezone: chrono_tz::Tz) -> Result<Self, String> {
-        let alias = dict.get("alias")
-                        .and_then(|v| v.as_string())
-                        .cloned();
+    pub fn from_dict_with_tz(
+        dict: HashMap<String, ValueType>,
+        date: chrono::NaiveDate,
+        timezone: chrono_tz::Tz,
+    ) -> Result<Self, String> {
+        let alias = dict.get("alias").and_then(|v| v.as_string()).cloned();
 
-        let role = dict.get("role")
-                        .and_then(|v| v.as_string())
-                        .cloned();
+        let role = dict.get("role").and_then(|v| v.as_string()).cloned();
 
-        let objective = dict.get("objective")
-                        .and_then(|v| v.as_string())
-                        .cloned();
+        let objective = dict.get("objective").and_then(|v| v.as_string()).cloned();
 
-        let action = dict.get("action")
-                        .and_then(|v| v.as_string())
-                        .cloned();
+        let action = dict.get("action").and_then(|v| v.as_string()).cloned();
 
-        let subject = dict.get("subject")
-                        .and_then(|v| v.as_string())
-                        .cloned();
+        let subject = dict.get("subject").and_then(|v| v.as_string()).cloned();
 
         // Handle trackers as either a string or a list
         let trackers = dict
@@ -130,29 +129,26 @@ impl Session {
 
         let intent: Intent = Intent::new(alias, role, objective, action, subject, trackers);
 
-        let start: String = dict.get("start")
-                        .and_then(|v| v.as_string())
-                        .cloned()
-                        .ok_or("Missing 'start' field in session dict")?;
+        let start: String = dict
+            .get("start")
+            .and_then(|v| v.as_string())
+            .cloned()
+            .ok_or("Missing 'start' field in session dict")?;
 
-        // Let's create our start time by combining a naive date object (date), a timezone object (timezone), 
+        // Let's create our start time by combining a naive date object (date), a timezone object (timezone),
         // and a string representation of the time (start) which will include a offset if-and-only-if there is any
         // chance of time ambiguity resulting from daylight saving on that day.
-        let start: DateTime<Tz> = combine_date_time(date, timezone, &start)
-            .map_err(|e| e.to_string())?;
+        let start: DateTime<Tz> =
+            combine_date_time(date, timezone, &start).map_err(|e| e.to_string())?;
 
-        let end = dict.get("end")
-                        .and_then(|v| v.as_string())
-                        .cloned();
+        let end = dict.get("end").and_then(|v| v.as_string()).cloned();
 
         let end = match end {
             Some(s) => Some(combine_date_time(date, timezone, &s).map_err(|e| e.to_string())?),
             None => None,
         };
 
-        let note = dict.get("note")
-                        .and_then(|v| v.as_string())
-                        .cloned(); 
+        let note = dict.get("note").and_then(|v| v.as_string()).cloned();
 
         Ok(Self {
             intent,
@@ -192,22 +188,31 @@ impl Session {
         let intent: Intent = toml::from_str(&toml::to_string(table)?)?;
 
         // Parse start/end times
-        let start_str = table.get("start")
+        let start_str = table
+            .get("start")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'start' field in session"))?;
         let start = Self::parse_time_from_toml(start_str, date, timezone)?;
 
-        let end = table.get("end")
+        let end = table
+            .get("end")
             .and_then(|v| v.as_str())
             .map(|s| Self::parse_time_from_toml(s, date, timezone))
             .transpose()?;
 
-        let note = table.get("note").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let note = table
+            .get("note")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         Ok(Session::new(intent, start, end, note))
     }
 
-    fn parse_time_from_toml(time_str: &str, date: NaiveDate, timezone: Tz) -> anyhow::Result<DateTime<Tz>> {
+    fn parse_time_from_toml(
+        time_str: &str,
+        date: NaiveDate,
+        timezone: Tz,
+    ) -> anyhow::Result<DateTime<Tz>> {
         // Trim whitespace to handle malformed input
         let time_str = time_str.trim();
 
@@ -226,12 +231,12 @@ impl Session {
             let hour: u32 = parts[0].trim().parse()?;
             let minute: u32 = parts[1].trim().parse()?;
 
-            timezone.with_ymd_and_hms(date.year(), date.month(), date.day(), hour, minute, 0)
+            timezone
+                .with_ymd_and_hms(date.year(), date.month(), date.day(), hour, minute, 0)
                 .single()
                 .ok_or_else(|| anyhow::anyhow!("Invalid datetime: {} {}:{}", date, hour, minute))
         }
     }
-
 }
 
 #[cfg(test)]
@@ -269,12 +274,7 @@ mod tests {
         let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
 
-        let session = Session::new(
-            intent,
-            start,
-            None,
-            Some("Working on tests".to_string()),
-        );
+        let session = Session::new(intent, start, None, Some("Working on tests".to_string()));
 
         assert_eq!(session.note, Some("Working on tests".to_string()));
     }
@@ -384,15 +384,27 @@ mod tests {
         let result = combine_date_time(date, tz, "25:99");
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid time format"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid time format"));
     }
 
     #[test]
     fn test_from_dict_with_tz_basic() {
         let mut dict = HashMap::new();
-        dict.insert("role".to_string(), ValueType::String("engineer".to_string()));
-        dict.insert("action".to_string(), ValueType::String("coding".to_string()));
-        dict.insert("subject".to_string(), ValueType::String("tests".to_string()));
+        dict.insert(
+            "role".to_string(),
+            ValueType::String("engineer".to_string()),
+        );
+        dict.insert(
+            "action".to_string(),
+            ValueType::String("coding".to_string()),
+        );
+        dict.insert(
+            "subject".to_string(),
+            ValueType::String("tests".to_string()),
+        );
         dict.insert("start".to_string(), ValueType::String("09:00".to_string()));
         dict.insert("end".to_string(), ValueType::String("10:30".to_string()));
 
@@ -412,7 +424,10 @@ mod tests {
     #[test]
     fn test_from_dict_with_tz_open_session() {
         let mut dict = HashMap::new();
-        dict.insert("role".to_string(), ValueType::String("engineer".to_string()));
+        dict.insert(
+            "role".to_string(),
+            ValueType::String("engineer".to_string()),
+        );
         dict.insert("start".to_string(), ValueType::String("09:00".to_string()));
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
@@ -427,7 +442,10 @@ mod tests {
     fn test_from_dict_with_tz_with_note() {
         let mut dict = HashMap::new();
         dict.insert("start".to_string(), ValueType::String("09:00".to_string()));
-        dict.insert("note".to_string(), ValueType::String("Test note".to_string()));
+        dict.insert(
+            "note".to_string(),
+            ValueType::String("Test note".to_string()),
+        );
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let tz = Tz::UTC;
@@ -454,7 +472,10 @@ mod tests {
     fn test_from_dict_with_tz_single_tracker_string() {
         let mut dict = HashMap::new();
         dict.insert("start".to_string(), ValueType::String("09:00".to_string()));
-        dict.insert("trackers".to_string(), ValueType::String("work:admin".to_string()));
+        dict.insert(
+            "trackers".to_string(),
+            ValueType::String("work:admin".to_string()),
+        );
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let tz = Tz::UTC;
@@ -468,10 +489,10 @@ mod tests {
     fn test_from_dict_with_tz_multiple_trackers_list() {
         let mut dict = HashMap::new();
         dict.insert("start".to_string(), ValueType::String("09:00".to_string()));
-        dict.insert("trackers".to_string(), ValueType::List(vec![
-            "work:admin".to_string(),
-            "personal:study".to_string()
-        ]));
+        dict.insert(
+            "trackers".to_string(),
+            ValueType::List(vec!["work:admin".to_string(), "personal:study".to_string()]),
+        );
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let tz = Tz::UTC;
@@ -480,7 +501,10 @@ mod tests {
 
         assert_eq!(session.intent.trackers.len(), 2);
         assert!(session.intent.trackers.contains(&"work:admin".to_string()));
-        assert!(session.intent.trackers.contains(&"personal:study".to_string()));
+        assert!(session
+            .intent
+            .trackers
+            .contains(&"personal:study".to_string()));
     }
 
     #[test]

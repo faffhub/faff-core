@@ -1,13 +1,13 @@
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
-use pyo3::types::{PyDelta, PyDict, PyType};
-use std::collections::HashMap;
-use pyo3::types::PyDateTime;
 use crate::bindings::python::intent::PyIntent;
 use crate::models::session::SessionError;
-use crate::models::{Session as RustSession, valuetype::ValueType};
+use crate::models::{valuetype::ValueType, Session as RustSession};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::PyDateTime;
+use pyo3::types::{PyDelta, PyDict, PyType};
+use std::collections::HashMap;
 
 use crate::bindings::python::type_mapping;
 
@@ -33,7 +33,8 @@ pub(crate) fn session_from_dict_internal(
     if let Some(intent_item) = dict.get_item("intent")? {
         if let Ok(intent_dict) = intent_item.downcast::<PyDict>() {
             // Parse the intent first
-            let py_intent = crate::bindings::python::intent::intent_from_dict_internal(intent_dict)?;
+            let py_intent =
+                crate::bindings::python::intent::intent_from_dict_internal(intent_dict)?;
 
             // Extract start/end/note from the session dict
             // Parse RFC3339 datetime (includes offset) and convert to semantic timezone
@@ -42,7 +43,8 @@ pub(crate) fn session_from_dict_internal(
                 .map_err(|e| PyValueError::new_err(format!("Invalid start datetime: {}", e)))?
                 .with_timezone(&tz);
 
-            let end = dict.get_item("end")?
+            let end = dict
+                .get_item("end")?
                 .and_then(|v| if v.is_none() { None } else { Some(v) })
                 .map(|v| v.extract::<String>())
                 .transpose()?
@@ -53,13 +55,14 @@ pub(crate) fn session_from_dict_internal(
                 })
                 .transpose()?;
 
-            let note = dict.get_item("note")?
+            let note = dict
+                .get_item("note")?
                 .and_then(|v| if v.is_none() { None } else { Some(v) })
                 .map(|v| v.extract::<String>())
                 .transpose()?;
 
             return Ok(PySession {
-                inner: RustSession::new(py_intent.inner, start, end, note)
+                inner: RustSession::new(py_intent.inner, start, end, note),
             });
         }
     }
@@ -106,7 +109,15 @@ impl PySession {
     fn __getstate__(&self, py: Python<'_>) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
 
-        dict.set_item("intent", Py::new(py, PyIntent { inner: self.inner.intent.clone() })?)?;
+        dict.set_item(
+            "intent",
+            Py::new(
+                py,
+                PyIntent {
+                    inner: self.inner.intent.clone(),
+                },
+            )?,
+        )?;
         dict.set_item("start", self.inner.start.to_rfc3339())?;
         if let Some(end) = &self.inner.end {
             dict.set_item("end", end.to_rfc3339())?;
@@ -120,7 +131,9 @@ impl PySession {
 
     #[getter]
     fn intent(&self) -> PyIntent {
-        PyIntent { inner: self.inner.intent.clone() }
+        PyIntent {
+            inner: self.inner.intent.clone(),
+        }
     }
 
     #[getter]
@@ -180,23 +193,21 @@ impl PySession {
                 data.insert(key, ValueType::List(v.extract()?));
             } else {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "Unsupported type for key '{}'", key
+                    "Unsupported type for key '{}'",
+                    key
                 )));
             }
         }
-        let date_str: String = date
-            .call_method0("isoformat")?
-            .extract()?;
+        let date_str: String = date.call_method0("isoformat")?.extract()?;
 
         let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-        let tz_str: String = tz
-            .call_method0("__str__")?
-            .extract()?;
-        let tz = tz_str.parse::<Tz>()
+        let tz_str: String = tz.call_method0("__str__")?.extract()?;
+        let tz = tz_str
+            .parse::<Tz>()
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-     
+
         let inner = RustSession::from_dict_with_tz(data, date, tz)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
 
@@ -208,18 +219,23 @@ impl PySession {
         Ok(PySession {
             inner: self.inner.with_end(dt_tz),
         })
-    }   
+    }
 
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
         Python::with_gil(|py| {
             let d = PyDict::new(py);
 
             let intent = &self.inner.intent;
-            d.set_item("intent", PyIntent { inner: intent.clone() })?;
+            d.set_item(
+                "intent",
+                PyIntent {
+                    inner: intent.clone(),
+                },
+            )?;
 
             let start = &self.inner.start;
             d.set_item("start", type_mapping::datetime_rust_to_py(py, start)?)?;
-            
+
             if let Some(end) = &self.inner.end {
                 d.set_item("end", type_mapping::datetime_rust_to_py(py, end)?)?;
             }
@@ -233,10 +249,7 @@ impl PySession {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "Session(intent={:?}, start={:?}, end={:?}, note={:?})",
-            self.inner.intent,
-            self.inner.start,
-            self.inner.end,
-            self.inner.note,
+            self.inner.intent, self.inner.start, self.inner.end, self.inner.note,
         ))
     }
 
@@ -251,7 +264,4 @@ impl PySession {
     fn __ne__(&self, other: &PySession) -> bool {
         self.inner != other.inner
     }
-
-
-
 }

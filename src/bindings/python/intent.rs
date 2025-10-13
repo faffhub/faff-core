@@ -1,9 +1,9 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyType, PyDict};
-use pyo3::types::PyAny;
-use std::collections::HashMap;
 use crate::models::intent::Intent as RustIntent;
 use crate::models::valuetype::ValueType;
+use pyo3::prelude::*;
+use pyo3::types::PyAny;
+use pyo3::types::{PyDict, PyType};
+use std::collections::HashMap;
 
 #[pyclass(name = "Intent")]
 #[derive(Clone)]
@@ -31,7 +31,8 @@ pub(crate) fn intent_from_dict_internal(dict: &Bound<'_, PyDict>) -> PyResult<Py
             data.insert(key, ValueType::List(list));
         } else {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Unsupported type for key '{}'", key
+                "Unsupported type for key '{}'",
+                key
             )));
         }
     }
@@ -98,25 +99,26 @@ impl PyIntent {
             let key: String = k.extract()?;
 
             if v.is_instance_of::<pyo3::types::PyString>() {
-                let s: String = v.extract()?; 
+                let s: String = v.extract()?;
                 data.insert(key, ValueType::String(s));
             } else if v.is_instance_of::<pyo3::types::PyList>() {
-                let list: Vec<String> = v.extract()?; 
+                let list: Vec<String> = v.extract()?;
                 data.insert(key, ValueType::List(list));
             } else {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "Unsupported type for key '{}'", key
+                    "Unsupported type for key '{}'",
+                    key
                 )));
             }
         }
-        
+
         match RustIntent::from_dict(data) {
             Ok(intent) => Ok(PyIntent { inner: intent }),
             Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
         }
     }
 
-    fn __hash__(&self) -> u64 { 
+    fn __hash__(&self) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
@@ -177,7 +179,20 @@ impl PyIntent {
 
     // XXX: I'm acutely aware that I do not know what this is or how it works.
     // It _is_ needed, however.
-    fn __reduce__(&self, py: Python) -> PyResult<(PyObject, (Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Vec<String>))> {
+    fn __reduce__(
+        &self,
+        py: Python,
+    ) -> PyResult<(
+        PyObject,
+        (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Vec<String>,
+        ),
+    )> {
         let intent_type = py.get_type::<Self>();
         Ok((
             intent_type.into(),
@@ -188,7 +203,7 @@ impl PyIntent {
                 self.inner.action.clone(),
                 self.inner.subject.clone(),
                 self.inner.trackers.clone(),
-            )
+            ),
         ))
     }
 }

@@ -35,14 +35,16 @@ impl LogManager {
     /// Read the raw log file contents
     pub fn read_log_raw(&self, date: NaiveDate) -> Result<String> {
         let log_path = self.storage.log_file_path(date);
-        self.storage.read_string(&log_path)
+        self.storage
+            .read_string(&log_path)
             .context(format!("Failed to read log file for {}", date))
     }
 
     /// Write raw log file contents
     pub fn write_log_raw(&self, date: NaiveDate, contents: &str) -> Result<()> {
         let log_path = self.storage.log_file_path(date);
-        self.storage.write_string(&log_path, contents)
+        self.storage
+            .write_string(&log_path, contents)
             .context(format!("Failed to write log for {}", date))
     }
 
@@ -56,11 +58,12 @@ impl LogManager {
         let log_path = self.storage.log_file_path(date);
 
         if self.storage.exists(&log_path) {
-            let toml_str = self.storage.read_string(&log_path)
+            let toml_str = self
+                .storage
+                .read_string(&log_path)
                 .context(format!("Failed to read log file for {}", date))?;
 
-            Log::from_log_file(&toml_str)
-                .context(format!("Failed to parse log file for {}", date))
+            Log::from_log_file(&toml_str).context(format!("Failed to parse log file for {}", date))
         } else {
             // Return empty log
             Ok(Log::new(date, self.timezone, vec![]))
@@ -70,11 +73,16 @@ impl LogManager {
     /// Write a log to storage
     ///
     /// trackers: map of tracker IDs to human-readable names for comments
-    pub fn write_log(&self, log: &Log, trackers: &std::collections::HashMap<String, String>) -> Result<()> {
+    pub fn write_log(
+        &self,
+        log: &Log,
+        trackers: &std::collections::HashMap<String, String>,
+    ) -> Result<()> {
         let log_contents = log.to_log_file(trackers);
         let log_path = self.storage.log_file_path(log.date);
 
-        self.storage.write_string(&log_path, &log_contents)
+        self.storage
+            .write_string(&log_path, &log_contents)
             .context(format!("Failed to write log for {}", log.date))
     }
 
@@ -106,8 +114,7 @@ impl LogManager {
         }
 
         // Delete the file
-        std::fs::remove_file(&log_path)
-            .context(format!("Failed to delete log for {}", date))
+        std::fs::remove_file(&log_path).context(format!("Failed to delete log for {}", date))
     }
 
     /// Start a new session with the given intent at the current time
@@ -162,7 +169,11 @@ impl LogManager {
         let log = self.get_log(current_date)?;
 
         if let Some(active_session) = log.active_session() {
-            let alias = active_session.intent.alias.clone().unwrap_or_else(|| "session".to_string());
+            let alias = active_session
+                .intent
+                .alias
+                .clone()
+                .unwrap_or_else(|| "session".to_string());
             let updated_log = log.stop_active_session(current_time)?;
             self.write_log(&updated_log, trackers)?;
 
@@ -223,14 +234,16 @@ mod tests {
 
         fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
             let files = self.files.lock().unwrap();
-            files.get(path)
+            files
+                .get(path)
                 .map(|s| s.as_bytes().to_vec())
                 .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
         }
 
         fn read_string(&self, path: &PathBuf) -> Result<String> {
             let files = self.files.lock().unwrap();
-            files.get(path)
+            files
+                .get(path)
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
         }
@@ -261,12 +274,15 @@ mod tests {
             let glob_pattern = pattern.replace("*", ".*");
             let re = regex::Regex::new(&glob_pattern).unwrap();
 
-            Ok(files.keys()
+            Ok(files
+                .keys()
                 .filter(|p| p.starts_with(dir))
-                .filter(|p| p.file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|n| re.is_match(n))
-                    .unwrap_or(false))
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| re.is_match(n))
+                        .unwrap_or(false)
+                })
                 .cloned()
                 .collect())
         }
@@ -281,7 +297,9 @@ mod tests {
         assert!(!manager.log_exists(date));
 
         // Write a log
-        manager.write_log_raw(date, "date = \"2025-03-15\"\n").unwrap();
+        manager
+            .write_log_raw(date, "date = \"2025-03-15\"\n")
+            .unwrap();
         assert!(manager.log_exists(date));
     }
 

@@ -1,17 +1,15 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDateTime;
 use pyo3::types::{PyBytes, PyDict, PyType};
 use std::collections::HashMap;
-use pyo3::types::PyDateTime;
 
 use crate::bindings::python::session::PySession;
 use crate::models::{
-    Timesheet as RustTimesheet,
-    TimesheetMeta as RustTimesheetMeta,
-    SubmittableTimesheet as RustSubmittableTimesheet,
-    valuetype::ValueType,
+    valuetype::ValueType, SubmittableTimesheet as RustSubmittableTimesheet,
+    Timesheet as RustTimesheet, TimesheetMeta as RustTimesheetMeta,
 };
-use chrono::{NaiveDate};
+use chrono::NaiveDate;
 use chrono_tz::Tz;
 
 use crate::bindings::python::type_mapping;
@@ -77,13 +75,14 @@ impl PyTimesheetMeta {
                 data.insert(key, ValueType::String(v.extract()?));
             } else {
                 return Err(PyValueError::new_err(format!(
-                    "Unsupported type for key '{}'", key
+                    "Unsupported type for key '{}'",
+                    key
                 )));
             }
         }
 
-        let inner = RustTimesheetMeta::from_dict(data)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let inner =
+            RustTimesheetMeta::from_dict(data).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         Ok(Self { inner })
     }
@@ -130,10 +129,12 @@ impl PyTimesheet {
 
         // Convert timezone (ZoneInfo object)
         let tz_str: String = timezone.call_method0("__str__")?.extract()?;
-        let timezone: Tz = tz_str.parse()
+        let timezone: Tz = tz_str
+            .parse()
             .map_err(|_| PyValueError::new_err(format!("Invalid timezone: {}", tz_str)))?;
 
-        let timeline = timeline.unwrap_or_default()
+        let timeline = timeline
+            .unwrap_or_default()
             .into_iter()
             .map(|s| s.inner)
             .collect();
@@ -175,7 +176,8 @@ impl PyTimesheet {
 
     #[getter]
     fn timeline(&self) -> Vec<PySession> {
-        self.inner.timeline
+        self.inner
+            .timeline
             .iter()
             .map(|s| PySession { inner: s.clone() })
             .collect()
@@ -188,12 +190,16 @@ impl PyTimesheet {
 
     #[getter]
     fn meta(&self) -> PyTimesheetMeta {
-        PyTimesheetMeta { inner: self.inner.meta.clone() }
+        PyTimesheetMeta {
+            inner: self.inner.meta.clone(),
+        }
     }
 
     fn sign(&self, id: String, signing_key: &Bound<'_, PyBytes>) -> PyResult<Self> {
         let key_bytes = signing_key.as_bytes();
-        let inner = self.inner.sign(&id, key_bytes)
+        let inner = self
+            .inner
+            .sign(&id, key_bytes)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         Ok(Self { inner })
@@ -212,7 +218,9 @@ impl PyTimesheet {
         };
 
         Ok(Self {
-            inner: self.inner.update_meta(audience_id, submitted_at, submitted_by),
+            inner: self
+                .inner
+                .update_meta(audience_id, submitted_at, submitted_by),
         })
     }
 
@@ -253,7 +261,8 @@ impl PyTimesheet {
             .get_item("timezone")?
             .ok_or_else(|| PyValueError::new_err("Missing 'timezone' field"))?
             .extract()?;
-        let timezone: Tz = timezone_str.parse()
+        let timezone: Tz = timezone_str
+            .parse()
             .map_err(|_| PyValueError::new_err(format!("Invalid timezone: {}", timezone_str)))?;
 
         // Extract timeline
@@ -263,9 +272,7 @@ impl PyTimesheet {
                 for item in list.iter() {
                     let item_dict: &Bound<'_, PyDict> = item.downcast()?;
                     let session = crate::bindings::python::session::session_from_dict_internal(
-                        item_dict,
-                        date,
-                        timezone,
+                        item_dict, date, timezone,
                     )?;
                     timeline.push(session.inner);
                 }
@@ -288,13 +295,7 @@ impl PyTimesheet {
 
         Ok(Self {
             inner: RustTimesheet::new(
-                actor,
-                date,
-                compiled,
-                timezone,
-                timeline,
-                signatures,
-                meta.inner,
+                actor, date, compiled, timezone, timeline, signatures, meta.inner,
             ),
         })
     }
@@ -333,7 +334,8 @@ impl PySubmittableTimesheet {
 
     #[getter]
     fn timeline(&self) -> Vec<PySession> {
-        self.inner.timeline
+        self.inner
+            .timeline
             .iter()
             .map(|s| PySession { inner: s.clone() })
             .collect()
@@ -345,7 +347,9 @@ impl PySubmittableTimesheet {
     }
 
     fn canonical_form<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.inner.canonical_form()
+        let bytes = self
+            .inner
+            .canonical_form()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         Ok(PyBytes::new(py, &bytes))
