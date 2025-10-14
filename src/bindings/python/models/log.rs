@@ -4,7 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDelta, PyDict, PyType};
 
-use crate::bindings::python::session::PySession;
+use crate::bindings::python::models::session::PySession;
 use crate::models::log::{Log as RustLog, LogError};
 
 #[pyclass(name = "Log")]
@@ -92,7 +92,7 @@ impl PyLog {
                     let mut sessions = Vec::new();
                     for item in list.iter() {
                         let session_dict = item.downcast::<PyDict>()?;
-                        let session = crate::bindings::python::session::session_from_dict_internal(
+                        let session = crate::bindings::python::models::session::session_from_dict_internal(
                             session_dict,
                             naive_date,
                             tz,

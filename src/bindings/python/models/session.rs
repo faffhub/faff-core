@@ -1,4 +1,4 @@
-use crate::bindings::python::intent::PyIntent;
+use crate::bindings::python::models::intent::PyIntent;
 use crate::models::session::SessionError;
 use crate::models::{valuetype::ValueType, Session as RustSession};
 use chrono::NaiveDate;
@@ -34,7 +34,7 @@ pub(crate) fn session_from_dict_internal(
         if let Ok(intent_dict) = intent_item.downcast::<PyDict>() {
             // Parse the intent first
             let py_intent =
-                crate::bindings::python::intent::intent_from_dict_internal(intent_dict)?;
+                crate::bindings::python::models::intent::intent_from_dict_internal(intent_dict)?;
 
             // Extract start/end/note from the session dict
             // Parse RFC3339 datetime (includes offset) and convert to semantic timezone
@@ -106,7 +106,7 @@ impl PySession {
         })
     }
 
-    fn __getstate__(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn __getstate__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
 
         dict.set_item(
@@ -222,7 +222,7 @@ impl PySession {
     }
 
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let d = PyDict::new(py);
 
             let intent = &self.inner.intent;

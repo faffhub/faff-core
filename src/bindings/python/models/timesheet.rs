@@ -4,7 +4,7 @@ use pyo3::types::PyDateTime;
 use pyo3::types::{PyBytes, PyDict, PyType};
 use std::collections::HashMap;
 
-use crate::bindings::python::session::PySession;
+use crate::bindings::python::models::session::PySession;
 use crate::models::{
     valuetype::ValueType, SubmittableTimesheet as RustSubmittableTimesheet,
     Timesheet as RustTimesheet, TimesheetMeta as RustTimesheetMeta,
@@ -271,7 +271,7 @@ impl PyTimesheet {
             if let Ok(list) = timeline_item.downcast::<pyo3::types::PyList>() {
                 for item in list.iter() {
                     let item_dict: &Bound<'_, PyDict> = item.downcast()?;
-                    let session = crate::bindings::python::session::session_from_dict_internal(
+                    let session = crate::bindings::python::models::session::session_from_dict_internal(
                         item_dict, date, timezone,
                     )?;
                     timeline.push(session.inner);

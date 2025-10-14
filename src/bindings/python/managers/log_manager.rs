@@ -23,7 +23,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pymethods]
 impl PyLogManager {
     #[new]
-    fn py_new(storage: PyObject, timezone: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn py_new(storage: Py<PyAny>, timezone: &Bound<'_, PyAny>) -> PyResult<Self> {
         // Convert timezone
         let tz_str: String = timezone.call_method0("__str__")?.extract()?;
         let tz: Tz = tz_str
@@ -90,19 +90,19 @@ impl PyLogManager {
     }
 
     /// Get a log for a given date (returns empty log if file doesn't exist)
-    fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<crate::bindings::python::log::PyLog> {
+    fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<crate::bindings::python::models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
         let log = self
             .inner
             .get_log(naive_date)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(crate::bindings::python::log::PyLog { inner: log })
+        Ok(crate::bindings::python::models::log::PyLog { inner: log })
     }
 
     /// Write a log to storage
     fn write_log(
         &self,
-        log: &crate::bindings::python::log::PyLog,
+        log: &crate::bindings::python::models::log::PyLog,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<()> {
         self.inner
@@ -113,7 +113,7 @@ impl PyLogManager {
     /// Start a new session with the given intent
     fn start_intent_now(
         &self,
-        intent: &crate::bindings::python::intent::PyIntent,
+        intent: &crate::bindings::python::models::intent::PyIntent,
         note: Option<String>,
         current_date: Bound<'_, PyDate>,
         current_time: Bound<'_, PyDateTime>,

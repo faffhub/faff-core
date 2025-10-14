@@ -135,7 +135,7 @@ impl PyIntent {
     }
 
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let d = PyDict::new(py);
             if let Some(alias) = &self.inner.alias {
                 d.set_item("alias", alias)?;
@@ -183,7 +183,7 @@ impl PyIntent {
         &self,
         py: Python,
     ) -> PyResult<(
-        PyObject,
+        Py<PyAny>,
         (
             Option<String>,
             Option<String>,

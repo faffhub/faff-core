@@ -10,18 +10,18 @@ use crate::storage::Storage;
 /// This allows Python code to provide storage implementations (e.g., FileSystem)
 /// that Rust code can use through the Storage trait.
 pub struct PyStorage {
-    py_obj: PyObject,
+    py_obj: Py<PyAny>,
 }
 
 impl PyStorage {
-    pub fn new(py_obj: PyObject) -> Self {
+    pub fn new(py_obj: Py<PyAny>) -> Self {
         Self { py_obj }
     }
 }
 
 impl Storage for PyStorage {
     fn root_dir(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .py_obj
                 .call_method0(py, "root_dir")
@@ -32,7 +32,7 @@ impl Storage for PyStorage {
     }
 
     fn log_dir(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .py_obj
                 .call_method0(py, "log_dir")
@@ -43,7 +43,7 @@ impl Storage for PyStorage {
     }
 
     fn plan_dir(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .py_obj
                 .call_method0(py, "plan_dir")
@@ -54,7 +54,7 @@ impl Storage for PyStorage {
     }
 
     fn identity_dir(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .py_obj
                 .call_method0(py, "identity_dir")
@@ -65,7 +65,7 @@ impl Storage for PyStorage {
     }
 
     fn timesheet_dir(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .py_obj
                 .call_method0(py, "timesheet_dir")
@@ -76,7 +76,7 @@ impl Storage for PyStorage {
     }
 
     fn config_file(&self) -> PathBuf {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let result = self
                 .py_obj
                 .call_method0(py, "config_file")
@@ -87,7 +87,7 @@ impl Storage for PyStorage {
     }
 
     fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let result = self
                 .py_obj
@@ -101,7 +101,7 @@ impl Storage for PyStorage {
     }
 
     fn read_string(&self, path: &PathBuf) -> Result<String> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let result = self
                 .py_obj
@@ -112,7 +112,7 @@ impl Storage for PyStorage {
     }
 
     fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let py_bytes = PyBytes::new(py, data);
             self.py_obj
@@ -123,7 +123,7 @@ impl Storage for PyStorage {
     }
 
     fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
                 .call_method1(py, "write_string", (path_str, data))
@@ -133,7 +133,7 @@ impl Storage for PyStorage {
     }
 
     fn exists(&self, path: &PathBuf) -> bool {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_str = path.to_str().expect("Path contains invalid UTF-8");
             let result = self
                 .py_obj
@@ -144,7 +144,7 @@ impl Storage for PyStorage {
     }
 
     fn create_dir_all(&self, path: &PathBuf) -> Result<()> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
                 .call_method1(py, "create_dir_all", (path_str,))
@@ -154,7 +154,7 @@ impl Storage for PyStorage {
     }
 
     fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let dir_str = dir
                 .to_str()
                 .context("Directory path contains invalid UTF-8")?;
