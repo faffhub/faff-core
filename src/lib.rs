@@ -2,6 +2,7 @@ mod bindings;
 pub mod managers;
 mod models;
 pub mod storage;
+pub mod workspace;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;

@@ -3,6 +3,7 @@ use pyo3::PyResult;
 
 pub mod type_mapping;
 pub mod storage;
+pub mod workspace;
 
 pub mod models;
 pub mod managers;
@@ -22,6 +23,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     managers::log_manager::register(&managers_mod)?;
     managers::plan_manager::register(&managers_mod)?;
     m.add_submodule(&managers_mod)?;
+
+    workspace::register(m)?;
 
     Ok(())
 }
