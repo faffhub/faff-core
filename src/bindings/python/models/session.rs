@@ -1,6 +1,7 @@
 use crate::bindings::python::models::intent::PyIntent;
 use crate::models::session::SessionError;
-use crate::models::{valuetype::ValueType, Session as RustSession};
+use crate::models::valuetype::ValueType;
+use crate::models::Session as RustSession;
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use pyo3::exceptions::PyValueError;

@@ -1,9 +1,7 @@
 use crate::models::intent::Intent as RustIntent;
-use crate::models::valuetype::ValueType;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use pyo3::types::{PyDict, PyType};
-use std::collections::HashMap;
 
 #[pyclass(name = "Intent")]
 #[derive(Clone)]
@@ -16,31 +14,11 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-// Helper function for creating intents from dicts (used by Plan binding)
+// Helper function for creating intents from dicts (used by Plan and Session bindings)
 pub(crate) fn intent_from_dict_internal(dict: &Bound<'_, PyDict>) -> PyResult<PyIntent> {
-    let mut data = HashMap::new();
-
-    for (k, v) in dict.iter() {
-        let key: String = k.extract()?;
-
-        if v.is_instance_of::<pyo3::types::PyString>() {
-            let s: String = v.extract()?;
-            data.insert(key, ValueType::String(s));
-        } else if v.is_instance_of::<pyo3::types::PyList>() {
-            let list: Vec<String> = v.extract()?;
-            data.insert(key, ValueType::List(list));
-        } else {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Unsupported type for key '{}'",
-                key
-            )));
-        }
-    }
-
-    match RustIntent::from_dict(data) {
-        Ok(intent) => Ok(PyIntent { inner: intent }),
-        Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
-    }
+    let inner: RustIntent = pythonize::depythonize(dict.as_any())
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    Ok(PyIntent { inner })
 }
 
 #[pymethods]
@@ -92,30 +70,7 @@ impl PyIntent {
     #[classmethod]
     fn from_dict(_cls: &Bound<'_, PyType>, dict: &Bound<'_, PyAny>) -> PyResult<Self> {
         let py_dict = dict.downcast::<PyDict>()?;
-
-        let mut data = HashMap::new();
-
-        for (k, v) in py_dict.iter() {
-            let key: String = k.extract()?;
-
-            if v.is_instance_of::<pyo3::types::PyString>() {
-                let s: String = v.extract()?;
-                data.insert(key, ValueType::String(s));
-            } else if v.is_instance_of::<pyo3::types::PyList>() {
-                let list: Vec<String> = v.extract()?;
-                data.insert(key, ValueType::List(list));
-            } else {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "Unsupported type for key '{}'",
-                    key
-                )));
-            }
-        }
-
-        match RustIntent::from_dict(data) {
-            Ok(intent) => Ok(PyIntent { inner: intent }),
-            Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
-        }
+        intent_from_dict_internal(py_dict)
     }
 
     fn __hash__(&self) -> u64 {
@@ -136,24 +91,9 @@ impl PyIntent {
 
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
         Python::attach(|py| {
-            let d = PyDict::new(py);
-            if let Some(alias) = &self.inner.alias {
-                d.set_item("alias", alias)?;
-            }
-            if let Some(role) = &self.inner.role {
-                d.set_item("role", role)?;
-            }
-            if let Some(objective) = &self.inner.objective {
-                d.set_item("objective", objective)?;
-            }
-            if let Some(action) = &self.inner.action {
-                d.set_item("action", action)?;
-            }
-            if let Some(subject) = &self.inner.subject {
-                d.set_item("subject", subject)?;
-            }
-            d.set_item("trackers", self.inner.trackers.clone())?;
-            Ok(d.into())
+            let py_obj = pythonize::pythonize(py, &self.inner)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+            Ok(py_obj.downcast::<PyDict>()?.clone().unbind())
         })
     }
 
