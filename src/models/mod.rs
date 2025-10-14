@@ -1,3 +1,4 @@
+pub mod config;
 pub mod intent;
 pub mod log;
 pub mod plan;
@@ -6,6 +7,7 @@ pub mod timesheet;
 pub mod toy;
 pub(crate) mod valuetype;
 
+pub use config::{Config, PlanDefaults, PlanRemote, Role, TimesheetAudience};
 pub use intent::Intent;
 pub use log::Log;
 pub use session::Session;

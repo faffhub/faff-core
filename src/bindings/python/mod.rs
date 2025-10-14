@@ -9,6 +9,7 @@ pub mod managers;
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let models_mod = PyModule::new(m.py(), "models")?;
+    models::config::register(&models_mod)?;
     models::intent::register(&models_mod)?;
     models::session::register(&models_mod)?;
     models::log::register(&models_mod)?;
