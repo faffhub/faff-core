@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, NaiveDate};
 use chrono_tz::Tz;
 use ed25519_dalek::{Signature, Signer, SigningKey};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
@@ -42,13 +42,42 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+// Custom deserializer for DateTime<Tz> that parses RFC3339 strings (always converts to UTC)
+fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Tz>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    DateTime::parse_from_rfc3339(&s)
+        .map(|dt| dt.with_timezone(&chrono_tz::UTC))
+        .map_err(serde::de::Error::custom)
+}
+
+fn deserialize_optional_datetime<'de, D>(
+    deserializer: D,
+) -> Result<Option<DateTime<Tz>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) => {
+            let dt = DateTime::parse_from_rfc3339(&s)
+                .map(|dt| dt.with_timezone(&chrono_tz::UTC))
+                .map_err(serde::de::Error::custom)?;
+            Ok(Some(dt))
+        }
+        None => Ok(None),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UnsignedTimesheet {
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub actor: HashMap<String, String>,
     pub version: String,
     pub date: NaiveDate,
-    #[serde(serialize_with = "serialize_datetime")]
+    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
     pub compiled: DateTime<Tz>,
     pub timezone: Tz,
     pub timeline: Vec<Session>,
@@ -74,14 +103,24 @@ impl UnsignedTimesheet {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TimesheetMeta {
     pub audience_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(serialize_with = "serialize_optional_datetime")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(serialize_with = "serialize_optional_datetime", deserialize_with = "deserialize_optional_datetime")]
     pub submitted_at: Option<DateTime<Tz>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submitted_by: Option<String>,
+}
+
+impl Default for TimesheetMeta {
+    fn default() -> Self {
+        Self {
+            audience_id: String::new(),
+            submitted_at: None,
+            submitted_by: None,
+        }
+    }
 }
 
 impl TimesheetMeta {
@@ -123,17 +162,17 @@ impl TimesheetMeta {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Timesheet {
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub actor: HashMap<String, String>,
     pub version: String,
     pub date: NaiveDate,
-    #[serde(serialize_with = "serialize_datetime")]
+    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
     pub compiled: DateTime<Tz>,
     pub timezone: Tz,
     pub timeline: Vec<Session>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub signatures: HashMap<String, HashMap<String, String>>,
     #[serde(skip)]
     pub meta: TimesheetMeta,
@@ -251,17 +290,17 @@ impl Timesheet {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SubmittableTimesheet {
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub actor: HashMap<String, String>,
     pub version: String,
     pub date: NaiveDate,
-    #[serde(serialize_with = "serialize_datetime")]
+    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
     pub compiled: DateTime<Tz>,
     pub timezone: Tz,
     pub timeline: Vec<Session>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub signatures: HashMap<String, HashMap<String, String>>,
 }
 

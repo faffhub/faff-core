@@ -1,4 +1,4 @@
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use std::collections::HashMap;
 
@@ -44,6 +44,36 @@ where
     }
 }
 
+// Custom deserializer for DateTime<Tz> that parses RFC3339 strings
+// Converts to UTC since we can't reconstruct semantic timezone names from offsets
+fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Tz>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    DateTime::parse_from_rfc3339(&s)
+        .map(|dt| dt.with_timezone(&chrono_tz::UTC))
+        .map_err(serde::de::Error::custom)
+}
+
+fn deserialize_optional_datetime<'de, D>(
+    deserializer: D,
+) -> Result<Option<DateTime<Tz>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) => {
+            let dt = DateTime::parse_from_rfc3339(&s)
+                .map(|dt| dt.with_timezone(&chrono_tz::UTC))
+                .map_err(serde::de::Error::custom)?;
+            Ok(Some(dt))
+        }
+        None => Ok(None),
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum SessionError {
     #[error("Cannot compute duration: session has no end time")]
@@ -71,12 +101,12 @@ fn combine_date_time(date: NaiveDate, tz: Tz, time_str: &str) -> Result<DateTime
         .ok_or_else(|| anyhow::anyhow!("Ambiguous or nonexistent time for {} in {}", naive, tz))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Session {
     pub intent: Intent,
-    #[serde(serialize_with = "serialize_datetime")]
+    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
     pub start: DateTime<Tz>,
-    #[serde(serialize_with = "serialize_optional_datetime")]
+    #[serde(serialize_with = "serialize_optional_datetime", deserialize_with = "deserialize_optional_datetime")]
     pub end: Option<DateTime<Tz>>,
     pub note: Option<String>,
 }

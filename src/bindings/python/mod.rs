@@ -22,6 +22,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let managers_mod = PyModule::new(m.py(), "managers")?;
     managers::log_manager::register(&managers_mod)?;
     managers::plan_manager::register(&managers_mod)?;
+    managers::timesheet_manager::register(&managers_mod)?;
     m.add_submodule(&managers_mod)?;
 
     workspace::register(m)?;
