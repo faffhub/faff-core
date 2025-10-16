@@ -217,6 +217,12 @@ impl PyPlan {
         }
     }
 
+    fn to_toml(&self) -> PyResult<String> {
+        self.inner
+            .to_toml()
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    }
+
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
         Python::attach(|py| pythonize::pythonize(py, &self.inner)?.extract())
     }

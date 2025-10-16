@@ -55,6 +55,11 @@ impl Plan {
         slugify(&self.source)
     }
 
+    /// Serialize this Plan to TOML format
+    pub fn to_toml(&self) -> Result<String, toml::ser::Error> {
+        toml::to_string(self)
+    }
+
     /// Add an intent to the plan, deduplicating if it already exists
     pub fn add_intent(&self, intent: Intent) -> Plan {
         let mut new_intents = self.intents.clone();
