@@ -1,6 +1,7 @@
 mod bindings;
 pub mod managers;
 mod models;
+pub mod plugins;
 pub mod storage;
 pub mod workspace;
 

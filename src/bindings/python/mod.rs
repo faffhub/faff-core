@@ -23,6 +23,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     managers::identity_manager::register(&managers_mod)?;
     managers::log_manager::register(&managers_mod)?;
     managers::plan_manager::register(&managers_mod)?;
+    managers::plugin_manager::register(&managers_mod)?;
     managers::timesheet_manager::register(&managers_mod)?;
     m.add_submodule(&managers_mod)?;
 
