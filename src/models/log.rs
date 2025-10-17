@@ -374,7 +374,7 @@ impl Log {
 mod tests {
     use super::*;
     use crate::models::intent::Intent;
-    use chrono::{TimeZone, Timelike};
+    use chrono::TimeZone;
 
     fn sample_intent() -> Intent {
         Intent::new(

@@ -8,18 +8,21 @@ use std::sync::Arc;
 use crate::models::log::Log;
 use crate::models::plan::Plan;
 use crate::models::timesheet::Timesheet;
+use crate::models::Config;
 use crate::storage::Storage;
 
 /// Manages loading and executing Python plugins
 pub struct PluginManager {
     storage: Arc<dyn Storage>,
+    config: Config,
     plugins_cache: Option<HashMap<String, Py<PyAny>>>,
 }
 
 impl PluginManager {
-    pub fn new(storage: Arc<dyn Storage>) -> Self {
+    pub fn new(storage: Arc<dyn Storage>, config: Config) -> Self {
         Self {
             storage,
+            config,
             plugins_cache: None,
         }
     }
@@ -243,6 +246,55 @@ impl PluginManager {
             Ok(instance.into())
         }).map_err(|e: PyErr| anyhow::anyhow!("Failed to instantiate plugin: {}", e))
     }
+
+    /// Get instantiated plan remote plugins based on config
+    pub fn plan_remotes(&mut self) -> Result<Vec<Py<PyAny>>> {
+        self.load_plugins()?;
+
+        // Clone the config values we need to avoid borrow checker issues
+        let plan_remotes = self.config.plan_remote.clone();
+
+        let mut instances = Vec::new();
+        for plan_remote in &plan_remotes {
+            // Convert PlanDefaults to HashMap<String, toml::Value>
+            // FIXME: This is a temporary solution - we should properly serialize PlanDefaults
+            let defaults = HashMap::new();
+
+            let instance = self.instantiate_plugin(
+                &plan_remote.plugin,
+                &plan_remote.name,
+                plan_remote.config.clone(),
+                defaults,
+            )?;
+            instances.push(instance);
+        }
+
+        Ok(instances)
+    }
+
+    /// Get instantiated audience plugins based on config
+    pub fn audiences(&mut self) -> Result<Vec<Py<PyAny>>> {
+        self.load_plugins()?;
+
+        // Clone the config values we need to avoid borrow checker issues
+        let audiences = self.config.timesheet_audience.clone();
+
+        let mut instances = Vec::new();
+        for audience in &audiences {
+            // TimesheetAudience doesn't have defaults
+            let defaults = HashMap::new();
+
+            let instance = self.instantiate_plugin(
+                &audience.plugin,
+                &audience.name,
+                audience.config.clone(),
+                defaults,
+            )?;
+            instances.push(instance);
+        }
+
+        Ok(instances)
+    }
 }
 
 /// A PlanSource plugin instance
@@ -390,7 +442,13 @@ mod tests {
     #[test]
     fn test_plugin_manager_creation() {
         let storage = Arc::new(MockStorage::new());
-        let mut manager = PluginManager::new(storage);
+        let config = crate::models::Config {
+            timezone: chrono_tz::America::New_York,
+            plan_remote: vec![],
+            timesheet_audience: vec![],
+            role: vec![],
+        };
+        let mut manager = PluginManager::new(storage, config);
 
         // Should return empty plugins when no files exist
         let plugins = manager.load_plugins().unwrap();

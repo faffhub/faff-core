@@ -122,7 +122,7 @@ impl TimesheetManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{SubmittableTimesheet, TimesheetMeta};
+    use crate::models::TimesheetMeta;
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Mutex;

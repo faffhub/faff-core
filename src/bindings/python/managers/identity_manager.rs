@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 /// Python wrapper for IdentityManager
 #[pyclass(name = "IdentityManager")]
+#[derive(Clone)]
 pub struct PyIdentityManager {
     manager: Arc<RustIdentityManager>,
 }
@@ -81,6 +82,12 @@ impl PyIdentityManager {
         }
 
         Ok(result)
+    }
+}
+
+impl PyIdentityManager {
+    pub fn from_rust(manager: Arc<RustIdentityManager>) -> Self {
+        Self { manager }
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::bindings::python::storage::PyStorage;
+use crate::models::Config;
 use crate::plugins::{
     AudiencePlugin as RustAudiencePlugin, PlanSourcePlugin as RustPlanSourcePlugin,
     PluginManager as RustPluginManager,
@@ -10,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 /// Python wrapper for PluginManager
 #[pyclass(name = "PluginManager")]
+#[derive(Clone)]
 pub struct PyPluginManager {
     manager: Arc<Mutex<RustPluginManager>>,
 }
@@ -18,8 +20,19 @@ pub struct PyPluginManager {
 impl PyPluginManager {
     #[new]
     pub fn new(storage: Py<PyAny>) -> PyResult<Self> {
+        use crate::storage::Storage;
+
         let py_storage = PyStorage::new(storage);
-        let manager = RustPluginManager::new(Arc::new(py_storage));
+        let storage_arc: Arc<dyn Storage> = Arc::new(py_storage);
+
+        // Read config from storage
+        let config_path = storage_arc.config_file();
+        let config_str = storage_arc.read_string(&config_path)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        let config = Config::from_toml(&config_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse config: {}", e)))?;
+
+        let manager = RustPluginManager::new(storage_arc, config);
         Ok(Self {
             manager: Arc::new(Mutex::new(manager)),
         })
@@ -78,6 +91,42 @@ impl PyPluginManager {
         manager
             .instantiate_plugin(plugin_name, instance_name, config_map, defaults_map)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Get instantiated plan remote plugins based on config
+    ///
+    /// Returns:
+    ///     List of plan remote plugin instances
+    pub fn plan_remotes(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let mut manager = self
+            .manager
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        manager
+            .plan_remotes()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Get instantiated audience plugins based on config
+    ///
+    /// Returns:
+    ///     List of audience plugin instances
+    pub fn audiences(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let mut manager = self
+            .manager
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        manager
+            .audiences()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+}
+
+impl PyPluginManager {
+    pub fn from_rust(manager: Arc<Mutex<RustPluginManager>>) -> Self {
+        Self { manager }
     }
 }
 

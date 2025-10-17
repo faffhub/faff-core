@@ -1,18 +1,28 @@
 use chrono_tz::Tz;
 use pyo3::exceptions::{PyFileNotFoundError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDate, PyDateTime};
+use pyo3::types::PyDate;
 use std::sync::Arc;
 
 use crate::bindings::python::storage::PyStorage;
-use crate::bindings::python::type_mapping::{
-    date_py_to_rust, date_rust_to_py, datetime_py_to_rust,
-};
+use crate::bindings::python::type_mapping::{date_py_to_rust, date_rust_to_py};
 use crate::managers::LogManager as RustLogManager;
+use crate::workspace::Workspace as RustWorkspace;
 
 #[pyclass(name = "LogManager")]
+#[derive(Clone)]
 pub struct PyLogManager {
     inner: RustLogManager,
+    workspace: Option<Arc<RustWorkspace>>,
+}
+
+impl PyLogManager {
+    pub fn from_rust(manager: RustLogManager, workspace: Arc<RustWorkspace>) -> Self {
+        Self {
+            inner: manager,
+            workspace: Some(workspace),
+        }
+    }
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -36,6 +46,7 @@ impl PyLogManager {
 
         Ok(Self {
             inner: RustLogManager::new(storage, tz),
+            workspace: None, // Standalone construction doesn't have workspace reference
         })
     }
 
@@ -72,6 +83,25 @@ impl PyLogManager {
             .into_iter()
             .map(|date| date_rust_to_py(py, &date))
             .collect()
+    }
+
+    /// List all logs (returns an iterator of Log objects)
+    fn list(&self, _py: Python<'_>) -> PyResult<Vec<crate::bindings::python::models::log::PyLog>> {
+        let dates = self
+            .inner
+            .list_log_dates()
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        let mut logs = Vec::new();
+        for date in dates {
+            let log = self
+                .inner
+                .get_log(date)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            logs.push(crate::bindings::python::models::log::PyLog { inner: log });
+        }
+
+        Ok(logs)
     }
 
     /// Remove a log for a given date
@@ -111,34 +141,55 @@ impl PyLogManager {
     }
 
     /// Start a new session with the given intent
+    ///
+    /// Auto-fills current_date, current_time, and trackers from workspace
+    #[pyo3(signature = (intent, note=None))]
     fn start_intent_now(
         &self,
+        _py: Python<'_>,
         intent: &crate::bindings::python::models::intent::PyIntent,
         note: Option<String>,
-        current_date: Bound<'_, PyDate>,
-        current_time: Bound<'_, PyDateTime>,
-        trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<String> {
-        let naive_date = date_py_to_rust(current_date)?;
-        let datetime = datetime_py_to_rust(current_time)?;
+        let workspace = self.workspace.as_ref()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
+                "LogManager has no workspace reference. This should not happen."
+            ))?;
+
+        // Get current date and time from workspace
+        let current_date = workspace.today();
+        let current_time = workspace.now();
+
+        // Get trackers from plan manager
+        let trackers = workspace.plans().get_trackers(current_date)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         self.inner
-            .start_intent_now(intent.inner.clone(), note, naive_date, datetime, &trackers)
+            .start_intent_now(intent.inner.clone(), note, current_date, current_time, &trackers)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
+    ///
+    /// Auto-fills current_date, current_time, and trackers from workspace
     fn stop_current_session(
         &self,
-        current_date: Bound<'_, PyDate>,
-        current_time: Bound<'_, PyDateTime>,
-        trackers: std::collections::HashMap<String, String>,
+        _py: Python<'_>,
     ) -> PyResult<String> {
-        let naive_date = date_py_to_rust(current_date)?;
-        let datetime = datetime_py_to_rust(current_time)?;
+        let workspace = self.workspace.as_ref()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
+                "LogManager has no workspace reference. This should not happen."
+            ))?;
+
+        // Get current date and time from workspace
+        let current_date = workspace.today();
+        let current_time = workspace.now();
+
+        // Get trackers from plan manager
+        let trackers = workspace.plans().get_trackers(current_date)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         self.inner
-            .stop_current_session(naive_date, datetime, &trackers)
+            .stop_current_session(current_date, current_time, &trackers)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 }

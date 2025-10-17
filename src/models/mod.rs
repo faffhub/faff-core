@@ -7,7 +7,7 @@ pub mod timesheet;
 pub mod toy;
 pub(crate) mod valuetype;
 
-pub use config::{Config, PlanDefaults, PlanRemote, Role, TimesheetAudience};
+pub use config::Config;
 pub use intent::Intent;
 pub use log::Log;
 pub use session::Session;

@@ -127,7 +127,7 @@ impl Session {
     }
 
     // def from_dict_with_tz(cls, data: dict, date: pendulum.Date, timezone: pendulum.Timezone | pendulum.FixedTimezone) -> Session:
-    pub fn from_dict_with_tz(
+    pub(crate) fn from_dict_with_tz(
         dict: HashMap<String, ValueType>,
         date: chrono::NaiveDate,
         timezone: chrono_tz::Tz,

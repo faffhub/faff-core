@@ -11,6 +11,7 @@ use crate::storage::Storage;
 /// Handles reading, writing, listing, and deleting daily logs.
 /// Note: TOML parsing/formatting is currently handled on the Python side.
 /// This manager provides the storage abstraction layer.
+#[derive(Clone)]
 pub struct LogManager {
     storage: Arc<dyn Storage>,
     timezone: Tz,

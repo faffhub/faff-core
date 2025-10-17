@@ -83,25 +83,6 @@ pub struct UnsignedTimesheet {
     pub timeline: Vec<Session>,
 }
 
-impl UnsignedTimesheet {
-    pub fn new(
-        actor: HashMap<String, String>,
-        date: NaiveDate,
-        compiled: DateTime<Tz>,
-        timezone: Tz,
-        timeline: Vec<Session>,
-    ) -> Self {
-        Self {
-            actor,
-            version: "Faffage-generated timesheet v1.0 please see faffage.com for details"
-                .to_string(),
-            date,
-            compiled,
-            timezone,
-            timeline,
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TimesheetMeta {
@@ -136,7 +117,7 @@ impl TimesheetMeta {
         }
     }
 
-    pub fn from_dict(dict: HashMap<String, ValueType>) -> Result<Self> {
+    pub(crate) fn from_dict(dict: HashMap<String, ValueType>) -> Result<Self> {
         let audience_id = dict
             .get("audience_id")
             .and_then(|v| v.as_string())

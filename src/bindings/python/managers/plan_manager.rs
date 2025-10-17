@@ -7,11 +7,32 @@ use crate::bindings::python::models::plan::PyPlan;
 use crate::bindings::python::storage::PyStorage;
 use crate::bindings::python::type_mapping::date_py_to_rust;
 use crate::managers::plan_manager::PlanManager as RustPlanManager;
+use crate::workspace::Workspace as RustWorkspace;
 
 /// Python wrapper for PlanManager
 #[pyclass(name = "PlanManager")]
+#[derive(Clone)]
 pub struct PyPlanManager {
     manager: Arc<RustPlanManager>,
+    workspace: Option<Arc<RustWorkspace>>,
+}
+
+impl PyPlanManager {
+    /// Create from a Rust PlanManager
+    pub fn from_rust(manager: RustPlanManager) -> Self {
+        Self {
+            manager: Arc::new(manager),
+            workspace: None,
+        }
+    }
+
+    /// Create from an Arc-wrapped Rust PlanManager with workspace reference
+    pub fn from_rust_arc(manager: Arc<RustPlanManager>, workspace: Arc<RustWorkspace>) -> Self {
+        Self {
+            manager,
+            workspace: Some(workspace),
+        }
+    }
 }
 
 #[pymethods]
@@ -22,6 +43,7 @@ impl PyPlanManager {
         let manager = RustPlanManager::new(Arc::new(py_storage));
         Ok(Self {
             manager: Arc::new(manager),
+            workspace: None, // Standalone construction doesn't have workspace reference
         })
     }
 
@@ -191,6 +213,19 @@ impl PyPlanManager {
     pub fn clear_cache(&self) -> PyResult<()> {
         self.manager.clear_cache();
         Ok(())
+    }
+
+    /// Get plan remote plugin instances (delegates to workspace.plugins.plan_remotes())
+    pub fn remotes(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let workspace = self.workspace.as_ref()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
+                "PlanManager has no workspace reference. This should not happen."
+            ))?;
+
+        let plugin_manager_arc = workspace.plugins();
+        let mut plugin_manager = plugin_manager_arc.lock().unwrap();
+        plugin_manager.plan_remotes()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
 
