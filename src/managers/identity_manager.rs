@@ -127,95 +127,7 @@ impl IdentityManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap as StdHashMap;
-    use std::path::PathBuf;
-    use std::sync::Mutex;
-
-    struct MockStorage {
-        files: Mutex<StdHashMap<PathBuf, Vec<u8>>>,
-    }
-
-    impl MockStorage {
-        fn new() -> Self {
-            Self {
-                files: Mutex::new(StdHashMap::new()),
-            }
-        }
-    }
-
-    impl Storage for MockStorage {
-        fn root_dir(&self) -> PathBuf {
-            PathBuf::from("/")
-        }
-        fn log_dir(&self) -> PathBuf {
-            PathBuf::from("/logs")
-        }
-        fn plan_dir(&self) -> PathBuf {
-            PathBuf::from("/plans")
-        }
-        fn identity_dir(&self) -> PathBuf {
-            PathBuf::from("/identities")
-        }
-        fn timesheet_dir(&self) -> PathBuf {
-            PathBuf::from("/timesheets")
-        }
-        fn config_file(&self) -> PathBuf {
-            PathBuf::from("/config.toml")
-        }
-        fn read_string(&self, path: &PathBuf) -> anyhow::Result<String> {
-            let bytes = self.read_bytes(path)?;
-            Ok(String::from_utf8(bytes)?)
-        }
-        fn read_bytes(&self, path: &PathBuf) -> anyhow::Result<Vec<u8>> {
-            self.files
-                .lock()
-                .unwrap()
-                .get(path)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("File not found"))
-        }
-        fn write_string(&self, path: &PathBuf, data: &str) -> anyhow::Result<()> {
-            self.write_bytes(path, data.as_bytes())
-        }
-        fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> anyhow::Result<()> {
-            self.files.lock().unwrap().insert(path.clone(), data.to_vec());
-            Ok(())
-        }
-        fn exists(&self, path: &PathBuf) -> bool {
-            self.files.lock().unwrap().contains_key(path)
-        }
-        fn create_dir_all(&self, _path: &PathBuf) -> anyhow::Result<()> {
-            Ok(())
-        }
-        fn list_files(&self, dir: &PathBuf, pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
-            let files = self.files.lock().unwrap();
-            let mut result = Vec::new();
-
-            for path in files.keys() {
-                if path.parent() == Some(dir) {
-                    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    // Simple pattern matching for "id_*"
-                    let matches = if pattern == "id_*" {
-                        filename.starts_with("id_")
-                    } else if pattern.starts_with("*.") {
-                        let suffix = &pattern[1..];
-                        filename.ends_with(suffix)
-                    } else if pattern == "*" {
-                        true
-                    } else {
-                        filename == pattern
-                    };
-
-                    if matches {
-                        result.push(path.clone());
-                    }
-                }
-            }
-
-            Ok(result)
-        }
-    }
+    use crate::test_utils::mock_storage::MockStorage;
 
     #[test]
     fn test_create_identity() {
@@ -225,11 +137,11 @@ mod tests {
         let key = manager.create_identity("test", false).unwrap();
 
         // Verify private key file exists
-        let private_path = PathBuf::from("/identities/id_test");
+        let private_path = PathBuf::from("/faff/keys/id_test");
         assert!(storage.exists(&private_path));
 
         // Verify public key file exists
-        let public_path = PathBuf::from("/identities/id_test.pub");
+        let public_path = PathBuf::from("/faff/keys/id_test.pub");
         assert!(storage.exists(&public_path));
 
         // Verify the key can be read back

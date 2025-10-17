@@ -107,86 +107,30 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Storage;
-    use std::collections::HashMap;
+    use crate::test_utils::mock_storage::MockStorage;
     use std::path::PathBuf;
-    use std::sync::Mutex;
 
-    struct MockStorage {
-        files: Mutex<HashMap<PathBuf, String>>,
-    }
+    fn create_test_workspace() -> Workspace {
+        let storage = Arc::new(MockStorage::new());
 
-    impl MockStorage {
-        fn new() -> Self {
-            let mut files = HashMap::new();
-            files.insert(
-                PathBuf::from("/config.toml"),
-                r#"timezone = "America/New_York""#.to_string(),
-            );
-            Self {
-                files: Mutex::new(files),
-            }
-        }
-    }
+        // Add a config file to storage
+        storage.add_file(
+            PathBuf::from("/faff/config.toml"),
+            r#"timezone = "America/New_York""#.to_string(),
+        );
 
-    impl Storage for MockStorage {
-        fn root_dir(&self) -> PathBuf {
-            PathBuf::from("/")
-        }
-        fn log_dir(&self) -> PathBuf {
-            PathBuf::from("/logs")
-        }
-        fn plan_dir(&self) -> PathBuf {
-            PathBuf::from("/plans")
-        }
-        fn identity_dir(&self) -> PathBuf {
-            PathBuf::from("/identities")
-        }
-        fn timesheet_dir(&self) -> PathBuf {
-            PathBuf::from("/timesheets")
-        }
-        fn config_file(&self) -> PathBuf {
-            PathBuf::from("/config.toml")
-        }
-        fn read_string(&self, path: &PathBuf) -> anyhow::Result<String> {
-            self.files
-                .lock()
-                .unwrap()
-                .get(path)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("File not found"))
-        }
-        fn read_bytes(&self, _path: &PathBuf) -> anyhow::Result<Vec<u8>> {
-            unimplemented!()
-        }
-        fn write_string(&self, _path: &PathBuf, _data: &str) -> anyhow::Result<()> {
-            unimplemented!()
-        }
-        fn write_bytes(&self, _path: &PathBuf, _data: &[u8]) -> anyhow::Result<()> {
-            unimplemented!()
-        }
-        fn exists(&self, path: &PathBuf) -> bool {
-            self.files.lock().unwrap().contains_key(path)
-        }
-        fn create_dir_all(&self, _path: &PathBuf) -> anyhow::Result<()> {
-            Ok(())
-        }
-        fn list_files(&self, _dir: &PathBuf, _pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
-            Ok(vec![])
-        }
+        Workspace::with_storage(storage).unwrap()
     }
 
     #[test]
     fn test_workspace_creation() {
-        let storage = Arc::new(MockStorage::new());
-        let ws = Workspace::with_storage(storage).unwrap();
+        let ws = create_test_workspace();
         assert_eq!(ws.timezone().name(), "America/New_York");
     }
 
     #[test]
     fn test_workspace_now_and_today() {
-        let storage = Arc::new(MockStorage::new());
-        let ws = Workspace::with_storage(storage).unwrap();
+        let ws = create_test_workspace();
 
         let now = ws.now();
         let today = ws.today();
@@ -194,5 +138,100 @@ mod tests {
         // Just verify they execute without error and have the right timezone
         assert_eq!(now.timezone().name(), "America/New_York");
         assert_eq!(now.date_naive(), today);
+    }
+
+    #[test]
+    fn test_workspace_config_access() {
+        let ws = create_test_workspace();
+        let config = ws.config();
+
+        assert_eq!(config.timezone.name(), "America/New_York");
+    }
+
+    #[test]
+    fn test_workspace_storage_access() {
+        let ws = create_test_workspace();
+        let storage = ws.storage();
+
+        assert_eq!(storage.root_dir(), PathBuf::from("/faff"));
+    }
+
+    #[test]
+    fn test_workspace_manager_access() {
+        let ws = create_test_workspace();
+
+        // Verify all managers are accessible
+        let _plans = ws.plans();
+        let _logs = ws.logs();
+        let _timesheets = ws.timesheets();
+        let _identities = ws.identities();
+        let _plugins = ws.plugins();
+
+        // Just verify they don't panic when accessed
+        assert!(true);
+    }
+
+    #[test]
+    fn test_workspace_with_utc_timezone() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/config.toml"),
+            r#"timezone = "UTC""#.to_string(),
+        );
+
+        let ws = Workspace::with_storage(storage).unwrap();
+        assert_eq!(ws.timezone().name(), "UTC");
+    }
+
+    #[test]
+    fn test_workspace_with_london_timezone() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/config.toml"),
+            r#"timezone = "Europe/London""#.to_string(),
+        );
+
+        let ws = Workspace::with_storage(storage).unwrap();
+        assert_eq!(ws.timezone().name(), "Europe/London");
+    }
+
+    #[test]
+    fn test_workspace_fails_without_config() {
+        let storage = Arc::new(MockStorage::new());
+        // Don't add a config file
+
+        let result = Workspace::with_storage(storage);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_workspace_fails_with_invalid_config() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/config.toml"),
+            r#"invalid toml content {"#.to_string(),
+        );
+
+        let result = Workspace::with_storage(storage);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_workspace_managers_share_storage() {
+        let ws = create_test_workspace();
+
+        // All managers should share the same storage instance
+        let plans = ws.plans();
+        let logs = ws.logs();
+
+        // Verify they use the same root directory (indirectly testing shared storage)
+        assert_eq!(
+            ws.storage().root_dir(),
+            PathBuf::from("/faff")
+        );
+
+        // Managers should be functional
+        assert!(plans.get_plans(ws.today()).is_ok());
+        assert!(logs.log_exists(ws.today()) == false);
     }
 }

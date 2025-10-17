@@ -353,95 +353,7 @@ impl PlanManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-
-    // Simple in-memory storage for testing
-    struct MemoryStorage {
-        files: std::sync::RwLock<HashMap<PathBuf, String>>,
-    }
-
-    impl MemoryStorage {
-        fn new() -> Self {
-            Self {
-                files: std::sync::RwLock::new(HashMap::new()),
-            }
-        }
-
-        fn add_file(&self, path: PathBuf, content: String) {
-            let mut files = self.files.write().unwrap();
-            files.insert(path, content);
-        }
-    }
-
-    impl Storage for MemoryStorage {
-        fn root_dir(&self) -> PathBuf {
-            PathBuf::from("/faff")
-        }
-        fn log_dir(&self) -> PathBuf {
-            PathBuf::from("/faff/logs")
-        }
-        fn plan_dir(&self) -> PathBuf {
-            PathBuf::from("/faff/plans")
-        }
-        fn identity_dir(&self) -> PathBuf {
-            PathBuf::from("/faff/keys")
-        }
-        fn timesheet_dir(&self) -> PathBuf {
-            PathBuf::from("/faff/timesheets")
-        }
-        fn config_file(&self) -> PathBuf {
-            PathBuf::from("/faff/config.toml")
-        }
-        fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
-            let files = self.files.read().unwrap();
-            files
-                .get(path)
-                .map(|s| s.as_bytes().to_vec())
-                .ok_or_else(|| anyhow::anyhow!("File not found"))
-        }
-        fn read_string(&self, path: &PathBuf) -> Result<String> {
-            let files = self.files.read().unwrap();
-            files
-                .get(path)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("File not found"))
-        }
-        fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
-            let content = String::from_utf8(data.to_vec())?;
-            let mut files = self.files.write().unwrap();
-            files.insert(path.clone(), content);
-            Ok(())
-        }
-        fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
-            let mut files = self.files.write().unwrap();
-            files.insert(path.clone(), data.to_string());
-            Ok(())
-        }
-        fn exists(&self, path: &PathBuf) -> bool {
-            let files = self.files.read().unwrap();
-            files.contains_key(path)
-        }
-        fn create_dir_all(&self, _path: &PathBuf) -> Result<()> {
-            Ok(())
-        }
-        fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>> {
-            let files = self.files.read().unwrap();
-            let glob_pattern = glob::Pattern::new(pattern)?;
-
-            Ok(files
-                .keys()
-                .filter(|path| {
-                    path.parent() == Some(dir.as_path())
-                        && path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|n| glob_pattern.matches(n))
-                            .unwrap_or(false)
-                })
-                .cloned()
-                .collect())
-        }
-    }
+    use crate::test_utils::mock_storage::MockStorage;
 
     fn sample_plan_toml(source: &str, date: &str) -> String {
         format!(
@@ -467,7 +379,7 @@ objective = "{}:development"
 
     #[test]
     fn test_load_single_plan() {
-        let storage = Arc::new(MemoryStorage::new());
+        let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
@@ -483,7 +395,7 @@ objective = "{}:development"
 
     #[test]
     fn test_get_trackers() {
-        let storage = Arc::new(MemoryStorage::new());
+        let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
@@ -498,7 +410,7 @@ objective = "{}:development"
 
     #[test]
     fn test_cache_works() {
-        let storage = Arc::new(MemoryStorage::new());
+        let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),

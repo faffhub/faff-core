@@ -1,9 +1,11 @@
 mod bindings;
 pub mod file_system_storage;
 pub mod managers;
-mod models;
+pub mod models;
 pub mod plugins;
 pub mod storage;
+#[cfg(test)]
+pub mod test_utils;
 pub mod workspace;
 
 use pyo3::prelude::*;

@@ -273,4 +273,197 @@ mod tests {
         // Should still only have 1 intent (deduplicated)
         assert_eq!(new_plan.intents.len(), 1);
     }
+
+    #[test]
+    fn test_plan_serialization() {
+        let mut trackers = HashMap::new();
+        trackers.insert("ABC-123".to_string(), "Fix critical bug".to_string());
+
+        let plan = Plan::new(
+            "local".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()),
+            vec!["engineer".to_string()],
+            vec!["coding".to_string()],
+            vec!["development".to_string()],
+            vec!["features".to_string()],
+            trackers,
+            vec![sample_intent()],
+        );
+
+        let toml_str = plan.to_toml().unwrap();
+
+        // Verify it contains expected fields
+        assert!(toml_str.contains("source = \"local\""));
+        assert!(toml_str.contains("valid_from = \"2025-03-20\""));
+        assert!(toml_str.contains("valid_until = \"2025-04-01\""));
+        assert!(toml_str.contains("roles"));
+        assert!(toml_str.contains("engineer"));
+    }
+
+    #[test]
+    fn test_plan_deserialization() {
+        let toml_str = r#"
+source = "local"
+valid_from = "2025-03-20"
+valid_until = "2025-04-01"
+roles = ["engineer"]
+actions = ["coding"]
+objectives = ["development"]
+subjects = ["features"]
+
+[trackers]
+"ABC-123" = "Fix critical bug"
+
+[[intents]]
+alias = "work"
+role = "engineer"
+objective = "development"
+action = "coding"
+subject = "features"
+trackers = []
+"#;
+
+        let plan: Plan = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(plan.source, "local");
+        assert_eq!(plan.valid_from, NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
+        assert_eq!(plan.valid_until, Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()));
+        assert_eq!(plan.roles, vec!["engineer"]);
+        assert_eq!(plan.trackers.get("ABC-123"), Some(&"Fix critical bug".to_string()));
+        assert_eq!(plan.intents.len(), 1);
+    }
+
+    #[test]
+    fn test_plan_roundtrip_serialization() {
+        let original = Plan::new(
+            "local".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            None,
+            vec!["engineer".to_string()],
+            vec!["coding".to_string()],
+            vec!["development".to_string()],
+            vec!["features".to_string()],
+            HashMap::new(),
+            vec![sample_intent()],
+        );
+
+        let toml_str = original.to_toml().unwrap();
+        let deserialized: Plan = toml::from_str(&toml_str).unwrap();
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_plan_with_valid_until() {
+        let plan = Plan::new(
+            "local".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()),
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            HashMap::new(),
+            vec![],
+        );
+
+        assert_eq!(plan.valid_until, Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()));
+    }
+
+    #[test]
+    fn test_plan_immutability() {
+        let plan = Plan::new(
+            "local".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            HashMap::new(),
+            vec![],
+        );
+
+        let intent = sample_intent();
+        let new_plan = plan.add_intent(intent);
+
+        // Original plan should be unchanged
+        assert_eq!(plan.intents.len(), 0);
+        // New plan should have the intent
+        assert_eq!(new_plan.intents.len(), 1);
+    }
+
+    #[test]
+    fn test_plan_empty_collections_omitted_in_toml() {
+        let plan = Plan::new(
+            "local".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            HashMap::new(),
+            vec![],
+        );
+
+        let toml_str = plan.to_toml().unwrap();
+
+        // Empty collections should be omitted
+        assert!(!toml_str.contains("roles = []"));
+        assert!(!toml_str.contains("actions = []"));
+        assert!(!toml_str.contains("objectives = []"));
+        assert!(!toml_str.contains("subjects = []"));
+        assert!(!toml_str.contains("intents = []"));
+        // But source and valid_from should be present
+        assert!(toml_str.contains("source"));
+        assert!(toml_str.contains("valid_from"));
+    }
+
+    #[test]
+    fn test_plan_clone() {
+        let plan = Plan::new(
+            "local".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            None,
+            vec!["engineer".to_string()],
+            vec![],
+            vec![],
+            vec![],
+            HashMap::new(),
+            vec![],
+        );
+
+        let cloned = plan.clone();
+
+        assert_eq!(plan, cloned);
+        assert_eq!(plan.source, cloned.source);
+        assert_eq!(plan.roles, cloned.roles);
+    }
+
+    #[test]
+    fn test_plan_with_multiple_trackers() {
+        let mut trackers = HashMap::new();
+        trackers.insert("ABC-123".to_string(), "Bug fix".to_string());
+        trackers.insert("DEF-456".to_string(), "Feature request".to_string());
+        trackers.insert("GHI-789".to_string(), "Refactoring".to_string());
+
+        let plan = Plan::new(
+            "project".to_string(),
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers.clone(),
+            vec![],
+        );
+
+        assert_eq!(plan.trackers.len(), 3);
+        assert_eq!(plan.trackers.get("ABC-123"), Some(&"Bug fix".to_string()));
+        assert_eq!(plan.trackers.get("DEF-456"), Some(&"Feature request".to_string()));
+        assert_eq!(plan.trackers.get("GHI-789"), Some(&"Refactoring".to_string()));
+    }
 }

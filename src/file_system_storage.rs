@@ -198,4 +198,162 @@ mod tests {
         let contents = storage.read_string(&test_file).unwrap();
         assert_eq!(contents, "hello world");
     }
+
+    #[test]
+    fn test_read_write_bytes() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let test_file = storage.log_dir().join("test.bin");
+        let data = vec![0u8, 1, 2, 3, 4, 5];
+
+        storage.write_bytes(&test_file, &data).unwrap();
+        let retrieved = storage.read_bytes(&test_file).unwrap();
+
+        assert_eq!(retrieved, data);
+    }
+
+    #[test]
+    fn test_exists() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let test_file = storage.log_dir().join("test.txt");
+        assert!(!storage.exists(&test_file));
+
+        storage.write_string(&test_file, "content").unwrap();
+        assert!(storage.exists(&test_file));
+    }
+
+    #[test]
+    fn test_create_dir_all() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let nested_dir = storage.log_dir().join("nested").join("deep").join("dir");
+        assert!(!nested_dir.exists());
+
+        storage.create_dir_all(&nested_dir).unwrap();
+        assert!(nested_dir.exists());
+    }
+
+    #[test]
+    fn test_list_files() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        // Create some test files
+        let log_dir = storage.log_dir();
+        storage.create_dir_all(&log_dir).unwrap();
+
+        storage.write_string(&log_dir.join("2025-03-15.toml"), "log1").unwrap();
+        storage.write_string(&log_dir.join("2025-03-16.toml"), "log2").unwrap();
+        storage.write_string(&log_dir.join("readme.txt"), "readme").unwrap();
+
+        let toml_files = storage.list_files(&log_dir, "*.toml").unwrap();
+        assert_eq!(toml_files.len(), 2);
+
+        let all_files = storage.list_files(&log_dir, "*").unwrap();
+        assert_eq!(all_files.len(), 3);
+    }
+
+    #[test]
+    fn test_list_files_empty_directory() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let log_dir = storage.log_dir();
+        storage.create_dir_all(&log_dir).unwrap();
+
+        let files = storage.list_files(&log_dir, "*.toml").unwrap();
+        assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn test_list_files_nonexistent_directory() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let nonexistent = temp.path().join("does_not_exist");
+        let files = storage.list_files(&nonexistent, "*.toml").unwrap();
+        assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn test_write_creates_parent_directories() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let nested_file = storage.log_dir().join("nested").join("deep").join("file.txt");
+        assert!(!nested_file.parent().unwrap().exists());
+
+        storage.write_string(&nested_file, "content").unwrap();
+        assert!(nested_file.exists());
+        assert_eq!(storage.read_string(&nested_file).unwrap(), "content");
+    }
+
+    #[test]
+    fn test_read_nonexistent_file() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        let nonexistent = storage.log_dir().join("nonexistent.txt");
+        let result = storage.read_string(&nonexistent);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_directory_paths() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+
+        // All directories should be under .faff
+        assert_eq!(storage.root_dir(), temp.path());
+        assert_eq!(storage.log_dir(), temp.path().join(".faff").join("logs"));
+        assert_eq!(storage.plan_dir(), temp.path().join(".faff").join("plans"));
+        assert_eq!(storage.identity_dir(), temp.path().join(".faff").join("keys"));
+        assert_eq!(storage.timesheet_dir(), temp.path().join(".faff").join("timesheets"));
+        assert_eq!(storage.config_file(), temp.path().join(".faff").join("config.toml"));
+    }
+
+    #[test]
+    fn test_clone() {
+        let temp = TempDir::new().unwrap();
+        let faff_dir = temp.path().join(".faff");
+        fs::create_dir(&faff_dir).unwrap();
+
+        let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
+        let cloned = storage.clone();
+
+        assert_eq!(storage.root_dir(), cloned.root_dir());
+        assert_eq!(storage.log_dir(), cloned.log_dir());
+    }
 }
