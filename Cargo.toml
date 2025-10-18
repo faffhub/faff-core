@@ -1,16 +1,18 @@
-[package]
-name = "faff-core"
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "bindings-python",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
+authors = ["Thomas Lant <tom.lant@protonmail.com>"]
+license = "AGPL-3.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[lib]
-name = "faff_core"
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-pyo3 = "0.26"
-pythonize = "0.26"
+[workspace.dependencies]
+# Core dependencies shared across workspace members
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_canonical_json = "1.0.0"
@@ -28,5 +30,9 @@ glob = "0.3"
 base64 = "0.22"
 rand = "0.8"
 
-[dev-dependencies]
+# Python bindings
+pyo3 = "0.26"
+pythonize = "0.26"
+
+# Dev dependencies
 tempfile = "3.14"

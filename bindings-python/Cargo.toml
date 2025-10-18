@@ -1,0 +1,24 @@
+[package]
+name = "faff-core-python"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "faff_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Core library
+faff-core = { path = "../core" }
+
+# Python bindings
+pyo3.workspace = true
+pythonize.workspace = true
+
+# For type conversions
+chrono.workspace = true
+chrono-tz.workspace = true
+anyhow.workspace = true
+toml.workspace = true

@@ -275,6 +275,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "faff-core-python"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chrono-tz",
+ "faff-core",
+ "pyo3",
+ "pythonize",
+ "toml",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
