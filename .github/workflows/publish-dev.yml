@@ -1,0 +1,71 @@
+name: Publish Dev Build
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  bump-and-publish:
+    name: Bump version and publish to TestPyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          # Read current version from workspace Cargo.toml
+          CURRENT_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Parse and increment patch version
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+          MAJOR="${VERSION_PARTS[0]}"
+          MINOR="${VERSION_PARTS[1]}"
+          PATCH="${VERSION_PARTS[2]}"
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Update version in workspace Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+
+          # Commit and push
+          git add Cargo.toml
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git push
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings-python
+          command: build
+          args: --release --out dist --interpreter python3.9 python3.10 python3.11 python3.12
+          manylinux: auto
+
+      - name: Publish to TestPyPI
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings-python
+          command: upload
+          args: --skip-existing dist/* --repository testpypi
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}

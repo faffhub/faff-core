@@ -39,16 +39,16 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --workspace --all-features
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features
+        run: cargo clippy --workspace --all-targets --all-features
 
-  smoke-test:
-    name: Smoke test Python wheel
+  python-tests:
+    name: Python tests and smoke test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,15 +60,23 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build wheel
+      - name: Install dependencies
+        run: |
+          pip install pytest slugify
+
+      - name: Build and install wheel
         uses: PyO3/maturin-action@v1
         with:
-          command: build
-          args: --release --out dist --interpreter python3.11
-          manylinux: auto
+          working-directory: bindings-python
+          command: develop
+          args: --release
 
-      - name: Install and test wheel
+      - name: Run Python binding tests
         run: |
-          pip install dist/*.whl
+          cd bindings-python
+          pytest tests/ -v
+
+      - name: Smoke test import
+        run: |
           cd /tmp
-          python -c "import faff_core; print('Successfully imported faff_core')"
+          python -c "import faff_core; from faff_core.models import Intent, Log; from faff_core.plugins import PlanSource; print('✓ All imports successful')"
