@@ -334,8 +334,8 @@ impl PlanManager {
         let filename = format!("{}.{}.toml", plan.source, plan.valid_from.format("%Y%m%d"));
         let file_path = plan_dir.join(filename);
 
-        let toml_content = toml::to_string_pretty(plan)
-            .context("Failed to serialize plan to TOML")?;
+        let toml_content =
+            toml::to_string_pretty(plan).context("Failed to serialize plan to TOML")?;
 
         self.storage
             .write_string(&file_path, &toml_content)

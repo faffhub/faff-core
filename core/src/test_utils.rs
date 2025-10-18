@@ -173,12 +173,9 @@ pub mod mock_storage {
             let storage = MockStorage::new();
             let dir = PathBuf::from("/test");
 
-            storage
-                .add_file(dir.join("file1.txt"), "content1".to_string());
-            storage
-                .add_file(dir.join("file2.txt"), "content2".to_string());
-            storage
-                .add_file(dir.join("file3.log"), "content3".to_string());
+            storage.add_file(dir.join("file1.txt"), "content1".to_string());
+            storage.add_file(dir.join("file2.txt"), "content2".to_string());
+            storage.add_file(dir.join("file3.log"), "content3".to_string());
 
             let txt_files = storage.list_files(&dir, "*.txt").unwrap();
             assert_eq!(txt_files.len(), 2);

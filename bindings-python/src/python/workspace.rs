@@ -1,7 +1,6 @@
 use crate::python::managers::{
-    identity_manager::PyIdentityManager, log_manager::PyLogManager,
-    plan_manager::PyPlanManager, plugin_manager::PyPluginManager,
-    timesheet_manager::PyTimesheetManager,
+    identity_manager::PyIdentityManager, log_manager::PyLogManager, plan_manager::PyPlanManager,
+    plugin_manager::PyPluginManager, timesheet_manager::PyTimesheetManager,
 };
 use crate::python::storage::PyStorage;
 use faff_core::type_mapping::{date_rust_to_py, datetime_rust_to_py};
@@ -37,10 +36,8 @@ impl PyWorkspace {
                 RustWorkspace::with_storage(Arc::new(py_storage))
                     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
             }
-            None => {
-                RustWorkspace::new()
-                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            }
+            None => RustWorkspace::new()
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
         };
 
         // Wrap the workspace in Arc so we can share it with managers

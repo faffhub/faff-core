@@ -23,9 +23,7 @@ impl IdentityManager {
 
     /// Get the path for a public key file
     fn get_pub_path(&self, name: &str) -> PathBuf {
-        self.storage
-            .identity_dir()
-            .join(format!("id_{}.pub", name))
+        self.storage.identity_dir().join(format!("id_{}.pub", name))
     }
 
     /// Create a new Ed25519 identity keypair
@@ -53,8 +51,14 @@ impl IdentityManager {
         let verifying_key = signing_key.verifying_key();
 
         // Encode keys as base64
-        let b64_private = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, signing_key.to_bytes());
-        let b64_public = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, verifying_key.to_bytes());
+        let b64_private = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            signing_key.to_bytes(),
+        );
+        let b64_public = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            verifying_key.to_bytes(),
+        );
 
         // Write keys to files
         self.storage.write_string(&private_path, &b64_private)?;
@@ -102,8 +106,11 @@ impl IdentityManager {
 
             // Read and decode the private key
             let b64_private = self.storage.read_string(&file)?;
-            let key_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64_private.trim())
-                .map_err(|e| anyhow::anyhow!("Failed to decode key in {:?}: {}", file, e))?;
+            let key_bytes = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                b64_private.trim(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to decode key in {:?}: {}", file, e))?;
 
             if key_bytes.len() != 32 {
                 bail!(

@@ -5,8 +5,8 @@ use pyo3::types::PyDate;
 use std::sync::Arc;
 
 use crate::python::storage::PyStorage;
-use faff_core::type_mapping::{date_py_to_rust, date_rust_to_py};
 use faff_core::managers::LogManager as RustLogManager;
+use faff_core::type_mapping::{date_py_to_rust, date_rust_to_py};
 use faff_core::workspace::Workspace as RustWorkspace;
 
 #[pyclass(name = "LogManager")]
@@ -150,42 +150,51 @@ impl PyLogManager {
         intent: &faff_core::py_models::intent::PyIntent,
         note: Option<String>,
     ) -> PyResult<String> {
-        let workspace = self.workspace.as_ref()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
-                "LogManager has no workspace reference. This should not happen."
-            ))?;
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "LogManager has no workspace reference. This should not happen.",
+            )
+        })?;
 
         // Get current date and time from workspace
         let current_date = workspace.today();
         let current_time = workspace.now();
 
         // Get trackers from plan manager
-        let trackers = workspace.plans().get_trackers(current_date)
+        let trackers = workspace
+            .plans()
+            .get_trackers(current_date)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         self.inner
-            .start_intent_now(intent.inner.clone(), note, current_date, current_time, &trackers)
+            .start_intent_now(
+                intent.inner.clone(),
+                note,
+                current_date,
+                current_time,
+                &trackers,
+            )
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
     ///
     /// Auto-fills current_date, current_time, and trackers from workspace
-    fn stop_current_session(
-        &self,
-        _py: Python<'_>,
-    ) -> PyResult<String> {
-        let workspace = self.workspace.as_ref()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
-                "LogManager has no workspace reference. This should not happen."
-            ))?;
+    fn stop_current_session(&self, _py: Python<'_>) -> PyResult<String> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "LogManager has no workspace reference. This should not happen.",
+            )
+        })?;
 
         // Get current date and time from workspace
         let current_date = workspace.today();
         let current_time = workspace.now();
 
         // Get trackers from plan manager
-        let trackers = workspace.plans().get_trackers(current_date)
+        let trackers = workspace
+            .plans()
+            .get_trackers(current_date)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         self.inner

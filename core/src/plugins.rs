@@ -63,7 +63,9 @@ impl PluginManager {
                 let filename = plugin_file
                     .file_name()
                     .and_then(|s| s.to_str())
-                    .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("Invalid plugin filename"))?;
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyValueError::new_err("Invalid plugin filename")
+                    })?;
 
                 // Skip __init__.py
                 if filename == "__init__.py" {
@@ -73,12 +75,16 @@ impl PluginManager {
                 let module_name = plugin_file
                     .file_stem()
                     .and_then(|s| s.to_str())
-                    .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("Invalid module name"))?;
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyValueError::new_err("Invalid module name")
+                    })?;
 
                 // Load the module using importlib
                 let importlib = py.import("importlib.util")?;
-                let spec = importlib
-                    .call_method1("spec_from_file_location", (module_name, plugin_file.to_str()))?;
+                let spec = importlib.call_method1(
+                    "spec_from_file_location",
+                    (module_name, plugin_file.to_str()),
+                )?;
 
                 if spec.is_none() {
                     continue;
@@ -103,18 +109,19 @@ impl PluginManager {
 
                     // Try to check if it's a subclass - if this fails (e.g. not a class), skip it
                     let is_plan_source: bool = match builtins
-                        .call_method1("issubclass", (&attr_value, &plan_source_cls)) {
+                        .call_method1("issubclass", (&attr_value, &plan_source_cls))
+                    {
                         Ok(result) => result.extract().unwrap_or(false),
                         Err(_) => {
                             // Not a class or other error, skip this attribute
                             continue;
                         }
                     };
-                    let is_audience: bool = match builtins
-                        .call_method1("issubclass", (&attr_value, &audience_cls)) {
-                        Ok(result) => result.extract().unwrap_or(false),
-                        Err(_) => false,  // Already checked if it's a class above
-                    };
+                    let is_audience: bool =
+                        match builtins.call_method1("issubclass", (&attr_value, &audience_cls)) {
+                            Ok(result) => result.extract().unwrap_or(false),
+                            Err(_) => false, // Already checked if it's a class above
+                        };
 
                     if !is_plan_source && !is_audience {
                         continue;
@@ -136,7 +143,8 @@ impl PluginManager {
             }
 
             Ok(())
-        }).map_err(|e: PyErr| anyhow::anyhow!("Python error: {}", e))?;
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Python error: {}", e))?;
 
         self.plugins_cache = Some(plugins);
         Ok(self.plugins_cache.as_ref().unwrap())
@@ -162,7 +170,10 @@ impl PluginManager {
 
         // Get paths needed for plugin instantiation (can now access self.storage)
         let root_dir = self.storage.root_dir();
-        let state_path = root_dir.join(".faff").join("plugin_state").join(instance_name);
+        let state_path = root_dir
+            .join(".faff")
+            .join("plugin_state")
+            .join(instance_name);
 
         // Ensure state directory exists
         self.storage.create_dir_all(&state_path)?;
@@ -175,12 +186,17 @@ impl PluginManager {
         Python::attach(move |py| -> PyResult<Py<PyAny>> {
             // Re-import to get the plugin class (avoids lifetime issues)
             let importlib = py.import("importlib.util")?;
-            let root_py = py.import("pathlib")?.call_method0("Path")?.call_method1("__truediv__", (root_dir.to_str().unwrap(),))?;
+            let root_py = py
+                .import("pathlib")?
+                .call_method0("Path")?
+                .call_method1("__truediv__", (root_dir.to_str().unwrap(),))?;
             let faff_dir = root_py.call_method1("__truediv__", (".faff",))?;
             let plugins_dir = faff_dir.call_method1("__truediv__", ("plugins",))?;
-            let plugin_file = plugins_dir.call_method1("__truediv__", (format!("{}.py", plugin_name_owned),))?;
+            let plugin_file =
+                plugins_dir.call_method1("__truediv__", (format!("{}.py", plugin_name_owned),))?;
 
-            let spec = importlib.call_method1("spec_from_file_location", (&plugin_name_owned, plugin_file))?;
+            let spec = importlib
+                .call_method1("spec_from_file_location", (&plugin_name_owned, plugin_file))?;
             let module = importlib.call_method1("module_from_spec", (&spec,))?;
             let loader = spec.getattr("loader")?;
             loader.call_method1("exec_module", (&module,))?;
@@ -212,7 +228,9 @@ impl PluginManager {
                 }
 
                 let inspect = py.import("inspect")?;
-                let is_abstract: bool = inspect.call_method1("isabstract", (&attr_value,))?.extract()?;
+                let is_abstract: bool = inspect
+                    .call_method1("isabstract", (&attr_value,))?
+                    .extract()?;
                 if !is_abstract {
                     plugin_class = Some(attr_value);
                     break;
@@ -220,7 +238,10 @@ impl PluginManager {
             }
 
             let plugin_class = plugin_class.ok_or_else(|| {
-                pyo3::exceptions::PyValueError::new_err(format!("No concrete plugin class found in {}", plugin_name_owned))
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "No concrete plugin class found in {}",
+                    plugin_name_owned
+                ))
             })?;
 
             // Convert config and defaults to Python dicts
@@ -233,18 +254,17 @@ impl PluginManager {
             let py_state_path = path_cls.call1((&state_path_str,))?;
 
             // Instantiate the plugin
-            let instance = plugin_class.call1(
-                (
-                    &plugin_name_owned,
-                    &instance_name_owned,
-                    py_config,
-                    py_defaults,
-                    py_state_path,
-                ),
-            )?;
+            let instance = plugin_class.call1((
+                &plugin_name_owned,
+                &instance_name_owned,
+                py_config,
+                py_defaults,
+                py_state_path,
+            ))?;
 
             Ok(instance.into())
-        }).map_err(|e: PyErr| anyhow::anyhow!("Failed to instantiate plugin: {}", e))
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to instantiate plugin: {}", e))
     }
 
     /// Get instantiated plan remote plugins based on config
@@ -323,7 +343,8 @@ impl PlanSourcePlugin {
             let rust_plan = pyplan.inner.clone();
 
             Ok(rust_plan)
-        }).map_err(|e: PyErr| anyhow::anyhow!("Failed to pull plan: {}", e))
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to pull plan: {}", e))
     }
 }
 
@@ -345,7 +366,9 @@ impl AudiencePlugin {
             let pylog = Py::new(py, PyLog { inner: log.clone() })?;
 
             // Call the compile_time_sheet method
-            let result = self.instance.call_method1(py, "compile_time_sheet", (pylog,))?;
+            let result = self
+                .instance
+                .call_method1(py, "compile_time_sheet", (pylog,))?;
 
             // The result should be a PyTimesheet object
             use crate::py_models::timesheet::PyTimesheet;
@@ -353,7 +376,8 @@ impl AudiencePlugin {
             let rust_timesheet = pytimesheet.inner.clone();
 
             Ok(rust_timesheet)
-        }).map_err(|e: PyErr| anyhow::anyhow!("Failed to compile timesheet: {}", e))
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to compile timesheet: {}", e))
     }
 
     /// Submit a timesheet
@@ -361,13 +385,20 @@ impl AudiencePlugin {
         Python::attach(|py| -> PyResult<()> {
             // Create a PyTimesheet wrapper around the Rust Timesheet
             use crate::py_models::timesheet::PyTimesheet;
-            let pytimesheet = Py::new(py, PyTimesheet { inner: timesheet.clone() })?;
+            let pytimesheet = Py::new(
+                py,
+                PyTimesheet {
+                    inner: timesheet.clone(),
+                },
+            )?;
 
             // Call the submit_timesheet method
-            self.instance.call_method1(py, "submit_timesheet", (pytimesheet,))?;
+            self.instance
+                .call_method1(py, "submit_timesheet", (pytimesheet,))?;
 
             Ok(())
-        }).map_err(|e: PyErr| anyhow::anyhow!("Failed to submit timesheet: {}", e))
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to submit timesheet: {}", e))
     }
 }
 
@@ -425,7 +456,10 @@ mod tests {
             self.write_bytes(path, data.as_bytes())
         }
         fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
-            self.files.lock().unwrap().insert(path.clone(), data.to_vec());
+            self.files
+                .lock()
+                .unwrap()
+                .insert(path.clone(), data.to_vec());
             Ok(())
         }
         fn exists(&self, path: &PathBuf) -> bool {

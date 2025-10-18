@@ -208,10 +208,23 @@ fn test_log_and_timesheet_integration() {
         vec!["PROJ-123".to_string()],
     );
 
-    let start_datetime = date.and_hms_opt(9, 0, 0).unwrap().and_utc().with_timezone(&chrono_tz::UTC);
-    let end_datetime = date.and_hms_opt(12, 30, 0).unwrap().and_utc().with_timezone(&chrono_tz::UTC);
+    let start_datetime = date
+        .and_hms_opt(9, 0, 0)
+        .unwrap()
+        .and_utc()
+        .with_timezone(&chrono_tz::UTC);
+    let end_datetime = date
+        .and_hms_opt(12, 30, 0)
+        .unwrap()
+        .and_utc()
+        .with_timezone(&chrono_tz::UTC);
 
-    let session = Session::new(intent.clone(), start_datetime, Some(end_datetime), Some("Morning work".to_string()));
+    let session = Session::new(
+        intent.clone(),
+        start_datetime,
+        Some(end_datetime),
+        Some("Morning work".to_string()),
+    );
     let log = Log::new(date, chrono_tz::UTC, vec![session]);
 
     let trackers = HashMap::new();
@@ -242,14 +255,8 @@ fn test_log_and_timesheet_integration() {
 
     assert_eq!(retrieved.date, date);
     assert_eq!(retrieved.timeline.len(), 1);
-    assert_eq!(
-        retrieved.timeline[0].intent.alias.as_ref().unwrap(),
-        "work"
-    );
-    assert_eq!(
-        retrieved.timeline[0].note.as_ref().unwrap(),
-        "Morning work"
-    );
+    assert_eq!(retrieved.timeline[0].intent.alias.as_ref().unwrap(), "work");
+    assert_eq!(retrieved.timeline[0].note.as_ref().unwrap(), "Morning work");
 }
 
 #[test]
@@ -260,9 +267,7 @@ fn test_identity_and_timesheet_integration() {
     let timesheet_manager = TimesheetManager::new(storage.clone());
 
     // Create an identity
-    let signing_key = identity_manager
-        .create_identity("alice", false)
-        .unwrap();
+    let signing_key = identity_manager.create_identity("alice", false).unwrap();
 
     // Verify we can retrieve it
     let retrieved_key = identity_manager
@@ -277,7 +282,7 @@ fn test_identity_and_timesheet_integration() {
     let compiled = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
     let meta = TimesheetMeta::new(
         "client1".to_string(),
-        None, // submitted_at
+        None,                      // submitted_at
         Some("alice".to_string()), // submitted_by
     );
 
@@ -299,10 +304,7 @@ fn test_identity_and_timesheet_integration() {
         .unwrap()
         .expect("Timesheet should exist");
 
-    assert_eq!(
-        retrieved.meta.submitted_by.as_ref().unwrap(),
-        "alice"
-    );
+    assert_eq!(retrieved.meta.submitted_by.as_ref().unwrap(), "alice");
 }
 
 #[test]
@@ -422,11 +424,7 @@ fn test_timesheet_list_filtering() {
     let compiled = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
 
     // Create timesheets for different audiences and dates
-    for (audience, date) in [
-        ("client1", date1),
-        ("client2", date1),
-        ("client1", date2),
-    ] {
+    for (audience, date) in [("client1", date1), ("client2", date1), ("client1", date2)] {
         let meta = TimesheetMeta::new(audience.to_string(), None, None);
         let timesheet = Timesheet::new(
             HashMap::new(),

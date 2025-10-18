@@ -56,9 +56,7 @@ where
         .map_err(serde::de::Error::custom)
 }
 
-fn deserialize_optional_datetime<'de, D>(
-    deserializer: D,
-) -> Result<Option<DateTime<Tz>>, D::Error>
+fn deserialize_optional_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Tz>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -104,9 +102,15 @@ fn combine_date_time(date: NaiveDate, tz: Tz, time_str: &str) -> Result<DateTime
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Session {
     pub intent: Intent,
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub start: DateTime<Tz>,
-    #[serde(serialize_with = "serialize_optional_datetime", deserialize_with = "deserialize_optional_datetime")]
+    #[serde(
+        serialize_with = "serialize_optional_datetime",
+        deserialize_with = "deserialize_optional_datetime"
+    )]
     pub end: Option<DateTime<Tz>>,
     pub note: Option<String>,
 }

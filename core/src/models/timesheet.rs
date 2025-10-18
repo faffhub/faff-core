@@ -53,9 +53,7 @@ where
         .map_err(serde::de::Error::custom)
 }
 
-fn deserialize_optional_datetime<'de, D>(
-    deserializer: D,
-) -> Result<Option<DateTime<Tz>>, D::Error>
+fn deserialize_optional_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Tz>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -77,18 +75,23 @@ pub struct UnsignedTimesheet {
     pub actor: HashMap<String, String>,
     pub version: String,
     pub date: NaiveDate,
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub compiled: DateTime<Tz>,
     pub timezone: Tz,
     pub timeline: Vec<Session>,
 }
 
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TimesheetMeta {
     pub audience_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[serde(serialize_with = "serialize_optional_datetime", deserialize_with = "deserialize_optional_datetime")]
+    #[serde(
+        serialize_with = "serialize_optional_datetime",
+        deserialize_with = "deserialize_optional_datetime"
+    )]
     pub submitted_at: Option<DateTime<Tz>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submitted_by: Option<String>,
@@ -149,7 +152,10 @@ pub struct Timesheet {
     pub actor: HashMap<String, String>,
     pub version: String,
     pub date: NaiveDate,
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub compiled: DateTime<Tz>,
     pub timezone: Tz,
     pub timeline: Vec<Session>,
@@ -277,7 +283,10 @@ pub struct SubmittableTimesheet {
     pub actor: HashMap<String, String>,
     pub version: String,
     pub date: NaiveDate,
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub compiled: DateTime<Tz>,
     pub timezone: Tz,
     pub timeline: Vec<Session>,

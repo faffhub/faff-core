@@ -120,9 +120,7 @@ impl Storage for FileSystemStorage {
         }
 
         let glob_pattern = dir.join(pattern);
-        let pattern_str = glob_pattern
-            .to_str()
-            .context("Invalid path pattern")?;
+        let pattern_str = glob_pattern.to_str().context("Invalid path pattern")?;
 
         let paths: Result<Vec<PathBuf>, _> = glob::glob(pattern_str)
             .context("Failed to parse glob pattern")?
@@ -258,9 +256,15 @@ mod tests {
         let log_dir = storage.log_dir();
         storage.create_dir_all(&log_dir).unwrap();
 
-        storage.write_string(&log_dir.join("2025-03-15.toml"), "log1").unwrap();
-        storage.write_string(&log_dir.join("2025-03-16.toml"), "log2").unwrap();
-        storage.write_string(&log_dir.join("readme.txt"), "readme").unwrap();
+        storage
+            .write_string(&log_dir.join("2025-03-15.toml"), "log1")
+            .unwrap();
+        storage
+            .write_string(&log_dir.join("2025-03-16.toml"), "log2")
+            .unwrap();
+        storage
+            .write_string(&log_dir.join("readme.txt"), "readme")
+            .unwrap();
 
         let toml_files = storage.list_files(&log_dir, "*.toml").unwrap();
         assert_eq!(toml_files.len(), 2);
@@ -305,7 +309,11 @@ mod tests {
 
         let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
 
-        let nested_file = storage.log_dir().join("nested").join("deep").join("file.txt");
+        let nested_file = storage
+            .log_dir()
+            .join("nested")
+            .join("deep")
+            .join("file.txt");
         assert!(!nested_file.parent().unwrap().exists());
 
         storage.write_string(&nested_file, "content").unwrap();
@@ -339,9 +347,18 @@ mod tests {
         assert_eq!(storage.root_dir(), temp.path());
         assert_eq!(storage.log_dir(), temp.path().join(".faff").join("logs"));
         assert_eq!(storage.plan_dir(), temp.path().join(".faff").join("plans"));
-        assert_eq!(storage.identity_dir(), temp.path().join(".faff").join("keys"));
-        assert_eq!(storage.timesheet_dir(), temp.path().join(".faff").join("timesheets"));
-        assert_eq!(storage.config_file(), temp.path().join(".faff").join("config.toml"));
+        assert_eq!(
+            storage.identity_dir(),
+            temp.path().join(".faff").join("keys")
+        );
+        assert_eq!(
+            storage.timesheet_dir(),
+            temp.path().join(".faff").join("timesheets")
+        );
+        assert_eq!(
+            storage.config_file(),
+            temp.path().join(".faff").join("config.toml")
+        );
     }
 
     #[test]

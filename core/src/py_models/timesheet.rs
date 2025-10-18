@@ -4,11 +4,11 @@ use pyo3::types::PyDateTime;
 use pyo3::types::{PyBytes, PyDict, PyType};
 use std::collections::HashMap;
 
-use crate::py_models::session::PySession;
 use crate::models::{
     valuetype::ValueType, SubmittableTimesheet as RustSubmittableTimesheet,
     Timesheet as RustTimesheet, TimesheetMeta as RustTimesheetMeta,
 };
+use crate::py_models::session::PySession;
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 

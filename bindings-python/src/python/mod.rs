@@ -1,9 +1,9 @@
 use pyo3::prelude::*;
 use pyo3::PyResult;
 
+pub mod managers;
 pub mod storage;
 pub mod workspace;
-pub mod managers;
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let models_mod = PyModule::new(m.py(), "models")?;

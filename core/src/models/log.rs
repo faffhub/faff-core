@@ -381,7 +381,9 @@ impl Log {
 
     fn commentify_derived_values(toml_string: &str) -> String {
         // Replace lines starting with '--variable_name = ' with '# variable_name = '
-        DERIVED_VALUE_REGEX.replace_all(toml_string, "# $1").to_string()
+        DERIVED_VALUE_REGEX
+            .replace_all(toml_string, "# $1")
+            .to_string()
     }
 }
 

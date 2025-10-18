@@ -1,7 +1,7 @@
-use faff_core::py_models::timesheet::PyTimesheet;
 use crate::python::storage::PyStorage;
-use faff_core::type_mapping::date_py_to_rust;
 use faff_core::managers::TimesheetManager as RustTimesheetManager;
+use faff_core::py_models::timesheet::PyTimesheet;
+use faff_core::type_mapping::date_py_to_rust;
 use faff_core::workspace::Workspace as RustWorkspace;
 use pyo3::prelude::*;
 use pyo3::types::PyDate;
@@ -71,14 +71,16 @@ impl PyTimesheetManager {
 
     /// Get all audience plugin instances
     pub fn audiences(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        let workspace = self.workspace.as_ref()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen."
-            ))?;
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "TimesheetManager has no workspace reference. This should not happen.",
+            )
+        })?;
 
         let plugin_manager_arc = workspace.plugins();
         let mut plugin_manager = plugin_manager_arc.lock().unwrap();
-        plugin_manager.audiences()
+        plugin_manager
+            .audiences()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -99,10 +101,12 @@ impl PyTimesheetManager {
     /// Submit a timesheet via its audience plugin
     pub fn submit(&self, py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
         let audience_id = &timesheet.inner.meta.audience_id;
-        let audience = self.get_audience(py, audience_id)?
-            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(
-                format!("No audience found for {}", audience_id)
-            ))?;
+        let audience = self.get_audience(py, audience_id)?.ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "No audience found for {}",
+                audience_id
+            ))
+        })?;
 
         // Call audience.submit_timesheet(timesheet)
         audience.call_method1(py, "submit_timesheet", (timesheet.clone(),))?;

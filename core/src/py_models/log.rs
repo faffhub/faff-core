@@ -4,8 +4,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDelta, PyDict, PyType};
 
-use crate::py_models::session::PySession;
 use crate::models::log::{Log as RustLog, LogError};
+use crate::py_models::session::PySession;
 
 #[pyclass(name = "Log")]
 #[derive(Clone)]
@@ -112,9 +112,10 @@ impl PyLog {
     }
 
     fn append_session(&self, session: PySession) -> PyResult<PyLog> {
-        let inner = self.inner.append_session(session.inner).map_err(|e| {
-            PyValueError::new_err(format!("Failed to append session: {}", e))
-        })?;
+        let inner = self
+            .inner
+            .append_session(session.inner)
+            .map_err(|e| PyValueError::new_err(format!("Failed to append session: {}", e)))?;
         Ok(PyLog { inner })
     }
 
@@ -140,9 +141,10 @@ impl PyLog {
             Err(LogError::InvalidTime(msg)) => {
                 Err(PyValueError::new_err(format!("Invalid time: {}", msg)))
             }
-            Err(LogError::AmbiguousDatetime(msg)) => {
-                Err(PyValueError::new_err(format!("Ambiguous datetime: {}", msg)))
-            }
+            Err(LogError::AmbiguousDatetime(msg)) => Err(PyValueError::new_err(format!(
+                "Ambiguous datetime: {}",
+                msg
+            ))),
         }
     }
 
@@ -151,9 +153,10 @@ impl PyLog {
     }
 
     fn total_recorded_time<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDelta>> {
-        let duration = self.inner.total_recorded_time().map_err(|e| {
-            PyValueError::new_err(format!("Failed to calculate total time: {}", e))
-        })?;
+        let duration = self
+            .inner
+            .total_recorded_time()
+            .map_err(|e| PyValueError::new_err(format!("Failed to calculate total time: {}", e)))?;
 
         let total_micros = duration.num_microseconds().unwrap_or(0);
         let days = (total_micros / 86_400_000_000) as i32;

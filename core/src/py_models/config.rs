@@ -129,7 +129,10 @@ impl PyPlanRemote {
     }
 
     fn __repr__(&self) -> String {
-        format!("PlanRemote(name={}, plugin={})", self.inner.name, self.inner.plugin)
+        format!(
+            "PlanRemote(name={}, plugin={})",
+            self.inner.name, self.inner.plugin
+        )
     }
 }
 
@@ -187,7 +190,10 @@ impl PyTimesheetAudience {
     }
 
     fn __repr__(&self) -> String {
-        format!("TimesheetAudience(name={}, plugin={})", self.inner.name, self.inner.plugin)
+        format!(
+            "TimesheetAudience(name={}, plugin={})",
+            self.inner.name, self.inner.plugin
+        )
     }
 }
 

@@ -327,10 +327,19 @@ trackers = []
         let plan: Plan = toml::from_str(toml_str).unwrap();
 
         assert_eq!(plan.source, "local");
-        assert_eq!(plan.valid_from, NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
-        assert_eq!(plan.valid_until, Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()));
+        assert_eq!(
+            plan.valid_from,
+            NaiveDate::from_ymd_opt(2025, 3, 20).unwrap()
+        );
+        assert_eq!(
+            plan.valid_until,
+            Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap())
+        );
         assert_eq!(plan.roles, vec!["engineer"]);
-        assert_eq!(plan.trackers.get("ABC-123"), Some(&"Fix critical bug".to_string()));
+        assert_eq!(
+            plan.trackers.get("ABC-123"),
+            Some(&"Fix critical bug".to_string())
+        );
         assert_eq!(plan.intents.len(), 1);
     }
 
@@ -368,7 +377,10 @@ trackers = []
             vec![],
         );
 
-        assert_eq!(plan.valid_until, Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap()));
+        assert_eq!(
+            plan.valid_until,
+            Some(NaiveDate::from_ymd_opt(2025, 4, 1).unwrap())
+        );
     }
 
     #[test]
@@ -463,7 +475,13 @@ trackers = []
 
         assert_eq!(plan.trackers.len(), 3);
         assert_eq!(plan.trackers.get("ABC-123"), Some(&"Bug fix".to_string()));
-        assert_eq!(plan.trackers.get("DEF-456"), Some(&"Feature request".to_string()));
-        assert_eq!(plan.trackers.get("GHI-789"), Some(&"Refactoring".to_string()));
+        assert_eq!(
+            plan.trackers.get("DEF-456"),
+            Some(&"Feature request".to_string())
+        );
+        assert_eq!(
+            plan.trackers.get("GHI-789"),
+            Some(&"Refactoring".to_string())
+        );
     }
 }

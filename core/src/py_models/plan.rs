@@ -4,8 +4,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyList, PyType};
 use std::collections::HashMap;
 
-use crate::py_models::intent::PyIntent;
 use crate::models::plan::Plan as RustPlan;
+use crate::py_models::intent::PyIntent;
 
 #[pyclass(name = "Plan")]
 #[derive(Clone)]

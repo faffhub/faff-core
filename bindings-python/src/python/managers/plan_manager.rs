@@ -2,11 +2,11 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyList};
 use std::sync::Arc;
 
+use crate::python::storage::PyStorage;
+use faff_core::managers::plan_manager::PlanManager as RustPlanManager;
 use faff_core::py_models::intent::PyIntent;
 use faff_core::py_models::plan::PyPlan;
-use crate::python::storage::PyStorage;
 use faff_core::type_mapping::date_py_to_rust;
-use faff_core::managers::plan_manager::PlanManager as RustPlanManager;
 use faff_core::workspace::Workspace as RustWorkspace;
 
 /// Python wrapper for PlanManager
@@ -217,14 +217,16 @@ impl PyPlanManager {
 
     /// Get plan remote plugin instances (delegates to workspace.plugins.plan_remotes())
     pub fn remotes(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        let workspace = self.workspace.as_ref()
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
-                "PlanManager has no workspace reference. This should not happen."
-            ))?;
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "PlanManager has no workspace reference. This should not happen.",
+            )
+        })?;
 
         let plugin_manager_arc = workspace.plugins();
         let mut plugin_manager = plugin_manager_arc.lock().unwrap();
-        plugin_manager.plan_remotes()
+        plugin_manager
+            .plan_remotes()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

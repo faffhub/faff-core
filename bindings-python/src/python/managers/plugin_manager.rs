@@ -27,10 +27,12 @@ impl PyPluginManager {
 
         // Read config from storage
         let config_path = storage_arc.config_file();
-        let config_str = storage_arc.read_string(&config_path)
+        let config_str = storage_arc
+            .read_string(&config_path)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        let config = Config::from_toml(&config_str)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse config: {}", e)))?;
+        let config = Config::from_toml(&config_str).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse config: {}", e))
+        })?;
 
         let manager = RustPluginManager::new(storage_arc, config);
         Ok(Self {
@@ -82,11 +84,15 @@ impl PyPluginManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // Convert Python dicts to HashMap<String, toml::Value>
-        let config_map: HashMap<String, toml::Value> = pythonize::depythonize(&config)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid config: {}", e)))?;
+        let config_map: HashMap<String, toml::Value> =
+            pythonize::depythonize(&config).map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(format!("Invalid config: {}", e))
+            })?;
 
         let defaults_map: HashMap<String, toml::Value> = pythonize::depythonize(&defaults)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid defaults: {}", e)))?;
+            .map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(format!("Invalid defaults: {}", e))
+            })?;
 
         manager
             .instantiate_plugin(plugin_name, instance_name, config_map, defaults_map)

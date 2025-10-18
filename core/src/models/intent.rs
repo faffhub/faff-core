@@ -79,5 +79,4 @@ impl Intent {
             trackers: deduped,
         }
     }
-
 }

@@ -40,7 +40,10 @@ impl Workspace {
         let log_manager = Arc::new(LogManager::new(storage.clone(), config.timezone));
         let timesheet_manager = Arc::new(TimesheetManager::new(storage.clone()));
         let identity_manager = Arc::new(IdentityManager::new(storage.clone()));
-        let plugin_manager = Arc::new(Mutex::new(PluginManager::new(storage.clone(), config.clone())));
+        let plugin_manager = Arc::new(Mutex::new(PluginManager::new(
+            storage.clone(),
+            config.clone(),
+        )));
 
         Ok(Self {
             storage,
@@ -225,10 +228,7 @@ mod tests {
         let logs = ws.logs();
 
         // Verify they use the same root directory (indirectly testing shared storage)
-        assert_eq!(
-            ws.storage().root_dir(),
-            PathBuf::from("/faff")
-        );
+        assert_eq!(ws.storage().root_dir(), PathBuf::from("/faff"));
 
         // Managers should be functional
         assert!(plans.get_plans(ws.today()).is_ok());

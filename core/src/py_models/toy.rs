@@ -4,8 +4,8 @@ use pyo3::types::PyDateTime;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::type_mapping;
 use crate::models::Toy as RustToy;
+use crate::type_mapping;
 
 #[pyclass(name = "Toy")]
 pub struct PyToy {
