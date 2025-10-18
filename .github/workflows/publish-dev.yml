@@ -66,6 +66,7 @@ jobs:
         with:
           working-directory: bindings-python
           command: upload
-          args: --skip-existing dist/* --repository testpypi
+          args: --skip-existing dist/*
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
+          MATURIN_REPOSITORY: testpypi

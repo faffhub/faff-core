@@ -64,17 +64,20 @@ jobs:
         run: |
           pip install pytest slugify
 
-      - name: Build and install wheel
+      - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           working-directory: bindings-python
-          command: develop
-          args: --release
+          command: build
+          args: --release --out dist
+
+      - name: Install wheel
+        run: |
+          pip install bindings-python/dist/*.whl
 
       - name: Run Python binding tests
         run: |
-          cd bindings-python
-          pytest tests/ -v
+          pytest bindings-python/tests/ -v
 
       - name: Smoke test import
         run: |
