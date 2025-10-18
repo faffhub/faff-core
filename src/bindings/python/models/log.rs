@@ -112,9 +112,10 @@ impl PyLog {
     }
 
     fn append_session(&self, session: PySession) -> PyResult<PyLog> {
-        Ok(PyLog {
-            inner: self.inner.append_session(session.inner),
-        })
+        let inner = self.inner.append_session(session.inner).map_err(|e| {
+            PyValueError::new_err(format!("Failed to append session: {}", e))
+        })?;
+        Ok(PyLog { inner })
     }
 
     fn active_session(&self) -> Option<PySession> {
@@ -136,6 +137,12 @@ impl PyLog {
             Err(LogError::NoTimelineEntries) => {
                 Err(PyValueError::new_err("No timeline entries to stop."))
             }
+            Err(LogError::InvalidTime(msg)) => {
+                Err(PyValueError::new_err(format!("Invalid time: {}", msg)))
+            }
+            Err(LogError::AmbiguousDatetime(msg)) => {
+                Err(PyValueError::new_err(format!("Ambiguous datetime: {}", msg)))
+            }
         }
     }
 
@@ -144,7 +151,9 @@ impl PyLog {
     }
 
     fn total_recorded_time<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDelta>> {
-        let duration = self.inner.total_recorded_time();
+        let duration = self.inner.total_recorded_time().map_err(|e| {
+            PyValueError::new_err(format!("Failed to calculate total time: {}", e))
+        })?;
 
         let total_micros = duration.num_microseconds().unwrap_or(0);
         let days = (total_micros / 86_400_000_000) as i32;

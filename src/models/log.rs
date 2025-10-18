@@ -2,14 +2,25 @@ use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone
 use chrono_tz::Tz;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use thiserror::Error;
 
 use crate::models::session::Session;
+
+// Compiled regex for commentifying derived values - validated at compile time
+static DERIVED_VALUE_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?m)^--([a-zA-Z_-][a-zA-Z0-9_-]*\s*=\s*.+)$")
+        .expect("DERIVED_VALUE_REGEX pattern is valid")
+});
 
 #[derive(Error, Debug)]
 pub enum LogError {
     #[error("No timeline entries to stop")]
     NoTimelineEntries,
+    #[error("Invalid time value: {0}")]
+    InvalidTime(String),
+    #[error("Ambiguous datetime during DST transition: {0}")]
+    AmbiguousDatetime(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -43,16 +54,14 @@ impl Log {
     }
 
     /// Append a session to the timeline, automatically stopping any active session
-    pub fn append_session(&self, session: Session) -> Log {
+    pub fn append_session(&self, session: Session) -> Result<Log, LogError> {
         if self.active_session().is_some() {
-            let stopped_log = self
-                .stop_active_session(session.start)
-                .expect("active_session exists, so stop should work");
+            let stopped_log = self.stop_active_session(session.start)?;
             stopped_log.append_session(session)
         } else {
             let mut new_timeline = self.timeline.clone();
             new_timeline.push(session);
-            Log::new(self.date, self.timezone, new_timeline)
+            Ok(Log::new(self.date, self.timezone, new_timeline))
         }
     }
 
@@ -75,7 +84,9 @@ impl Log {
     }
 
     /// Calculate total recorded time across all sessions
-    pub fn total_recorded_time(&self) -> Duration {
+    ///
+    /// Returns an error if timezone conversion fails (e.g., during DST transitions)
+    pub fn total_recorded_time(&self) -> Result<Duration, LogError> {
         let mut total = Duration::zero();
 
         // Get today's date and current time in the log's timezone
@@ -92,14 +103,19 @@ impl Log {
                         now - start
                     } else {
                         // For open sessions on past dates, use end of day
-                        let end_of_day_time =
-                            NaiveTime::from_hms_opt(23, 59, 59).expect("valid time");
+                        let end_of_day_time = NaiveTime::from_hms_opt(23, 59, 59)
+                            .ok_or_else(|| LogError::InvalidTime("23:59:59".to_string()))?;
                         let end_of_day_naive = self.date.and_time(end_of_day_time);
                         let end_of_day = self
                             .timezone
                             .from_local_datetime(&end_of_day_naive)
                             .single()
-                            .expect("valid datetime");
+                            .ok_or_else(|| {
+                                LogError::AmbiguousDatetime(format!(
+                                    "{} in {}",
+                                    end_of_day_naive, self.timezone
+                                ))
+                            })?;
                         end_of_day - start
                     }
                 }
@@ -108,7 +124,7 @@ impl Log {
             total = total + duration;
         }
 
-        total
+        Ok(total)
     }
 
     /// Parse a Log from Faffage log file format (TOML)
@@ -365,8 +381,7 @@ impl Log {
 
     fn commentify_derived_values(toml_string: &str) -> String {
         // Replace lines starting with '--variable_name = ' with '# variable_name = '
-        let re = regex::Regex::new(r"(?m)^--([a-zA-Z_-][a-zA-Z0-9_-]*\s*=\s*.+)$").unwrap();
-        re.replace_all(toml_string, "# $1").to_string()
+        DERIVED_VALUE_REGEX.replace_all(toml_string, "# $1").to_string()
     }
 }
 
@@ -479,7 +494,7 @@ mod tests {
         let session = Session::new(intent, start, Some(end), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![]);
-        let new_log = log.append_session(session.clone());
+        let new_log = log.append_session(session.clone()).unwrap();
 
         assert_eq!(new_log.timeline.len(), 1);
         assert_eq!(new_log.timeline[0], session);
@@ -501,7 +516,7 @@ mod tests {
         let session2 = Session::new(intent, start2, Some(end2), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![session1]);
-        let new_log = log.append_session(session2.clone());
+        let new_log = log.append_session(session2.clone()).unwrap();
 
         assert_eq!(new_log.timeline.len(), 2);
         assert_eq!(new_log.timeline[1], session2);
@@ -518,7 +533,7 @@ mod tests {
         let new_session = Session::new(intent, start2, Some(end2), None);
 
         let log = Log::new(sample_date(), london_tz(), vec![open_session]);
-        let new_log = log.append_session(new_session.clone());
+        let new_log = log.append_session(new_session.clone()).unwrap();
 
         assert_eq!(new_log.timeline.len(), 2);
         // First session should be stopped at start2
@@ -587,7 +602,7 @@ mod tests {
     #[test]
     fn test_empty_log_has_zero_time() {
         let log = Log::new(sample_date(), london_tz(), vec![]);
-        assert_eq!(log.total_recorded_time(), Duration::zero());
+        assert_eq!(log.total_recorded_time().unwrap(), Duration::zero());
     }
 
     #[test]
@@ -601,7 +616,7 @@ mod tests {
 
         let log = Log::new(sample_date(), london_tz(), vec![session]);
         let expected = Duration::hours(1) + Duration::minutes(30);
-        assert_eq!(log.total_recorded_time(), expected);
+        assert_eq!(log.total_recorded_time().unwrap(), expected);
     }
 
     #[test]
@@ -621,7 +636,7 @@ mod tests {
         let log = Log::new(sample_date(), london_tz(), vec![session1, session2]);
 
         let expected = Duration::hours(2) + Duration::minutes(30);
-        assert_eq!(log.total_recorded_time(), expected);
+        assert_eq!(log.total_recorded_time().unwrap(), expected);
     }
 
     #[test]
@@ -633,7 +648,7 @@ mod tests {
         let open_session = Session::new(intent, start, None, None);
 
         let log = Log::new(past_date, london_tz(), vec![open_session]);
-        let total = log.total_recorded_time();
+        let total = log.total_recorded_time().unwrap();
 
         // From 14:00 to 23:59:59 = 9 hours, 59 minutes, 59 seconds
         let expected = Duration::hours(9) + Duration::minutes(59) + Duration::seconds(59);

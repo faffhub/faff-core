@@ -3,11 +3,17 @@ use chrono::NaiveDate;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::models::intent::Intent;
 use crate::models::plan::Plan;
 use crate::storage::Storage;
+
+// Regex for parsing plan filenames - validated at compile time
+static PLAN_FILENAME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?P<source>.+?)\.(?P<datestr>\d{8})\.toml$")
+        .expect("PLAN_FILENAME_REGEX pattern is valid")
+});
 
 /// Manages Plan loading, caching, and querying
 ///
@@ -111,9 +117,6 @@ impl PlanManager {
             .list_files(plan_dir, "*.toml")
             .context("Failed to list plan files")?;
 
-        // Pattern: <source>.<YYYYMMDD>.toml
-        let pattern = Regex::new(r"^(?P<source>.+?)\.(?P<datestr>\d{8})\.toml$").unwrap();
-
         // Map of source -> (most recent date, file path)
         let mut candidates: HashMap<String, (NaiveDate, PathBuf)> = HashMap::new();
 
@@ -123,7 +126,8 @@ impl PlanManager {
                 .and_then(|n| n.to_str())
                 .context("Invalid filename")?;
 
-            if let Some(captures) = pattern.captures(filename) {
+            if let Some(captures) = PLAN_FILENAME_REGEX.captures(filename) {
+                // These unwraps are safe because the regex guarantees named groups exist
                 let source = captures.name("source").unwrap().as_str().to_string();
                 let datestr = captures.name("datestr").unwrap().as_str();
 

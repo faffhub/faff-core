@@ -150,7 +150,7 @@ impl LogManager {
         let session = crate::models::Session::new(intent.clone(), current_time, None, note);
 
         // Append to log and write
-        let updated_log = log.append_session(session);
+        let updated_log = log.append_session(session)?;
         self.write_log(&updated_log, trackers)?;
 
         let alias = intent.alias.unwrap_or_else(|| "session".to_string());
