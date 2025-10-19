@@ -55,6 +55,7 @@ jobs:
     needs: bump-version
     runs-on: ${{ matrix.platform.runner }}
     permissions:
+      contents: read
       id-token: write
 
     strategy:
@@ -98,6 +99,7 @@ jobs:
     needs: build-wheels
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
 
     steps:
