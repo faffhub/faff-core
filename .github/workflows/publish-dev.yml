@@ -5,12 +5,13 @@ on:
     branches: [ main ]
 
 jobs:
-  bump-and-publish:
-    name: Bump version and publish to TestPyPI
+  bump-version:
+    name: Bump version
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +50,31 @@ jobs:
           git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
           git push
 
+  build-wheels:
+    name: Build wheels on ${{ matrix.platform.os }}
+    needs: bump-version
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      id-token: write
+
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+            os: linux
+          - runner: macos-13  # x86_64
+            os: macos
+          - runner: macos-14  # ARM64
+            os: macos-arm
+          - runner: windows-latest
+            os: windows
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main  # Get the version bump commit
+          fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -58,13 +84,32 @@ jobs:
         with:
           working-directory: bindings-python
           command: build
-          args: --release --out dist --interpreter python3.9 python3.10 python3.11 python3.12
-          manylinux: auto
+          args: --release --out dist
+          manylinux: ${{ matrix.platform.os == 'linux' && 'auto' || '' }}
+
+      - name: Upload wheels to GitHub artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform.os }}
+          path: bindings-python/dist
+
+  publish-to-testpypi:
+    name: Publish to TestPyPI
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
 
       - name: Publish to TestPyPI
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings-python
           command: upload
           args: --skip-existing dist/*
         env:
