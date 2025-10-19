@@ -48,14 +48,18 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features
 
   python-tests:
-    name: Python tests and smoke test
+    name: Python tests on ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

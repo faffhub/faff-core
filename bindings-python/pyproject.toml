@@ -4,12 +4,13 @@ build-backend = "maturin"
 
 [project]
 name = "faff-core"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 dynamic = ["version"]
