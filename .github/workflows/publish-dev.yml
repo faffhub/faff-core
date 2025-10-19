@@ -1,58 +1,43 @@
 name: Publish Dev Build
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches: [ main ]
 
 jobs:
-  bump-version:
-    name: Bump version
+  get-version:
+    name: Get dev version
     runs-on: ubuntu-latest
+    # Only run if CI succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
-      contents: write
+      contents: read
     outputs:
-      version: ${{ steps.bump.outputs.version }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
           fetch-depth: 0
 
-      - name: Configure Git
+      - name: Calculate dev version
+        id: version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump patch version
-        id: bump
-        run: |
-          # Read current version from workspace Cargo.toml
-          CURRENT_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "Current version: $CURRENT_VERSION"
-
-          # Parse and increment patch version
-          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
-          MAJOR="${VERSION_PARTS[0]}"
-          MINOR="${VERSION_PARTS[1]}"
-          PATCH="${VERSION_PARTS[2]}"
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
-
-          echo "New version: $NEW_VERSION"
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-          # Update version in workspace Cargo.toml
-          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
-
-          # Commit and push
-          git add Cargo.toml
-          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
-          git push
+          # Read base version from workspace Cargo.toml
+          BASE_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          # Create dev version using GitHub run number
+          DEV_VERSION="${BASE_VERSION}.dev${{ github.run_number }}"
+          echo "Base version: $BASE_VERSION"
+          echo "Dev version: $DEV_VERSION"
+          echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
 
   build-wheels:
     name: Build wheels on ${{ matrix.platform.os }}
-    needs: bump-version
+    needs: get-version
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -73,12 +58,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main  # Get the version bump commit
+          ref: main
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Set dev version
+        run: |
+          DEV_VERSION="${{ needs.get-version.outputs.version }}"
+          echo "Building dev version: $DEV_VERSION"
+          # Update Cargo.toml with dev version (temporary, not committed)
+          sed -i.bak "s/^version = \".*\"/version = \"$DEV_VERSION\"/" Cargo.toml
+        shell: bash
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -94,8 +87,8 @@ jobs:
           name: wheels-${{ matrix.platform.os }}
           path: bindings-python/dist
 
-  publish-to-testpypi:
-    name: Publish to TestPyPI
+  publish-to-pypi:
+    name: Publish dev build to PyPI
     needs: build-wheels
     runs-on: ubuntu-latest
     permissions:
@@ -109,11 +102,10 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish to TestPyPI
+      - name: Publish to PyPI
         uses: PyO3/maturin-action@v1
         with:
           command: upload
           args: --skip-existing dist/*
         env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
-          MATURIN_REPOSITORY: testpypi
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
