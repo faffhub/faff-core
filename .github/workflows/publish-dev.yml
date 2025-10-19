@@ -31,7 +31,8 @@ jobs:
           # Read base version from workspace Cargo.toml
           BASE_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
           # Create dev version using GitHub run number
-          DEV_VERSION="${BASE_VERSION}.dev${{ github.run_number }}"
+          # Use hyphen format for Cargo (maturin converts to .dev for Python)
+          DEV_VERSION="${BASE_VERSION}-dev${{ github.run_number }}"
           echo "Base version: $BASE_VERSION"
           echo "Dev version: $DEV_VERSION"
           echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
