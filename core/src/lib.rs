@@ -7,4 +7,5 @@ pub mod storage;
 #[cfg(test)]
 pub mod test_utils;
 pub mod type_mapping;
+pub mod version;
 pub mod workspace;

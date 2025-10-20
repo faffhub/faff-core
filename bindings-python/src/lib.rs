@@ -8,9 +8,15 @@ fn hello_world() -> PyResult<String> {
     Ok("Hello from Rust!".to_string())
 }
 
+#[pyfunction]
+fn version() -> PyResult<&'static str> {
+    Ok(::faff_core::version::version())
+}
+
 #[pymodule]
 fn faff_core(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(hello_world))?;
+    m.add_wrapped(wrap_pyfunction!(version))?;
 
     python::register(&m)?;
     Ok(())

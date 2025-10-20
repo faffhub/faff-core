@@ -9,6 +9,10 @@ from typing import Optional, List, Dict
 from zoneinfo import ZoneInfo
 import datetime
 
+def version() -> str:
+    """Get the version of the faff-core library."""
+    ...
+
 # Models submodule
 class models:
     """Core data models for time tracking."""

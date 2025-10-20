@@ -10,6 +10,7 @@ pub mod valuetype;
 pub use config::Config;
 pub use intent::Intent;
 pub use log::Log;
+pub use plan::Plan;
 pub use session::Session;
 pub use timesheet::{SubmittableTimesheet, Timesheet, TimesheetMeta};
 pub use toy::Toy;
