@@ -1,6 +1,7 @@
 use crate::file_system_storage::FileSystemStorage;
 use crate::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
 use crate::models::Config;
+#[cfg(feature = "python")]
 use crate::plugins::PluginManager;
 use crate::storage::Storage;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -15,6 +16,7 @@ pub struct Workspace {
     log_manager: Arc<LogManager>,
     timesheet_manager: Arc<TimesheetManager>,
     identity_manager: Arc<IdentityManager>,
+    #[cfg(feature = "python")]
     plugin_manager: Arc<Mutex<PluginManager>>,
 }
 
@@ -40,6 +42,7 @@ impl Workspace {
         let log_manager = Arc::new(LogManager::new(storage.clone(), config.timezone));
         let timesheet_manager = Arc::new(TimesheetManager::new(storage.clone()));
         let identity_manager = Arc::new(IdentityManager::new(storage.clone()));
+        #[cfg(feature = "python")]
         let plugin_manager = Arc::new(Mutex::new(PluginManager::new(
             storage.clone(),
             config.clone(),
@@ -52,6 +55,7 @@ impl Workspace {
             log_manager,
             timesheet_manager,
             identity_manager,
+            #[cfg(feature = "python")]
             plugin_manager,
         })
     }
@@ -102,6 +106,7 @@ impl Workspace {
     }
 
     /// Get the PluginManager
+    #[cfg(feature = "python")]
     pub fn plugins(&self) -> Arc<Mutex<PluginManager>> {
         self.plugin_manager.clone()
     }
@@ -168,6 +173,7 @@ mod tests {
         let _logs = ws.logs();
         let _timesheets = ws.timesheets();
         let _identities = ws.identities();
+        #[cfg(feature = "python")]
         let _plugins = ws.plugins();
 
         // Just verify they don't panic when accessed

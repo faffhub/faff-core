@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Core library
-faff-core = { path = "../core" }
+faff-core = { path = "../core", features = ["python"] }
 
 # Python bindings
 pyo3.workspace = true

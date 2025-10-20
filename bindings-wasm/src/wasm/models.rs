@@ -1,11 +1,9 @@
-use chrono::{DateTime, NaiveDate};
+use chrono::{DateTime, Datelike, NaiveDate};
 use chrono_tz::Tz;
 use faff_core::models::{
     Intent as RustIntent, Log as RustLog, Plan as RustPlan, Session as RustSession,
     Timesheet as RustTimesheet,
 };
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 /// Intent represents what you're doing, classified semantically.
@@ -172,7 +170,7 @@ impl Log {
             .map_err(|_| JsValue::from_str(&format!("Invalid timezone: {}", timezone)))?;
 
         Ok(Self {
-            inner: RustLog::new(naive_date, tz),
+            inner: RustLog::new(naive_date, tz, vec![]),
         })
     }
 
@@ -215,12 +213,8 @@ impl Log {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
-    #[wasm_bindgen(js_name = fromJSON)]
-    pub fn from_json(value: &JsValue) -> Result<Log, JsValue> {
-        let inner: RustLog = serde_wasm_bindgen::from_value(value.clone())
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        Ok(Self { inner })
-    }
+    // Note: Log doesn't support from_json because it uses custom TOML parsing
+    // Use Workspace.getLog() to load logs from storage
 }
 
 /// A plan defines vocabulary and templates for work tracking.
@@ -349,10 +343,10 @@ fn js_date_to_chrono(date: &js_sys::Date) -> Result<DateTime<Tz>, JsValue> {
     let timestamp_secs = timestamp_ms / 1000;
     let timestamp_nanos = ((timestamp_ms % 1000) * 1_000_000) as u32;
 
-    let naive = chrono::NaiveDateTime::from_timestamp_opt(timestamp_secs, timestamp_nanos)
+    let dt = DateTime::from_timestamp(timestamp_secs, timestamp_nanos)
         .ok_or_else(|| JsValue::from_str("Invalid timestamp"))?;
 
-    Ok(chrono_tz::UTC.from_utc_datetime(&naive))
+    Ok(dt.with_timezone(&chrono_tz::UTC))
 }
 
 fn chrono_to_js_date(dt: &DateTime<Tz>) -> js_sys::Date {

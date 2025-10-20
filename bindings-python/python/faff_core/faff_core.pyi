@@ -343,10 +343,6 @@ class models:
 
     class PlanRemote:
         """Configuration for a remote plan source."""
-        name: str
-        plugin: str
-        config: Dict
-        defaults: Dict
 
         @property
         def name(self) -> str: ...
@@ -363,8 +359,8 @@ class models:
         """Configuration for a timesheet audience."""
         name: str
         plugin: str
-        config: Dict
-        signing_ids: List[str]
+    class TimesheetAudience:
+        """Configuration for a timesheet audience."""
 
         @property
         def name(self) -> str: ...
@@ -376,11 +372,13 @@ class models:
         def signing_ids(self) -> List[str]: ...
 
         def __repr__(self) -> str: ...
+        config: Dict
 
+        @property
+        def name(self) -> str: ...
+        @property
     class Role:
         """Configuration for a user role."""
-        name: str
-        config: Dict
 
         @property
         def name(self) -> str: ...
@@ -388,14 +386,6 @@ class models:
         def config(self) -> Dict: ...
 
         def __repr__(self) -> str: ...
-
-# Manager classes
-class TimesheetManager:
-    """Manager for timesheet operations."""
-
-    def write_timesheet(self, timesheet: models.Timesheet) -> None:
-        """Write a timesheet to storage."""
-        ...
 
     def get_timesheet(
         self,

@@ -1,9 +1,10 @@
-use super::models::{Log, Plan, Timesheet};
+use super::models::{Log, Plan};
 use super::storage::JsStorage;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use faff_core::models::{Config as RustConfig, Log as RustLog, Plan as RustPlan};
-use std::path::PathBuf;
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::future_to_promise;
 
 /// Workspace provides coordinated access to faff functionality.
@@ -35,7 +36,7 @@ impl Workspace {
     /// Returns Promise<Log>.
     #[wasm_bindgen(js_name = getLog)]
     pub fn get_log(&self, date: js_sys::Date) -> js_sys::Promise {
-        let storage = self.storage.clone();
+        let storage: JsStorage = self.storage.clone().unchecked_into();
         let timezone = self.config.timezone;
 
         future_to_promise(async move {
@@ -48,14 +49,14 @@ impl Workspace {
                     .await
                     .map_err(|e| JsValue::from_str(&format!("Failed to read log: {:?}", e)))?;
 
-                let rust_log = RustLog::from_log_file(&content, naive_date, timezone)
+                let rust_log = RustLog::from_log_file(&content)
                     .map_err(|e| JsValue::from_str(&format!("Failed to parse log: {}", e)))?;
 
                 Log { inner: rust_log }
             } else {
                 // Return empty log if file doesn't exist
                 Log {
-                    inner: RustLog::new(naive_date, timezone),
+                    inner: RustLog::new(naive_date, timezone, vec![]),
                 }
             };
 
@@ -68,14 +69,13 @@ impl Workspace {
     /// Returns Promise<void>.
     #[wasm_bindgen(js_name = saveLog)]
     pub fn save_log(&self, log: &Log) -> js_sys::Promise {
-        let storage = self.storage.clone();
+        let storage: JsStorage = self.storage.clone().unchecked_into();
         let log_inner = log.inner.clone();
 
         future_to_promise(async move {
             let log_path = Self::log_path_for_date(&storage, &log_inner.date);
-            let content = log_inner
-                .to_log_file()
-                .map_err(|e| JsValue::from_str(&format!("Failed to serialize log: {}", e)))?;
+            let trackers = HashMap::new(); // TODO: Get trackers from config/plan
+            let content = log_inner.to_log_file(&trackers);
 
             // Ensure log directory exists
             let log_dir = storage.log_dir();
@@ -98,7 +98,7 @@ impl Workspace {
     /// Returns Promise<Plan>.
     #[wasm_bindgen(js_name = getPlan)]
     pub fn get_plan(&self, plan_id: &str) -> js_sys::Promise {
-        let storage = self.storage.clone();
+        let storage: JsStorage = self.storage.clone().unchecked_into();
         let plan_id = plan_id.to_string();
 
         future_to_promise(async move {
@@ -109,7 +109,7 @@ impl Workspace {
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to read plan: {:?}", e)))?;
 
-            let rust_plan = RustPlan::from_toml(&content)
+            let rust_plan: RustPlan = toml::from_str(&content)
                 .map_err(|e| JsValue::from_str(&format!("Failed to parse plan: {}", e)))?;
 
             let plan = Plan { inner: rust_plan };
@@ -122,7 +122,7 @@ impl Workspace {
     /// Returns Promise<void>.
     #[wasm_bindgen(js_name = savePlan)]
     pub fn save_plan(&self, plan: &Plan) -> js_sys::Promise {
-        let storage = self.storage.clone();
+        let storage: JsStorage = self.storage.clone().unchecked_into();
         let plan_inner = plan.inner.clone();
 
         future_to_promise(async move {

@@ -9,6 +9,10 @@ license.workspace = true
 name = "faff_core"
 crate-type = ["rlib"]
 
+[features]
+default = []
+python = ["dep:pyo3", "dep:pythonize"]
+
 [dependencies]
 # Serialization
 serde.workspace = true
@@ -19,9 +23,9 @@ serde_canonical_json.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 
-# Python integration (for plugin system)
-pyo3.workspace = true
-pythonize.workspace = true
+# Python integration (for plugin system) - optional
+pyo3 = { workspace = true, optional = true }
+pythonize = { workspace = true, optional = true }
 
 # Utilities
 slug.workspace = true

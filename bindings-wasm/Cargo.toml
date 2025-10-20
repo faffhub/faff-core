@@ -20,10 +20,14 @@ wasm-bindgen-futures = "0.4"
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde-wasm-bindgen = "0.6"
+toml = { workspace = true }
 
 # Date/time
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+
+# Random number generation (required for crypto in wasm)
+getrandom = { version = "0.2", features = ["js"] }
 
 # Error handling
 anyhow = { workspace = true }
