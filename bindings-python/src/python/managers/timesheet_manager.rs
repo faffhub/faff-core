@@ -50,6 +50,7 @@ impl PyTimesheetManager {
     }
 
     /// List all timesheets, optionally filtered by date
+    #[pyo3(signature = (date=None))]
     pub fn list_timesheets(&self, date: Option<Bound<'_, PyDate>>) -> PyResult<Vec<PyTimesheet>> {
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
@@ -65,6 +66,7 @@ impl PyTimesheetManager {
     }
 
     /// Alias for list_timesheets (for backwards compatibility)
+    #[pyo3(signature = (date=None))]
     pub fn list(&self, date: Option<Bound<'_, PyDate>>) -> PyResult<Vec<PyTimesheet>> {
         self.list_timesheets(date)
     }

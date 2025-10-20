@@ -22,7 +22,7 @@ impl TimesheetManager {
         let timesheet_filename = format!(
             "{}.{}.json",
             timesheet.meta.audience_id,
-            timesheet.date.format("%Y%m%d")
+            timesheet.date.format("%Y-%m-%d")
         );
         let timesheet_path = timesheet_dir.join(&timesheet_filename);
         let canonical = timesheet.submittable_timesheet().canonical_form()?;
@@ -44,7 +44,7 @@ impl TimesheetManager {
         date: NaiveDate,
     ) -> anyhow::Result<Option<Timesheet>> {
         let timesheet_dir = self.storage.timesheet_dir();
-        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y%m%d"));
+        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
         let timesheet_path = timesheet_dir.join(&timesheet_filename);
 
         if !self.storage.exists(&timesheet_path) {
@@ -73,7 +73,7 @@ impl TimesheetManager {
         let timesheet_dir = self.storage.timesheet_dir();
 
         let pattern = if let Some(d) = date {
-            format!("*.{}.json", d.format("%Y%m%d"))
+            format!("*.{}.json", d.format("%Y-%m-%d"))
         } else {
             "*.json".to_string()
         };
@@ -92,15 +92,22 @@ impl TimesheetManager {
                 continue;
             }
 
-            // Parse audience_id and date from filename: audience.YYYYMMDD
+            // Parse audience_id and date from filename: audience.YYYY-MM-DD
             let parts: Vec<&str> = filename.split('.').collect();
             if parts.len() != 2 {
+                eprintln!("[WARN] Skipping file with unexpected format: {} ({} parts)", filename, parts.len());
                 continue;
             }
 
             let audience_id = parts[0];
             let date_str = parts[1];
-            let ts_date = NaiveDate::parse_from_str(date_str, "%Y%m%d")?;
+            let ts_date = match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("[WARN] Skipping file with invalid date format '{}': {}", date_str, e);
+                    continue;
+                }
+            };
 
             // Filter by date if specified
             if let Some(filter_date) = date {
@@ -109,8 +116,15 @@ impl TimesheetManager {
                 }
             }
 
-            if let Some(timesheet) = self.get_timesheet(audience_id, ts_date)? {
-                timesheets.push(timesheet);
+            match self.get_timesheet(audience_id, ts_date) {
+                Ok(Some(timesheet)) => timesheets.push(timesheet),
+                Ok(None) => {
+                    eprintln!("[WARN] Timesheet file exists but couldn't be loaded: {}.{}", audience_id, date_str);
+                }
+                Err(e) => {
+                    eprintln!("[ERROR] Failed to load timesheet {}.{}: {}", audience_id, date_str, e);
+                    return Err(e);
+                }
             }
         }
 

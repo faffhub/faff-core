@@ -56,15 +56,6 @@ pip install faff-core
 pip install faff-core==0.1.0
 ```
 
-## Version Flow Example
-
-1. Start: `Cargo.toml` has `version = "0.1.0"`
-2. Dev builds publish: `0.1.0.dev1`, `0.1.0.dev2`, `0.1.0.dev3`
-3. Tag `v0.1.0`: publishes `0.1.0`, bumps `Cargo.toml` to `0.1.1`
-4. Dev builds publish: `0.1.1.dev1`, `0.1.1.dev2`
-5. Tag `v0.2.0`: publishes `0.2.0`, bumps `Cargo.toml` to `0.2.1`
-6. Dev builds publish: `0.2.1.dev1`, `0.2.1.dev2`
-
 ## Requirements
 
 The following GitHub secrets must be set:
