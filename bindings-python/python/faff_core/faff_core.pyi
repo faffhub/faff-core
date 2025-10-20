@@ -17,7 +17,8 @@ class models:
         """
         Intent represents what you're doing, classified semantically.
 
-        All fields are optional. If alias is not provided, it's auto-generated.
+        Most fields are optional except trackers which defaults to empty list.
+        If alias is not provided, it's auto-generated.
         """
         alias: Optional[str]
         role: Optional[str]
@@ -33,7 +34,7 @@ class models:
             objective: Optional[str] = None,
             action: Optional[str] = None,
             subject: Optional[str] = None,
-            trackers: Optional[List[str]] = None
+            trackers: List[str] = []
         ) -> None: ...
 
         def as_dict(self) -> Dict: ...
