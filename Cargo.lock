@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "faff-core"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "base64",
@@ -276,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "faff-core-python"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "chrono",

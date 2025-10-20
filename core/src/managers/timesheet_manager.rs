@@ -95,7 +95,11 @@ impl TimesheetManager {
             // Parse audience_id and date from filename: audience.YYYY-MM-DD
             let parts: Vec<&str> = filename.split('.').collect();
             if parts.len() != 2 {
-                eprintln!("[WARN] Skipping file with unexpected format: {} ({} parts)", filename, parts.len());
+                eprintln!(
+                    "[WARN] Skipping file with unexpected format: {} ({} parts)",
+                    filename,
+                    parts.len()
+                );
                 continue;
             }
 
@@ -104,7 +108,10 @@ impl TimesheetManager {
             let ts_date = match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("[WARN] Skipping file with invalid date format '{}': {}", date_str, e);
+                    eprintln!(
+                        "[WARN] Skipping file with invalid date format '{}': {}",
+                        date_str, e
+                    );
                     continue;
                 }
             };
@@ -119,10 +126,16 @@ impl TimesheetManager {
             match self.get_timesheet(audience_id, ts_date) {
                 Ok(Some(timesheet)) => timesheets.push(timesheet),
                 Ok(None) => {
-                    eprintln!("[WARN] Timesheet file exists but couldn't be loaded: {}.{}", audience_id, date_str);
+                    eprintln!(
+                        "[WARN] Timesheet file exists but couldn't be loaded: {}.{}",
+                        audience_id, date_str
+                    );
                 }
                 Err(e) => {
-                    eprintln!("[ERROR] Failed to load timesheet {}.{}: {}", audience_id, date_str, e);
+                    eprintln!(
+                        "[ERROR] Failed to load timesheet {}.{}: {}",
+                        audience_id, date_str, e
+                    );
                     return Err(e);
                 }
             }

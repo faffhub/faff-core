@@ -24,6 +24,7 @@ pub(crate) fn intent_from_dict_internal(dict: &Bound<'_, PyDict>) -> PyResult<Py
 #[pymethods]
 impl PyIntent {
     #[new]
+    #[pyo3(signature = (alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![]))]
     pub fn new(
         alias: Option<String>,
         role: Option<String>,
