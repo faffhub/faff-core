@@ -122,7 +122,10 @@ impl PyLogManager {
     }
 
     /// Get a log for a given date (returns None if file doesn't exist)
-    fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<Option<faff_core::py_models::log::PyLog>> {
+    fn get_log(
+        &self,
+        date: Bound<'_, PyDate>,
+    ) -> PyResult<Option<faff_core::py_models::log::PyLog>> {
         let naive_date = date_py_to_rust(date)?;
         let log = self
             .inner
@@ -132,7 +135,10 @@ impl PyLogManager {
     }
 
     /// Get a log for a given date (creates an empty log if file doesn't exist)
-    fn get_log_or_create(&self, date: Bound<'_, PyDate>) -> PyResult<faff_core::py_models::log::PyLog> {
+    fn get_log_or_create(
+        &self,
+        date: Bound<'_, PyDate>,
+    ) -> PyResult<faff_core::py_models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
         let log = self
             .inner

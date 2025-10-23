@@ -45,14 +45,12 @@ impl PyWorkspace {
 
         // Create Python manager wrappers from the Rust managers
         // Clone managers and wrap in Arc for the Python layer
-        let plans = PyPlanManager::from_rust_arc(
-            Arc::new(inner_arc.plans().clone()),
-            inner_arc.clone()
-        );
+        let plans =
+            PyPlanManager::from_rust_arc(Arc::new(inner_arc.plans().clone()), inner_arc.clone());
         let logs = PyLogManager::from_rust(inner_arc.logs().clone(), inner_arc.clone());
         let timesheets = PyTimesheetManager::from_rust(
             Arc::new(inner_arc.timesheets().clone()),
-            inner_arc.clone()
+            inner_arc.clone(),
         );
         let identities = PyIdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
         // Clone the plugin manager from inside the mutex

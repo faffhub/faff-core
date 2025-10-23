@@ -1,9 +1,9 @@
 use crate::python::storage::PyStorage;
-use faff_core::models::Config;
 use faff_core::managers::{
     AudiencePlugin as RustAudiencePlugin, PlanSourcePlugin as RustPlanSourcePlugin,
     PluginManager as RustPluginManager,
 };
+use faff_core::models::Config;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
@@ -57,9 +57,9 @@ impl PyPluginManager {
 
         // Access the cache to get the plugins
         let cache = manager.plugins_cache.lock().unwrap();
-        let plugins = cache.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded")
-        })?;
+        let plugins = cache
+            .as_ref()
+            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
 
         let result = PyDict::new(py);
         for (name, plugin_class) in plugins.iter() {
@@ -143,7 +143,11 @@ impl PyPluginManager {
     ///
     /// Returns:
     ///     The audience plugin instance, or None if not found
-    pub fn get_audience_by_id(&self, _py: Python<'_>, audience_id: &str) -> PyResult<Option<Py<PyAny>>> {
+    pub fn get_audience_by_id(
+        &self,
+        _py: Python<'_>,
+        audience_id: &str,
+    ) -> PyResult<Option<Py<PyAny>>> {
         let mut manager = self
             .manager
             .lock()

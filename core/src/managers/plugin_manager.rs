@@ -176,7 +176,9 @@ impl PluginManager {
         // Verify plugin exists
         {
             let cache = self.plugins_cache.lock().unwrap();
-            let plugins = cache.as_ref().ok_or_else(|| anyhow::anyhow!("Plugins not loaded"))?;
+            let plugins = cache
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Plugins not loaded"))?;
             if !plugins.contains_key(plugin_name) {
                 return Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name));
             }
@@ -334,7 +336,9 @@ impl PluginManager {
                     audience.config.clone(),
                     defaults,
                 )
-                .with_context(|| format!("Failed to instantiate audience plugin '{}'", audience.name))?;
+                .with_context(|| {
+                    format!("Failed to instantiate audience plugin '{}'", audience.name)
+                })?;
             instances.push(instance);
         }
 

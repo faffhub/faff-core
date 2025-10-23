@@ -70,7 +70,10 @@ impl PyIdentityManager {
     ///
     /// Returns:
     ///     Dictionary mapping identity names to signing keys (as bytes)
-    pub fn list_identities<'py>(&self, py: Python<'py>) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
+    pub fn list_identities<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
         let identities = self
             .manager
             .list_identities()

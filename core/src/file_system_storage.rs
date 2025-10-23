@@ -27,7 +27,10 @@ impl FileSystemStorage {
     pub fn from_path(start_path: PathBuf) -> Result<Self> {
         let faff_root = Self::find_faff_root(&start_path)?;
         let faff_dir = faff_root.join(".faff");
-        Ok(Self { faff_root, faff_dir })
+        Ok(Self {
+            faff_root,
+            faff_dir,
+        })
     }
 
     /// Search upward from a given path for a `.faff` directory
@@ -86,7 +89,8 @@ impl Storage for FileSystemStorage {
     }
 
     fn read_string(&self, path: &Path) -> Result<String> {
-        std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path.display()))
+        std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read file: {}", path.display()))
     }
 
     fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
@@ -95,7 +99,8 @@ impl Storage for FileSystemStorage {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
-        std::fs::write(path, data).with_context(|| format!("Failed to write file: {}", path.display()))
+        std::fs::write(path, data)
+            .with_context(|| format!("Failed to write file: {}", path.display()))
     }
 
     fn write_string(&self, path: &Path, data: &str) -> Result<()> {
@@ -104,11 +109,13 @@ impl Storage for FileSystemStorage {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
-        std::fs::write(path, data).with_context(|| format!("Failed to write file: {}", path.display()))
+        std::fs::write(path, data)
+            .with_context(|| format!("Failed to write file: {}", path.display()))
     }
 
     fn delete(&self, path: &Path) -> Result<()> {
-        std::fs::remove_file(path).with_context(|| format!("Failed to delete file: {}", path.display()))
+        std::fs::remove_file(path)
+            .with_context(|| format!("Failed to delete file: {}", path.display()))
     }
 
     fn exists(&self, path: &Path) -> bool {

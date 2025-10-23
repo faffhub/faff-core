@@ -1,8 +1,8 @@
 use crate::file_system_storage::FileSystemStorage;
-use crate::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
-use crate::models::Config;
 #[cfg(feature = "python")]
 use crate::managers::PluginManager;
+use crate::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
+use crate::models::Config;
 use crate::storage::Storage;
 use chrono::{DateTime, NaiveDate, Utc};
 use chrono_tz::Tz;
@@ -45,10 +45,7 @@ impl Workspace {
         let timesheet_manager = TimesheetManager::new(storage.clone());
         let identity_manager = IdentityManager::new(storage.clone());
         #[cfg(feature = "python")]
-        let plugin_manager = Mutex::new(PluginManager::new(
-            storage.clone(),
-            config.clone(),
-        ));
+        let plugin_manager = Mutex::new(PluginManager::new(storage.clone(), config.clone()));
 
         Ok(Self {
             storage,

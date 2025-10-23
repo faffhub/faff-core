@@ -269,7 +269,11 @@ impl PlanManager {
     /// Get the plan containing a specific tracker ID
     ///
     /// Returns None if the tracker is not found in any plan for the given date
-    pub fn get_plan_by_tracker_id(&self, tracker_id: &str, date: NaiveDate) -> Result<Option<Plan>> {
+    pub fn get_plan_by_tracker_id(
+        &self,
+        tracker_id: &str,
+        date: NaiveDate,
+    ) -> Result<Option<Plan>> {
         let plans = self.get_plans(date)?;
 
         for plan in plans.values() {
@@ -375,12 +379,19 @@ impl PlanManager {
         let file_path = plan_dir.join(filename);
 
         if !self.storage.exists(&file_path) {
-            anyhow::bail!("Plan for source '{}' and date {} does not exist", source, date);
+            anyhow::bail!(
+                "Plan for source '{}' and date {} does not exist",
+                source,
+                date
+            );
         }
 
-        self.storage
-            .delete(&file_path)
-            .with_context(|| format!("Failed to delete plan for source '{}' and date {}", source, date))?;
+        self.storage.delete(&file_path).with_context(|| {
+            format!(
+                "Failed to delete plan for source '{}' and date {}",
+                source, date
+            )
+        })?;
 
         Ok(())
     }
@@ -397,7 +408,10 @@ impl PlanManager {
     /// # Returns
     /// Vector of plan remote plugin instances
     #[cfg(feature = "python")]
-    pub fn remotes(&self, plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
+    pub fn remotes(
+        &self,
+        plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>,
+    ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
         let mut pm = plugin_manager.lock().unwrap();
         pm.plan_remotes()
     }

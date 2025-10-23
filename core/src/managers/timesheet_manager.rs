@@ -75,8 +75,10 @@ impl TimesheetManager {
             .storage
             .read_string(&timesheet_path)
             .with_context(|| format!("Failed to read timesheet for {} on {}", audience_id, date))?;
-        let mut timesheet: Timesheet = serde_json::from_str(&timesheet_data)
-            .with_context(|| format!("Failed to parse timesheet for {} on {}", audience_id, date))?;
+        let mut timesheet: Timesheet =
+            serde_json::from_str(&timesheet_data).with_context(|| {
+                format!("Failed to parse timesheet for {} on {}", audience_id, date)
+            })?;
 
         // Try to load metadata if it exists
         let meta_filename = format!("{}.meta", timesheet_filename);
@@ -87,8 +89,8 @@ impl TimesheetManager {
                 .storage
                 .read_string(&meta_path)
                 .context("Failed to read timesheet metadata")?;
-            let meta: TimesheetMeta = serde_json::from_str(&meta_data)
-                .context("Failed to parse timesheet metadata")?;
+            let meta: TimesheetMeta =
+                serde_json::from_str(&meta_data).context("Failed to parse timesheet metadata")?;
             timesheet.meta = meta;
         }
 
@@ -198,14 +200,12 @@ impl TimesheetManager {
         }
 
         // Delete the timesheet file
-        self.storage
-            .delete(&timesheet_path)
-            .with_context(|| {
-                format!(
-                    "Failed to delete timesheet for audience '{}' on {}",
-                    audience_id, date
-                )
-            })?;
+        self.storage.delete(&timesheet_path).with_context(|| {
+            format!(
+                "Failed to delete timesheet for audience '{}' on {}",
+                audience_id, date
+            )
+        })?;
 
         // Delete the metadata file if it exists
         let meta_filename = format!("{}.meta", timesheet_filename);
@@ -288,7 +288,10 @@ impl TimesheetManager {
     /// # Returns
     /// Vector of audience plugin instances
     #[cfg(feature = "python")]
-    pub fn audiences(&self, plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
+    pub fn audiences(
+        &self,
+        plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>,
+    ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
         let mut pm = plugin_manager.lock().unwrap();
         pm.audiences()
     }
