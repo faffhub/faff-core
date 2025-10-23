@@ -174,29 +174,42 @@ impl PyPlanManager {
 
     /// Get the plan containing a specific tracker ID
     ///
-    /// Returns: Plan
+    /// Returns: Plan or None if tracker not found
     pub fn get_plan_by_tracker_id(
         &self,
         tracker_id: &str,
         date: Bound<'_, PyDate>,
-    ) -> PyResult<PyPlan> {
+    ) -> PyResult<Option<PyPlan>> {
         let naive_date = date_py_to_rust(date)?;
         let plan = self
             .manager
             .get_plan_by_tracker_id(tracker_id, naive_date)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        Ok(PyPlan { inner: plan })
+        Ok(plan.map(|inner| PyPlan { inner }))
     }
 
-    /// Get the local plan for a given date
+    /// Get the local plan for a given date (returns None if it doesn't exist)
     ///
-    /// Returns: Plan (creates empty one if it doesn't exist)
-    pub fn local_plan(&self, date: Bound<'_, PyDate>) -> PyResult<PyPlan> {
+    /// Returns: Plan or None
+    pub fn get_local_plan(&self, date: Bound<'_, PyDate>) -> PyResult<Option<PyPlan>> {
         let naive_date = date_py_to_rust(date)?;
         let plan = self
             .manager
-            .local_plan(naive_date)
+            .get_local_plan(naive_date)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(plan.map(|inner| PyPlan { inner }))
+    }
+
+    /// Get the local plan for a given date (creates empty one if it doesn't exist)
+    ///
+    /// Returns: Plan
+    pub fn get_local_plan_or_create(&self, date: Bound<'_, PyDate>) -> PyResult<PyPlan> {
+        let naive_date = date_py_to_rust(date)?;
+        let plan = self
+            .manager
+            .get_local_plan_or_create(naive_date)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyPlan { inner: plan })
@@ -209,13 +222,9 @@ impl PyPlanManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
-    /// Clear the plan cache
-    pub fn clear_cache(&self) -> PyResult<()> {
-        self.manager.clear_cache();
-        Ok(())
-    }
-
-    /// Get plan remote plugin instances (delegates to workspace.plugins.plan_remotes())
+    /// Get plan remote plugin instances
+    ///
+    /// This delegates to the Rust PlanManager's remotes() method.
     pub fn remotes(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err(
@@ -223,10 +232,8 @@ impl PyPlanManager {
             )
         })?;
 
-        let plugin_manager_arc = workspace.plugins();
-        let mut plugin_manager = plugin_manager_arc.lock().unwrap();
-        plugin_manager
-            .plan_remotes()
+        self.manager
+            .remotes(workspace.plugins())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

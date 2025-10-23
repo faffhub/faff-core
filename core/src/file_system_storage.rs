@@ -105,6 +105,10 @@ impl Storage for FileSystemStorage {
         std::fs::write(path, data).context(format!("Failed to write file: {}", path.display()))
     }
 
+    fn delete(&self, path: &PathBuf) -> Result<()> {
+        std::fs::remove_file(path).context(format!("Failed to delete file: {}", path.display()))
+    }
+
     fn exists(&self, path: &PathBuf) -> bool {
         path.exists()
     }

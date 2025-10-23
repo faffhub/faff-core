@@ -2,22 +2,24 @@ use crate::file_system_storage::FileSystemStorage;
 use crate::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
 use crate::models::Config;
 #[cfg(feature = "python")]
-use crate::plugins::PluginManager;
+use crate::managers::PluginManager;
 use crate::storage::Storage;
 use chrono::{DateTime, NaiveDate, Utc};
 use chrono_tz::Tz;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(feature = "python")]
+use std::sync::Mutex;
 
 /// Workspace provides coordinated access to faff functionality
 pub struct Workspace {
     storage: Arc<dyn Storage>,
     config: Config,
-    plan_manager: Arc<PlanManager>,
-    log_manager: Arc<LogManager>,
-    timesheet_manager: Arc<TimesheetManager>,
-    identity_manager: Arc<IdentityManager>,
+    plan_manager: PlanManager,
+    log_manager: LogManager,
+    timesheet_manager: TimesheetManager,
+    identity_manager: IdentityManager,
     #[cfg(feature = "python")]
-    plugin_manager: Arc<Mutex<PluginManager>>,
+    plugin_manager: Mutex<PluginManager>,
 }
 
 impl Workspace {
@@ -38,15 +40,15 @@ impl Workspace {
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 
         // Create managers
-        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-        let log_manager = Arc::new(LogManager::new(storage.clone(), config.timezone));
-        let timesheet_manager = Arc::new(TimesheetManager::new(storage.clone()));
-        let identity_manager = Arc::new(IdentityManager::new(storage.clone()));
+        let plan_manager = PlanManager::new(storage.clone());
+        let log_manager = LogManager::new(storage.clone(), config.timezone);
+        let timesheet_manager = TimesheetManager::new(storage.clone());
+        let identity_manager = IdentityManager::new(storage.clone());
         #[cfg(feature = "python")]
-        let plugin_manager = Arc::new(Mutex::new(PluginManager::new(
+        let plugin_manager = Mutex::new(PluginManager::new(
             storage.clone(),
             config.clone(),
-        )));
+        ));
 
         Ok(Self {
             storage,
@@ -86,29 +88,29 @@ impl Workspace {
     }
 
     /// Get the PlanManager
-    pub fn plans(&self) -> Arc<PlanManager> {
-        self.plan_manager.clone()
+    pub fn plans(&self) -> &PlanManager {
+        &self.plan_manager
     }
 
     /// Get the LogManager
-    pub fn logs(&self) -> Arc<LogManager> {
-        self.log_manager.clone()
+    pub fn logs(&self) -> &LogManager {
+        &self.log_manager
     }
 
     /// Get the TimesheetManager
-    pub fn timesheets(&self) -> Arc<TimesheetManager> {
-        self.timesheet_manager.clone()
+    pub fn timesheets(&self) -> &TimesheetManager {
+        &self.timesheet_manager
     }
 
     /// Get the IdentityManager
-    pub fn identities(&self) -> Arc<IdentityManager> {
-        self.identity_manager.clone()
+    pub fn identities(&self) -> &IdentityManager {
+        &self.identity_manager
     }
 
     /// Get the PluginManager
     #[cfg(feature = "python")]
-    pub fn plugins(&self) -> Arc<Mutex<PluginManager>> {
-        self.plugin_manager.clone()
+    pub fn plugins(&self) -> &Mutex<PluginManager> {
+        &self.plugin_manager
     }
 }
 

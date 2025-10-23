@@ -17,25 +17,17 @@ static PLAN_FILENAME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Manages Plan loading, caching, and querying
 ///
-/// FIXME: Currently takes just Storage, but may need access to other managers
-/// (e.g., to coordinate with IdentityManager, TimesheetManager) in the future.
-/// For now, coordination happens via method parameters (like get_trackers()).
-/// Consider creating a Workspace wrapper or passing managers as needed.
+/// Manages plan loading and querying
+#[derive(Clone)]
 pub struct PlanManager {
     storage: Arc<dyn Storage>,
-    /// Cache of plans by date
-    /// Key: (date) -> Value: HashMap<source, Plan>
-    cache: std::sync::RwLock<HashMap<NaiveDate, HashMap<String, Plan>>>,
 }
 
 impl PlanManager {
     const LOCAL_PLAN_SOURCE: &'static str = "local";
 
     pub fn new(storage: Arc<dyn Storage>) -> Self {
-        Self {
-            storage,
-            cache: std::sync::RwLock::new(HashMap::new()),
-        }
+        Self { storage }
     }
 
     /// Get all plans valid for a given date
@@ -44,24 +36,7 @@ impl PlanManager {
     /// - valid_from <= target_date
     /// - and (valid_until >= target_date or valid_until is None)
     pub fn get_plans(&self, date: NaiveDate) -> Result<HashMap<String, Plan>> {
-        // Check cache first
-        {
-            let cache = self.cache.read().unwrap();
-            if let Some(plans) = cache.get(&date) {
-                return Ok(plans.clone());
-            }
-        }
-
-        // Not in cache, load from storage
-        let plans = self.load_plans_for_date(date)?;
-
-        // Store in cache
-        {
-            let mut cache = self.cache.write().unwrap();
-            cache.insert(date, plans.clone());
-        }
-
-        Ok(plans)
+        self.load_plans_for_date(date)
     }
 
     /// Load plans from storage for a given date
@@ -292,26 +267,35 @@ impl PlanManager {
     }
 
     /// Get the plan containing a specific tracker ID
-    pub fn get_plan_by_tracker_id(&self, tracker_id: &str, date: NaiveDate) -> Result<Plan> {
+    ///
+    /// Returns None if the tracker is not found in any plan for the given date
+    pub fn get_plan_by_tracker_id(&self, tracker_id: &str, date: NaiveDate) -> Result<Option<Plan>> {
         let plans = self.get_plans(date)?;
 
         for plan in plans.values() {
             if plan.trackers.contains_key(tracker_id) {
-                return Ok(plan.clone());
+                return Ok(Some(plan.clone()));
             }
         }
 
-        anyhow::bail!("Tracker ID {} not found in plans for {}", tracker_id, date)
+        Ok(None)
+    }
+
+    /// Get the local plan for a given date
+    ///
+    /// Returns None if the local plan doesn't exist
+    pub fn get_local_plan(&self, date: NaiveDate) -> Result<Option<Plan>> {
+        let plans = self.get_plans(date)?;
+        Ok(plans.get(Self::LOCAL_PLAN_SOURCE).cloned())
     }
 
     /// Get the local plan for a given date, creating an empty one if it doesn't exist
-    pub fn local_plan(&self, date: NaiveDate) -> Result<Plan> {
-        let plans = self.get_plans(date)?;
-
-        if let Some(plan) = plans.get(Self::LOCAL_PLAN_SOURCE) {
-            Ok(plan.clone())
+    ///
+    /// This is a convenience method for callers who always want a plan to work with
+    pub fn get_local_plan_or_create(&self, date: NaiveDate) -> Result<Plan> {
+        if let Some(plan) = self.get_local_plan(date)? {
+            Ok(plan)
         } else {
-            // Return an empty local plan
             Ok(Plan::new(
                 Self::LOCAL_PLAN_SOURCE.to_string(),
                 date,
@@ -341,16 +325,81 @@ impl PlanManager {
             .write_string(&file_path, &toml_content)
             .context("Failed to write plan file")?;
 
-        // Clear cache to force reload on next access
-        self.clear_cache();
+        Ok(())
+    }
+
+    /// List all plan files
+    ///
+    /// Returns a vector of (source, valid_from_date) tuples
+    pub fn list_plans(&self) -> Result<Vec<(String, NaiveDate)>> {
+        let plan_dir = self.storage.plan_dir();
+        let files = self
+            .storage
+            .list_files(&plan_dir, "*.toml")
+            .context("Failed to list plan files")?;
+
+        let mut plan_info = Vec::new();
+
+        for file_path in files {
+            let filename = file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .with_context(|| format!("Invalid filename in plan directory: {:?}", file_path))?;
+
+            if let Some(captures) = PLAN_FILENAME_REGEX.captures(filename) {
+                let source = captures.name("source").unwrap().as_str().to_string();
+                let datestr = captures.name("datestr").unwrap().as_str();
+
+                if let Ok(date) = NaiveDate::parse_from_str(datestr, "%Y%m%d") {
+                    plan_info.push((source, date));
+                }
+            }
+        }
+
+        plan_info.sort();
+        Ok(plan_info)
+    }
+
+    /// Check if a plan exists for a specific source and date
+    pub fn plan_exists(&self, source: &str, date: NaiveDate) -> bool {
+        let plan_dir = self.storage.plan_dir();
+        let filename = format!("{}.{}.toml", source, date.format("%Y%m%d"));
+        let file_path = plan_dir.join(filename);
+        self.storage.exists(&file_path)
+    }
+
+    /// Delete a plan
+    pub fn delete_plan(&self, source: &str, date: NaiveDate) -> Result<()> {
+        let plan_dir = self.storage.plan_dir();
+        let filename = format!("{}.{}.toml", source, date.format("%Y%m%d"));
+        let file_path = plan_dir.join(filename);
+
+        if !self.storage.exists(&file_path) {
+            anyhow::bail!("Plan for source '{}' and date {} does not exist", source, date);
+        }
+
+        self.storage
+            .delete(&file_path)
+            .with_context(|| format!("Failed to delete plan for source '{}' and date {}", source, date))?;
 
         Ok(())
     }
 
-    /// Clear the plan cache
-    pub fn clear_cache(&self) {
-        let mut cache = self.cache.write().unwrap();
-        cache.clear();
+    /// Get plan remote plugin instances
+    ///
+    /// This is a convenience method that delegates to the plugin manager.
+    /// While plan remotes are implemented as plugins, they are conceptually
+    /// associated with plans, so this provides a domain-focused access pattern.
+    ///
+    /// # Arguments
+    /// * `plugin_manager` - Reference to the plugin manager
+    ///
+    /// # Returns
+    /// Vector of plan remote plugin instances
+    #[cfg(feature = "python")]
+    pub fn remotes(&self, plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
+        let mut pm = plugin_manager.lock().unwrap();
+        pm.plan_remotes()
     }
 }
 
@@ -429,5 +478,108 @@ objective = "{}:development"
         let plans2 = manager.get_plans(date).unwrap();
 
         assert_eq!(plans1.len(), plans2.len());
+    }
+
+    #[test]
+    fn test_get_local_plan_returns_none_when_missing() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = PlanManager::new(storage);
+        let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+
+        let plan = manager.get_local_plan(date).unwrap();
+        assert!(plan.is_none());
+    }
+
+    #[test]
+    fn test_get_local_plan_or_create() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = PlanManager::new(storage);
+        let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+
+        let plan = manager.get_local_plan_or_create(date).unwrap();
+        assert_eq!(plan.source, "local");
+        assert_eq!(plan.valid_from, date);
+        assert_eq!(plan.intents.len(), 0);
+    }
+
+    #[test]
+    fn test_get_plan_by_tracker_id_returns_none() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/plans/local.20250101.toml"),
+            sample_plan_toml("local", "2025-01-01"),
+        );
+
+        let manager = PlanManager::new(storage);
+        let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+
+        let plan = manager.get_plan_by_tracker_id("999", date).unwrap();
+        assert!(plan.is_none());
+    }
+
+    #[test]
+    fn test_list_plans() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/plans/local.20250101.toml"),
+            sample_plan_toml("local", "2025-01-01"),
+        );
+        storage.add_file(
+            PathBuf::from("/faff/plans/remote.20250115.toml"),
+            sample_plan_toml("remote", "2025-01-15"),
+        );
+
+        let manager = PlanManager::new(storage);
+        let plans = manager.list_plans().unwrap();
+
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].0, "local");
+        assert_eq!(plans[0].1, NaiveDate::from_ymd_opt(2025, 1, 1).unwrap());
+        assert_eq!(plans[1].0, "remote");
+        assert_eq!(plans[1].1, NaiveDate::from_ymd_opt(2025, 1, 15).unwrap());
+    }
+
+    #[test]
+    fn test_plan_exists() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/plans/local.20250101.toml"),
+            sample_plan_toml("local", "2025-01-01"),
+        );
+
+        let manager = PlanManager::new(storage);
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+
+        assert!(manager.plan_exists("local", date));
+        assert!(!manager.plan_exists("remote", date));
+    }
+
+    #[test]
+    fn test_delete_plan() {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/plans/local.20250101.toml"),
+            sample_plan_toml("local", "2025-01-01"),
+        );
+
+        let manager = PlanManager::new(storage.clone());
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+
+        assert!(manager.plan_exists("local", date));
+
+        manager.delete_plan("local", date).unwrap();
+
+        assert!(!manager.plan_exists("local", date));
+    }
+
+    #[test]
+    fn test_delete_nonexistent_plan() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = PlanManager::new(storage);
+        let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+
+        let result = manager.delete_plan("nonexistent", date);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
 }

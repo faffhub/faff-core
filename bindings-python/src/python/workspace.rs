@@ -7,7 +7,7 @@ use faff_core::type_mapping::{date_rust_to_py, datetime_rust_to_py};
 use faff_core::workspace::Workspace as RustWorkspace;
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDateTime};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[pyclass(name = "Workspace")]
 pub struct PyWorkspace {
@@ -44,12 +44,20 @@ impl PyWorkspace {
         let inner_arc = Arc::new(inner);
 
         // Create Python manager wrappers from the Rust managers
-        // Pass workspace reference to managers that need it
-        let plans = PyPlanManager::from_rust_arc(inner_arc.plans(), inner_arc.clone());
-        let logs = PyLogManager::from_rust((*inner_arc.logs()).clone(), inner_arc.clone());
-        let timesheets = PyTimesheetManager::from_rust(inner_arc.timesheets(), inner_arc.clone());
-        let identities = PyIdentityManager::from_rust(inner_arc.identities());
-        let plugins = PyPluginManager::from_rust(inner_arc.plugins());
+        // Clone managers and wrap in Arc for the Python layer
+        let plans = PyPlanManager::from_rust_arc(
+            Arc::new(inner_arc.plans().clone()),
+            inner_arc.clone()
+        );
+        let logs = PyLogManager::from_rust(inner_arc.logs().clone(), inner_arc.clone());
+        let timesheets = PyTimesheetManager::from_rust(
+            Arc::new(inner_arc.timesheets().clone()),
+            inner_arc.clone()
+        );
+        let identities = PyIdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
+        // Clone the plugin manager from inside the mutex
+        let plugin_manager_clone = inner_arc.plugins().lock().unwrap().clone();
+        let plugins = PyPluginManager::from_rust(Arc::new(Mutex::new(plugin_manager_clone)));
 
         Ok(Self {
             inner: inner_arc,

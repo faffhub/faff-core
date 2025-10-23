@@ -201,8 +201,7 @@ fn js_date_to_naive_date(date: &js_sys::Date) -> Result<NaiveDate, JsValue> {
     let month = date.get_utc_month() + 1; // JS months are 0-indexed
     let day = date.get_utc_date();
 
-    NaiveDate::from_ymd_opt(year, month, day)
-        .ok_or_else(|| JsValue::from_str("Invalid date"))
+    NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| JsValue::from_str("Invalid date"))
 }
 
 fn naive_date_to_js_date(date: &NaiveDate) -> js_sys::Date {

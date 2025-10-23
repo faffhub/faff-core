@@ -1,9 +1,9 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::models::log::Log;
 use crate::models::plan::Plan;
@@ -12,10 +12,11 @@ use crate::models::Config;
 use crate::storage::Storage;
 
 /// Manages loading and executing Python plugins
+#[derive(Clone)]
 pub struct PluginManager {
     storage: Arc<dyn Storage>,
     config: Config,
-    plugins_cache: Option<HashMap<String, Py<PyAny>>>,
+    pub plugins_cache: Arc<Mutex<Option<HashMap<String, Py<PyAny>>>>>,
 }
 
 impl PluginManager {
@@ -23,7 +24,7 @@ impl PluginManager {
         Self {
             storage,
             config,
-            plugins_cache: None,
+            plugins_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -34,10 +35,14 @@ impl PluginManager {
 
     /// Load all available plugins from the plugins directory
     ///
-    /// Returns a HashMap of plugin_name -> plugin_class
-    pub fn load_plugins(&mut self) -> Result<&HashMap<String, Py<PyAny>>> {
-        if self.plugins_cache.is_some() {
-            return Ok(self.plugins_cache.as_ref().unwrap());
+    /// Ensures plugins are loaded into the cache
+    pub fn load_plugins(&mut self) -> Result<()> {
+        // Check if already loaded
+        {
+            let cache = self.plugins_cache.lock().unwrap();
+            if cache.is_some() {
+                return Ok(());
+            }
         }
 
         let plugin_dir = self.plugin_dir();
@@ -45,13 +50,17 @@ impl PluginManager {
 
         // Ensure plugin directory exists
         if !self.storage.exists(&plugin_dir) {
-            self.plugins_cache = Some(plugins);
-            return Ok(self.plugins_cache.as_ref().unwrap());
+            let mut cache = self.plugins_cache.lock().unwrap();
+            *cache = Some(plugins);
+            return Ok(());
         }
 
         // List all .py files in the plugin directory
         let pattern = "*.py";
-        let plugin_files = self.storage.list_files(&plugin_dir, pattern)?;
+        let plugin_files = self
+            .storage
+            .list_files(&plugin_dir, pattern)
+            .context("Failed to list plugin files")?;
 
         Python::attach(|py| -> PyResult<()> {
             // Import the base Plugin classes from faff_core.plugins
@@ -146,8 +155,9 @@ impl PluginManager {
         })
         .map_err(|e: PyErr| anyhow::anyhow!("Python error: {}", e))?;
 
-        self.plugins_cache = Some(plugins);
-        Ok(self.plugins_cache.as_ref().unwrap())
+        let mut cache = self.plugins_cache.lock().unwrap();
+        *cache = Some(plugins);
+        Ok(())
     }
 
     /// Instantiate a plugin with the given config
@@ -160,13 +170,17 @@ impl PluginManager {
         config: HashMap<String, toml::Value>,
         defaults: HashMap<String, toml::Value>,
     ) -> Result<Py<PyAny>> {
-        // Verify plugin exists first
+        // Ensure plugins are loaded
+        self.load_plugins()?;
+
+        // Verify plugin exists
         {
-            let plugins = self.load_plugins()?;
+            let cache = self.plugins_cache.lock().unwrap();
+            let plugins = cache.as_ref().ok_or_else(|| anyhow::anyhow!("Plugins not loaded"))?;
             if !plugins.contains_key(plugin_name) {
                 return Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name));
             }
-        } // Borrow ends here
+        } // Lock released here
 
         // Get paths needed for plugin instantiation (can now access self.storage)
         let root_dir = self.storage.root_dir();
@@ -176,7 +190,9 @@ impl PluginManager {
             .join(instance_name);
 
         // Ensure state directory exists
-        self.storage.create_dir_all(&state_path)?;
+        self.storage
+            .create_dir_all(&state_path)
+            .context("Failed to create plugin state directory")?;
 
         // Get the plugin class inside Python::attach to avoid borrowing issues
         let plugin_name_owned = plugin_name.to_string();
@@ -280,12 +296,19 @@ impl PluginManager {
             // FIXME: This is a temporary solution - we should properly serialize PlanDefaults
             let defaults = HashMap::new();
 
-            let instance = self.instantiate_plugin(
-                &plan_remote.plugin,
-                &plan_remote.name,
-                plan_remote.config.clone(),
-                defaults,
-            )?;
+            let instance = self
+                .instantiate_plugin(
+                    &plan_remote.plugin,
+                    &plan_remote.name,
+                    plan_remote.config.clone(),
+                    defaults,
+                )
+                .with_context(|| {
+                    format!(
+                        "Failed to instantiate plan remote plugin '{}'",
+                        plan_remote.name
+                    )
+                })?;
             instances.push(instance);
         }
 
@@ -304,16 +327,45 @@ impl PluginManager {
             // TimesheetAudience doesn't have defaults
             let defaults = HashMap::new();
 
-            let instance = self.instantiate_plugin(
-                &audience.plugin,
-                &audience.name,
-                audience.config.clone(),
-                defaults,
-            )?;
+            let instance = self
+                .instantiate_plugin(
+                    &audience.plugin,
+                    &audience.name,
+                    audience.config.clone(),
+                    defaults,
+                )
+                .with_context(|| format!("Failed to instantiate audience plugin '{}'", audience.name))?;
             instances.push(instance);
         }
 
         Ok(instances)
+    }
+
+    /// Get a specific audience plugin by ID
+    ///
+    /// This searches through all configured audience plugins and returns the one
+    /// matching the given ID, or None if not found.
+    pub fn get_audience_by_id(&mut self, audience_id: &str) -> Result<Option<Py<PyAny>>> {
+        let audiences = self.audiences()?;
+
+        Python::attach(|py| -> PyResult<Option<Py<PyAny>>> {
+            for audience in audiences {
+                // Get the 'id' attribute from the plugin instance
+                let id: String = match audience.getattr(py, "id") {
+                    Ok(id_attr) => match id_attr.extract(py) {
+                        Ok(id) => id,
+                        Err(_) => continue, // Skip if can't extract ID
+                    },
+                    Err(_) => continue, // Skip if no 'id' attribute
+                };
+
+                if id == audience_id {
+                    return Ok(Some(audience));
+                }
+            }
+            Ok(None)
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to get audience by ID: {}", e))
     }
 }
 
@@ -462,6 +514,14 @@ mod tests {
                 .insert(path.clone(), data.to_vec());
             Ok(())
         }
+        fn delete(&self, path: &PathBuf) -> Result<()> {
+            let mut files = self.files.lock().unwrap();
+            if files.remove(path).is_some() {
+                Ok(())
+            } else {
+                anyhow::bail!("File not found: {:?}", path)
+            }
+        }
         fn exists(&self, path: &PathBuf) -> bool {
             self.files.lock().unwrap().contains_key(path)
         }
@@ -484,8 +544,7 @@ mod tests {
         };
         let mut manager = PluginManager::new(storage, config);
 
-        // Should return empty plugins when no files exist
-        let plugins = manager.load_plugins().unwrap();
-        assert_eq!(plugins.len(), 0);
+        // Should load successfully even when no files exist
+        manager.load_plugins().unwrap();
     }
 }

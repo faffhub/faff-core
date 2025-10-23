@@ -1,9 +1,11 @@
 use crate::models::{Timesheet, TimesheetMeta};
 use crate::storage::Storage;
+use anyhow::Context;
 use chrono::NaiveDate;
 use std::sync::Arc;
 
 /// Manages timesheet storage and retrieval
+#[derive(Clone)]
 pub struct TimesheetManager {
     storage: Arc<dyn Storage>,
 }
@@ -16,7 +18,9 @@ impl TimesheetManager {
     /// Write a timesheet to storage
     pub fn write_timesheet(&self, timesheet: &Timesheet) -> anyhow::Result<()> {
         let timesheet_dir = self.storage.timesheet_dir();
-        self.storage.create_dir_all(&timesheet_dir)?;
+        self.storage
+            .create_dir_all(&timesheet_dir)
+            .context("Failed to create timesheet directory")?;
 
         // Write the canonical timesheet
         let timesheet_filename = format!(
@@ -25,19 +29,34 @@ impl TimesheetManager {
             timesheet.date.format("%Y-%m-%d")
         );
         let timesheet_path = timesheet_dir.join(&timesheet_filename);
-        let canonical = timesheet.submittable_timesheet().canonical_form()?;
-        self.storage.write_bytes(&timesheet_path, &canonical)?;
+        let canonical = timesheet
+            .submittable_timesheet()
+            .canonical_form()
+            .context("Failed to create canonical form")?;
+        self.storage
+            .write_bytes(&timesheet_path, &canonical)
+            .with_context(|| {
+                format!(
+                    "Failed to write timesheet for {} on {}",
+                    timesheet.meta.audience_id, timesheet.date
+                )
+            })?;
 
         // Write the metadata separately
         let meta_filename = format!("{}.meta", timesheet_filename);
         let meta_path = timesheet_dir.join(&meta_filename);
-        let meta_json = serde_json::to_vec(&timesheet.meta)?;
-        self.storage.write_bytes(&meta_path, &meta_json)?;
+        let meta_json = serde_json::to_vec(&timesheet.meta)
+            .context("Failed to serialize timesheet metadata")?;
+        self.storage
+            .write_bytes(&meta_path, &meta_json)
+            .context("Failed to write timesheet metadata")?;
 
         Ok(())
     }
 
     /// Get a timesheet for a specific audience and date
+    ///
+    /// Returns None if the timesheet doesn't exist
     pub fn get_timesheet(
         &self,
         audience_id: &str,
@@ -52,16 +71,24 @@ impl TimesheetManager {
         }
 
         // Read the timesheet
-        let timesheet_data = self.storage.read_string(&timesheet_path)?;
-        let mut timesheet: Timesheet = serde_json::from_str(&timesheet_data)?;
+        let timesheet_data = self
+            .storage
+            .read_string(&timesheet_path)
+            .with_context(|| format!("Failed to read timesheet for {} on {}", audience_id, date))?;
+        let mut timesheet: Timesheet = serde_json::from_str(&timesheet_data)
+            .with_context(|| format!("Failed to parse timesheet for {} on {}", audience_id, date))?;
 
         // Try to load metadata if it exists
         let meta_filename = format!("{}.meta", timesheet_filename);
         let meta_path = timesheet_dir.join(&meta_filename);
 
         if self.storage.exists(&meta_path) {
-            let meta_data = self.storage.read_string(&meta_path)?;
-            let meta: TimesheetMeta = serde_json::from_str(&meta_data)?;
+            let meta_data = self
+                .storage
+                .read_string(&meta_path)
+                .context("Failed to read timesheet metadata")?;
+            let meta: TimesheetMeta = serde_json::from_str(&meta_data)
+                .context("Failed to parse timesheet metadata")?;
             timesheet.meta = meta;
         }
 
@@ -78,7 +105,10 @@ impl TimesheetManager {
             "*.json".to_string()
         };
 
-        let files = self.storage.list_files(&timesheet_dir, &pattern)?;
+        let files = self
+            .storage
+            .list_files(&timesheet_dir, &pattern)
+            .context("Failed to list timesheet files")?;
         let mut timesheets = Vec::new();
 
         for file in files {
@@ -143,6 +173,124 @@ impl TimesheetManager {
 
         timesheets.sort_by_key(|t| t.date);
         Ok(timesheets)
+    }
+
+    /// Check if a timesheet exists for a specific audience and date
+    pub fn timesheet_exists(&self, audience_id: &str, date: NaiveDate) -> bool {
+        let timesheet_dir = self.storage.timesheet_dir();
+        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
+        let timesheet_path = timesheet_dir.join(timesheet_filename);
+        self.storage.exists(&timesheet_path)
+    }
+
+    /// Delete a timesheet
+    pub fn delete_timesheet(&self, audience_id: &str, date: NaiveDate) -> anyhow::Result<()> {
+        let timesheet_dir = self.storage.timesheet_dir();
+        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
+        let timesheet_path = timesheet_dir.join(&timesheet_filename);
+
+        if !self.storage.exists(&timesheet_path) {
+            anyhow::bail!(
+                "Timesheet for audience '{}' on {} does not exist",
+                audience_id,
+                date
+            );
+        }
+
+        // Delete the timesheet file
+        self.storage
+            .delete(&timesheet_path)
+            .with_context(|| {
+                format!(
+                    "Failed to delete timesheet for audience '{}' on {}",
+                    audience_id, date
+                )
+            })?;
+
+        // Delete the metadata file if it exists
+        let meta_filename = format!("{}.meta", timesheet_filename);
+        let meta_path = timesheet_dir.join(&meta_filename);
+
+        if self.storage.exists(&meta_path) {
+            self.storage
+                .delete(&meta_path)
+                .context("Failed to delete timesheet metadata")?;
+        }
+
+        Ok(())
+    }
+
+    /// Submit a timesheet via its audience plugin
+    ///
+    /// This method:
+    /// 1. Looks up the audience plugin by the timesheet's audience_id
+    /// 2. Calls the plugin's submit_timesheet method
+    /// 3. Writes the timesheet back to storage
+    ///
+    /// # Arguments
+    /// * `timesheet` - The timesheet to submit
+    /// * `plugin_manager` - Mutable reference to the plugin manager for audience lookup
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The audience plugin is not found
+    /// - The plugin submission fails
+    /// - Writing the timesheet back fails
+    #[cfg(feature = "python")]
+    pub fn submit(
+        &self,
+        timesheet: &Timesheet,
+        plugin_manager: &mut crate::managers::PluginManager,
+    ) -> anyhow::Result<()> {
+        use pyo3::prelude::*;
+
+        let audience_id = &timesheet.meta.audience_id;
+
+        // Get the audience plugin
+        let audience = plugin_manager
+            .get_audience_by_id(audience_id)?
+            .ok_or_else(|| anyhow::anyhow!("No audience found for {}", audience_id))?;
+
+        // Call the plugin's submit_timesheet method
+        Python::attach(|py| -> PyResult<()> {
+            // Create a PyTimesheet wrapper
+            use crate::py_models::timesheet::PyTimesheet;
+            let pytimesheet = Py::new(
+                py,
+                PyTimesheet {
+                    inner: timesheet.clone(),
+                },
+            )?;
+
+            // Call submit_timesheet on the audience plugin
+            audience.call_method1(py, "submit_timesheet", (pytimesheet,))?;
+
+            Ok(())
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to submit timesheet: {}", e))?;
+
+        // TODO: Update timesheet metadata with submitted_at and submitted_by
+        // For now, just write it back as-is
+        self.write_timesheet(timesheet)?;
+
+        Ok(())
+    }
+
+    /// Get audience plugin instances
+    ///
+    /// This is a convenience method that delegates to the plugin manager.
+    /// While audiences are implemented as plugins, they are conceptually
+    /// associated with timesheets, so this provides a domain-focused access pattern.
+    ///
+    /// # Arguments
+    /// * `plugin_manager` - Reference to the plugin manager
+    ///
+    /// # Returns
+    /// Vector of audience plugin instances
+    #[cfg(feature = "python")]
+    pub fn audiences(&self, plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
+        let mut pm = plugin_manager.lock().unwrap();
+        pm.audiences()
     }
 }
 
@@ -218,5 +366,69 @@ mod tests {
         let filtered = manager.list_timesheets(Some(date1)).unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].date, date1);
+    }
+
+    #[test]
+    fn test_timesheet_exists() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = TimesheetManager::new(storage.clone());
+
+        let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
+        let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
+
+        assert!(!manager.timesheet_exists("test_audience", date));
+
+        let meta = TimesheetMeta::new("test_audience".to_string(), None, None);
+        let timesheet = Timesheet::new(
+            HashMap::new(),
+            date,
+            compiled,
+            chrono_tz::Europe::London,
+            vec![],
+            HashMap::new(),
+            meta,
+        );
+        manager.write_timesheet(&timesheet).unwrap();
+
+        assert!(manager.timesheet_exists("test_audience", date));
+    }
+
+    #[test]
+    fn test_delete_timesheet() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = TimesheetManager::new(storage.clone());
+
+        let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
+        let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
+
+        let meta = TimesheetMeta::new("test_audience".to_string(), None, None);
+        let timesheet = Timesheet::new(
+            HashMap::new(),
+            date,
+            compiled,
+            chrono_tz::Europe::London,
+            vec![],
+            HashMap::new(),
+            meta,
+        );
+        manager.write_timesheet(&timesheet).unwrap();
+
+        assert!(manager.timesheet_exists("test_audience", date));
+
+        manager.delete_timesheet("test_audience", date).unwrap();
+
+        assert!(!manager.timesheet_exists("test_audience", date));
+    }
+
+    #[test]
+    fn test_delete_nonexistent_timesheet() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = TimesheetManager::new(storage);
+
+        let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
+
+        let result = manager.delete_timesheet("nonexistent", date);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
 }

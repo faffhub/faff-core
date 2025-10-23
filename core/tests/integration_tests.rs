@@ -87,6 +87,14 @@ impl Storage for IntegrationStorage {
         Ok(())
     }
 
+    fn delete(&self, path: &PathBuf) -> anyhow::Result<()> {
+        let mut files = self.files.write().unwrap();
+        files
+            .remove(path)
+            .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))?;
+        Ok(())
+    }
+
     fn exists(&self, path: &PathBuf) -> bool {
         let files = self.files.read().unwrap();
         files.contains_key(path)
@@ -181,7 +189,10 @@ trackers = ["PROJ-123"]
     log_manager.write_log(&log, &trackers).unwrap();
 
     // Read log back
-    let retrieved_log = log_manager.get_log(date).unwrap();
+    let retrieved_log = log_manager
+        .get_log(date)
+        .unwrap()
+        .expect("Log should exist after writing");
     assert_eq!(retrieved_log.timeline.len(), 1);
     assert_eq!(
         retrieved_log.timeline[0].intent.alias.as_ref().unwrap(),
@@ -401,7 +412,7 @@ fn test_log_list_and_read_integration() {
     log_manager.write_log(&log3, &trackers).unwrap();
 
     // List all logs
-    let dates = log_manager.list_log_dates().unwrap();
+    let dates = log_manager.list_logs().unwrap();
     assert_eq!(dates.len(), 3);
     assert_eq!(dates[0], date1);
     assert_eq!(dates[1], date2);
@@ -409,7 +420,10 @@ fn test_log_list_and_read_integration() {
 
     // Read each log back
     for date in dates {
-        let log = log_manager.get_log(date).unwrap();
+        let log = log_manager
+            .get_log(date)
+            .unwrap()
+            .expect("Log should exist");
         assert_eq!(log.date, date);
     }
 }

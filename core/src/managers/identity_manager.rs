@@ -1,5 +1,5 @@
 use crate::storage::Storage;
-use anyhow::{bail, Result};
+use anyhow::{Context, Result};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::collections::HashMap;
@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Manages Ed25519 identity keypairs for signing timesheets
+#[derive(Clone)]
 pub struct IdentityManager {
     storage: Arc<dyn Storage>,
 }
@@ -36,12 +37,14 @@ impl IdentityManager {
         let public_path = self.get_pub_path(name);
 
         if !overwrite && self.storage.exists(&private_path) {
-            bail!("Identity '{}' already exists at {:?}", name, private_path);
+            anyhow::bail!("Identity '{}' already exists", name);
         }
 
         // Ensure identity directory exists
         let identity_dir = self.storage.identity_dir();
-        self.storage.create_dir_all(&identity_dir)?;
+        self.storage
+            .create_dir_all(&identity_dir)
+            .context("Failed to create identity directory")?;
 
         // Generate new keypair
         let mut csprng = OsRng;
@@ -61,8 +64,12 @@ impl IdentityManager {
         );
 
         // Write keys to files
-        self.storage.write_string(&private_path, &b64_private)?;
-        self.storage.write_string(&public_path, &b64_public)?;
+        self.storage
+            .write_string(&private_path, &b64_private)
+            .with_context(|| format!("Failed to write private key for identity '{}'", name))?;
+        self.storage
+            .write_string(&public_path, &b64_public)
+            .with_context(|| format!("Failed to write public key for identity '{}'", name))?;
 
         // Note: File permissions (chmod 0o600) should be handled by the Storage implementation
         // if it's a real filesystem. For testing with mock storage, this is skipped.
@@ -70,21 +77,55 @@ impl IdentityManager {
         Ok(signing_key)
     }
 
+    /// Check if an identity exists
+    pub fn identity_exists(&self, name: &str) -> bool {
+        self.storage.exists(&self.get_key_path(name))
+    }
+
+    /// Delete an identity
+    ///
+    /// Removes both the private and public key files
+    pub fn delete_identity(&self, name: &str) -> Result<()> {
+        let private_path = self.get_key_path(name);
+        let public_path = self.get_pub_path(name);
+
+        if !self.storage.exists(&private_path) {
+            anyhow::bail!("Identity '{}' does not exist", name);
+        }
+
+        // Delete private key
+        self.storage
+            .delete(&private_path)
+            .with_context(|| format!("Failed to delete private key for identity '{}'", name))?;
+
+        // Delete public key if it exists
+        if self.storage.exists(&public_path) {
+            self.storage
+                .delete(&public_path)
+                .with_context(|| format!("Failed to delete public key for identity '{}'", name))?;
+        }
+
+        Ok(())
+    }
+
     /// Get a specific identity by name
     pub fn get_identity(&self, name: &str) -> Result<Option<SigningKey>> {
-        let identities = self.get()?;
+        let identities = self.list_identities()?;
         Ok(identities.get(name).cloned())
     }
 
-    /// Get all identities
+    /// List all identities
     ///
     /// Returns a HashMap where keys are identity names and values are SigningKeys
-    pub fn get(&self) -> Result<HashMap<String, SigningKey>> {
+    pub fn list_identities(&self) -> Result<HashMap<String, SigningKey>> {
         let identity_dir = self.storage.identity_dir();
         let mut identities = HashMap::new();
 
         // List all files matching "id_*" pattern
-        let files = self.storage.list_files(&identity_dir, "id_*")?;
+        let files = self
+            .storage
+            .list_files(&identity_dir, "id_*")
+            .context("Failed to list identity files")?;
 
         for file in files {
             // Skip public key files
@@ -96,7 +137,7 @@ impl IdentityManager {
             let filename = file
                 .file_name()
                 .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
+                .with_context(|| format!("Invalid filename in identity directory: {:?}", file))?;
 
             if !filename.starts_with("id_") {
                 continue;
@@ -105,17 +146,21 @@ impl IdentityManager {
             let name = &filename[3..]; // Remove "id_" prefix
 
             // Read and decode the private key
-            let b64_private = self.storage.read_string(&file)?;
+            let b64_private = self
+                .storage
+                .read_string(&file)
+                .with_context(|| format!("Failed to read identity file '{}'", name))?;
+
             let key_bytes = base64::Engine::decode(
                 &base64::engine::general_purpose::STANDARD,
                 b64_private.trim(),
             )
-            .map_err(|e| anyhow::anyhow!("Failed to decode key in {:?}: {}", file, e))?;
+            .with_context(|| format!("Failed to decode base64 key for identity '{}'", name))?;
 
             if key_bytes.len() != 32 {
-                bail!(
-                    "Invalid key length in {:?}: expected 32 bytes, got {}",
-                    file,
+                anyhow::bail!(
+                    "Invalid key length for identity '{}': expected 32 bytes, got {}",
+                    name,
                     key_bytes.len()
                 );
             }
@@ -197,16 +242,44 @@ mod tests {
     }
 
     #[test]
-    fn test_get_all_identities() {
+    fn test_list_identities() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
         let key1 = manager.create_identity("alice", false).unwrap();
         let key2 = manager.create_identity("bob", false).unwrap();
 
-        let identities = manager.get().unwrap();
+        let identities = manager.list_identities().unwrap();
         assert_eq!(identities.len(), 2);
         assert_eq!(identities["alice"].to_bytes(), key1.to_bytes());
         assert_eq!(identities["bob"].to_bytes(), key2.to_bytes());
+    }
+
+    #[test]
+    fn test_identity_exists() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = IdentityManager::new(storage.clone());
+
+        assert!(!manager.identity_exists("test"));
+
+        manager.create_identity("test", false).unwrap();
+
+        assert!(manager.identity_exists("test"));
+    }
+
+    #[test]
+    fn test_delete_identity() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = IdentityManager::new(storage.clone());
+
+        manager.create_identity("test", false).unwrap();
+        assert!(manager.identity_exists("test"));
+
+        manager.delete_identity("test").unwrap();
+        assert!(!manager.identity_exists("test"));
+
+        // Try to delete non-existent identity
+        let result = manager.delete_identity("nonexistent");
+        assert!(result.is_err());
     }
 }

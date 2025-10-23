@@ -76,7 +76,7 @@ impl PyLogManager {
     fn list_log_dates<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDate>>> {
         let dates = self
             .inner
-            .list_log_dates()
+            .list_logs()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         dates
@@ -89,26 +89,28 @@ impl PyLogManager {
     fn list(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::py_models::log::PyLog>> {
         let dates = self
             .inner
-            .list_log_dates()
+            .list_logs()
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         let mut logs = Vec::new();
         for date in dates {
-            let log = self
+            if let Some(log) = self
                 .inner
                 .get_log(date)
-                .map_err(|e| PyValueError::new_err(e.to_string()))?;
-            logs.push(faff_core::py_models::log::PyLog { inner: log });
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+            {
+                logs.push(faff_core::py_models::log::PyLog { inner: log });
+            }
         }
 
         Ok(logs)
     }
 
-    /// Remove a log for a given date
-    fn rm(&self, date: Bound<'_, PyDate>) -> PyResult<()> {
+    /// Delete a log for a given date
+    fn delete_log(&self, date: Bound<'_, PyDate>) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
         self.inner
-            .rm(naive_date)
+            .delete_log(naive_date)
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
 
@@ -119,12 +121,22 @@ impl PyLogManager {
         Ok(zone_info)
     }
 
-    /// Get a log for a given date (returns empty log if file doesn't exist)
-    fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<faff_core::py_models::log::PyLog> {
+    /// Get a log for a given date (returns None if file doesn't exist)
+    fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<Option<faff_core::py_models::log::PyLog>> {
         let naive_date = date_py_to_rust(date)?;
         let log = self
             .inner
             .get_log(naive_date)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(log.map(|inner| faff_core::py_models::log::PyLog { inner }))
+    }
+
+    /// Get a log for a given date (creates an empty log if file doesn't exist)
+    fn get_log_or_create(&self, date: Bound<'_, PyDate>) -> PyResult<faff_core::py_models::log::PyLog> {
+        let naive_date = date_py_to_rust(date)?;
+        let log = self
+            .inner
+            .get_log_or_create(naive_date)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(faff_core::py_models::log::PyLog { inner: log })
     }
@@ -149,7 +161,7 @@ impl PyLogManager {
         _py: Python<'_>,
         intent: &faff_core::py_models::intent::PyIntent,
         note: Option<String>,
-    ) -> PyResult<String> {
+    ) -> PyResult<()> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err(
                 "LogManager has no workspace reference. This should not happen.",
@@ -180,7 +192,7 @@ impl PyLogManager {
     /// Stop the currently active session
     ///
     /// Auto-fills current_date, current_time, and trackers from workspace
-    fn stop_current_session(&self, _py: Python<'_>) -> PyResult<String> {
+    fn stop_current_session(&self, _py: Python<'_>) -> PyResult<()> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err(
                 "LogManager has no workspace reference. This should not happen.",

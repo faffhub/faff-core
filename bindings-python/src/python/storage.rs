@@ -132,6 +132,16 @@ impl Storage for PyStorage {
         })
     }
 
+    fn delete(&self, path: &PathBuf) -> Result<()> {
+        Python::attach(|py| {
+            let path_str = path.to_str().context("Path contains invalid UTF-8")?;
+            self.py_obj
+                .call_method1(py, "delete", (path_str,))
+                .context("Failed to call delete")?;
+            Ok(())
+        })
+    }
+
     fn exists(&self, path: &PathBuf) -> bool {
         Python::attach(|py| {
             let path_str = path.to_str().expect("Path contains invalid UTF-8");

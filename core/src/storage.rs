@@ -23,6 +23,7 @@ pub trait Storage: Send + Sync {
     fn read_string(&self, path: &PathBuf) -> Result<String>;
     fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()>;
     fn write_string(&self, path: &PathBuf, data: &str) -> Result<()>;
+    fn delete(&self, path: &PathBuf) -> Result<()>;
 
     // Directory operations
     fn exists(&self, path: &PathBuf) -> bool;

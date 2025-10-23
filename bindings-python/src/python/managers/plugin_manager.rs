@@ -1,6 +1,6 @@
 use crate::python::storage::PyStorage;
 use faff_core::models::Config;
-use faff_core::plugins::{
+use faff_core::managers::{
     AudiencePlugin as RustAudiencePlugin, PlanSourcePlugin as RustPlanSourcePlugin,
     PluginManager as RustPluginManager,
 };
@@ -50,9 +50,16 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        let plugins = manager
+        // Ensure plugins are loaded
+        manager
             .load_plugins()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        // Access the cache to get the plugins
+        let cache = manager.plugins_cache.lock().unwrap();
+        let plugins = cache.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded")
+        })?;
 
         let result = PyDict::new(py);
         for (name, plugin_class) in plugins.iter() {
@@ -126,6 +133,24 @@ impl PyPluginManager {
 
         manager
             .audiences()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Get a specific audience plugin by ID
+    ///
+    /// Args:
+    ///     audience_id: The ID of the audience to find
+    ///
+    /// Returns:
+    ///     The audience plugin instance, or None if not found
+    pub fn get_audience_by_id(&self, _py: Python<'_>, audience_id: &str) -> PyResult<Option<Py<PyAny>>> {
+        let mut manager = self
+            .manager
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        manager
+            .get_audience_by_id(audience_id)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

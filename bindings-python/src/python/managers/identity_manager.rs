@@ -66,14 +66,14 @@ impl PyIdentityManager {
         Ok(signing_key.map(|key| PyBytes::new(py, &key.to_bytes())))
     }
 
-    /// Get all identities
+    /// List all identities
     ///
     /// Returns:
     ///     Dictionary mapping identity names to signing keys (as bytes)
-    pub fn get<'py>(&self, py: Python<'py>) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
+    pub fn list_identities<'py>(&self, py: Python<'py>) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
         let identities = self
             .manager
-            .get()
+            .list_identities()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let mut result = HashMap::new();
@@ -82,6 +82,27 @@ impl PyIdentityManager {
         }
 
         Ok(result)
+    }
+
+    /// Check if an identity exists
+    ///
+    /// Args:
+    ///     name: Identity name
+    ///
+    /// Returns:
+    ///     True if the identity exists, False otherwise
+    pub fn identity_exists(&self, name: &str) -> bool {
+        self.manager.identity_exists(name)
+    }
+
+    /// Delete an identity
+    ///
+    /// Args:
+    ///     name: Identity name
+    pub fn delete_identity(&self, name: &str) -> PyResult<()> {
+        self.manager
+            .delete_identity(name)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
 

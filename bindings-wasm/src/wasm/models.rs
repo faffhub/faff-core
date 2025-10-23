@@ -71,8 +71,7 @@ impl Intent {
     /// Convert to JSON object
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.inner)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Create from JSON object
@@ -141,8 +140,7 @@ impl Session {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.inner)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = fromJSON)]
@@ -209,8 +207,7 @@ impl Log {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.inner)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     // Note: Log doesn't support from_json because it uses custom TOML parsing
@@ -277,8 +274,7 @@ impl Plan {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.inner)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = fromJSON)]
@@ -324,8 +320,7 @@ impl Timesheet {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.inner)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = fromJSON)]
@@ -359,8 +354,7 @@ fn js_date_to_naive_date(date: &js_sys::Date) -> Result<NaiveDate, JsValue> {
     let month = date.get_utc_month() + 1; // JS months are 0-indexed
     let day = date.get_utc_date();
 
-    NaiveDate::from_ymd_opt(year, month, day)
-        .ok_or_else(|| JsValue::from_str("Invalid date"))
+    NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| JsValue::from_str("Invalid date"))
 }
 
 fn naive_date_to_js_date(date: &NaiveDate) -> js_sys::Date {

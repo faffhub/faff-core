@@ -54,19 +54,33 @@ impl LogManager {
         self.timezone
     }
 
-    /// Get a log for a given date. Returns an empty log if the file doesn't exist.
-    pub fn get_log(&self, date: NaiveDate) -> Result<Log> {
+    /// Get a log for a given date
+    ///
+    /// Returns None if the log file doesn't exist
+    pub fn get_log(&self, date: NaiveDate) -> Result<Option<Log>> {
         let log_path = self.storage.log_file_path(date);
 
         if self.storage.exists(&log_path) {
             let toml_str = self
                 .storage
                 .read_string(&log_path)
-                .context(format!("Failed to read log file for {}", date))?;
+                .with_context(|| format!("Failed to read log file for {}", date))?;
 
-            Log::from_log_file(&toml_str).context(format!("Failed to parse log file for {}", date))
+            let log = Log::from_log_file(&toml_str)
+                .with_context(|| format!("Failed to parse log file for {}", date))?;
+            Ok(Some(log))
         } else {
-            // Return empty log
+            Ok(None)
+        }
+    }
+
+    /// Get a log for a given date, creating an empty one if it doesn't exist
+    ///
+    /// This is a convenience method for callers who always want a log to work with
+    pub fn get_log_or_create(&self, date: NaiveDate) -> Result<Log> {
+        if let Some(log) = self.get_log(date)? {
+            Ok(log)
+        } else {
             Ok(Log::new(date, self.timezone, vec![]))
         }
     }
@@ -88,9 +102,12 @@ impl LogManager {
     }
 
     /// List all log dates in storage
-    pub fn list_log_dates(&self) -> Result<Vec<NaiveDate>> {
+    pub fn list_logs(&self) -> Result<Vec<NaiveDate>> {
         let log_dir = self.storage.log_dir();
-        let files = self.storage.list_files(&log_dir, "*.toml")?;
+        let files = self
+            .storage
+            .list_files(&log_dir, "*.toml")
+            .context("Failed to list log files")?;
 
         let mut dates = Vec::new();
         for file in files {
@@ -106,21 +123,20 @@ impl LogManager {
         Ok(dates)
     }
 
-    /// Remove a log for a given date
-    pub fn rm(&self, date: NaiveDate) -> Result<()> {
+    /// Delete a log for a given date
+    pub fn delete_log(&self, date: NaiveDate) -> Result<()> {
         let log_path = self.storage.log_file_path(date);
 
         if !self.storage.exists(&log_path) {
-            anyhow::bail!("Log file for {} not found", date);
+            anyhow::bail!("Log for {} does not exist", date);
         }
 
-        // Delete the file
-        std::fs::remove_file(&log_path).context(format!("Failed to delete log for {}", date))
+        self.storage
+            .delete(&log_path)
+            .with_context(|| format!("Failed to delete log for {}", date))
     }
 
     /// Start a new session with the given intent at the current time
-    ///
-    /// Returns an error message if tracker validation fails, otherwise returns success message
     pub fn start_intent_now(
         &self,
         intent: crate::models::Intent,
@@ -128,9 +144,9 @@ impl LogManager {
         current_date: NaiveDate,
         current_time: chrono::DateTime<Tz>,
         trackers: &std::collections::HashMap<String, String>,
-    ) -> Result<String> {
-        // Get today's log
-        let log = self.get_log(current_date)?;
+    ) -> Result<()> {
+        // Get today's log or create empty one
+        let log = self.get_log_or_create(current_date)?;
 
         // Validate trackers if any are specified
         if !intent.trackers.is_empty() {
@@ -142,46 +158,37 @@ impl LogManager {
                     .difference(&tracker_ids)
                     .map(|s| s.as_str())
                     .collect();
-                anyhow::bail!("Tracker {} not found in today's plan.", missing.join(","));
+                anyhow::bail!("Tracker {} not found in today's plan", missing.join(", "));
             }
         }
 
         // Create new session
-        let session = crate::models::Session::new(intent.clone(), current_time, None, note);
+        let session = crate::models::Session::new(intent, current_time, None, note);
 
         // Append to log and write
         let updated_log = log.append_session(session)?;
         self.write_log(&updated_log, trackers)?;
 
-        let alias = intent.alias.unwrap_or_else(|| "session".to_string());
-        let time_str = current_time.format("%H:%M:%S");
-        Ok(format!("Started logging {} at {}.", alias, time_str))
+        Ok(())
     }
 
     /// Stop the currently active session
     ///
-    /// Returns success message with session alias and stop time, or message if no active session
+    /// Returns Ok(()) if a session was stopped, or an error if no active session exists
     pub fn stop_current_session(
         &self,
         current_date: NaiveDate,
         current_time: chrono::DateTime<Tz>,
         trackers: &std::collections::HashMap<String, String>,
-    ) -> Result<String> {
-        let log = self.get_log(current_date)?;
+    ) -> Result<()> {
+        let log = self.get_log_or_create(current_date)?;
 
-        if let Some(active_session) = log.active_session() {
-            let alias = active_session
-                .intent
-                .alias
-                .clone()
-                .unwrap_or_else(|| "session".to_string());
+        if log.active_session().is_some() {
             let updated_log = log.stop_active_session(current_time)?;
             self.write_log(&updated_log, trackers)?;
-
-            let time_str = current_time.format("%H:%M:%S");
-            Ok(format!("Stopped logging for {} at {}.", alias, time_str))
+            Ok(())
         } else {
-            Ok("No ongoing timeline entries found to stop.".to_string())
+            anyhow::bail!("No active session to stop")
         }
     }
 }
@@ -221,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_log_dates() {
+    fn test_list_logs() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
@@ -231,7 +238,7 @@ mod tests {
         manager.write_log_raw(date1, "test").unwrap();
         manager.write_log_raw(date2, "test").unwrap();
 
-        let dates = manager.list_log_dates().unwrap();
+        let dates = manager.list_logs().unwrap();
         assert_eq!(dates.len(), 2);
         assert_eq!(dates[0], date1);
         assert_eq!(dates[1], date2);
@@ -261,7 +268,7 @@ note = "Morning session"
 "#;
 
         manager.write_log_raw(date, toml_content).unwrap();
-        let log = manager.get_log(date).unwrap();
+        let log = manager.get_log(date).unwrap().unwrap();
 
         assert_eq!(log.date, date);
         assert_eq!(log.timezone, chrono_tz::UTC);
@@ -274,12 +281,23 @@ note = "Morning session"
     }
 
     #[test]
-    fn test_get_log_returns_empty_when_missing() {
+    fn test_get_log_returns_none_when_missing() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let log = manager.get_log(date).unwrap();
+
+        assert!(log.is_none());
+    }
+
+    #[test]
+    fn test_get_log_or_create() {
+        let storage = Arc::new(MockStorage::new());
+        let manager = LogManager::new(storage, chrono_tz::UTC);
+
+        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+        let log = manager.get_log_or_create(date).unwrap();
 
         assert_eq!(log.date, date);
         assert_eq!(log.timeline.len(), 0);

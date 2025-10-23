@@ -357,10 +357,6 @@ class models:
 
     class TimesheetAudience:
         """Configuration for a timesheet audience."""
-        name: str
-        plugin: str
-    class TimesheetAudience:
-        """Configuration for a timesheet audience."""
 
         @property
         def name(self) -> str: ...
@@ -372,20 +368,292 @@ class models:
         def signing_ids(self) -> List[str]: ...
 
         def __repr__(self) -> str: ...
-        config: Dict
 
-        @property
-        def name(self) -> str: ...
-        @property
     class Role:
         """Configuration for a user role."""
-
+        
         @property
         def name(self) -> str: ...
         @property
         def config(self) -> Dict: ...
 
         def __repr__(self) -> str: ...
+
+# Manager classes
+class LogManager:
+    """Manager for log file operations."""
+
+    def log_exists(self, date: datetime.date) -> bool:
+        """Check if a log exists for the given date."""
+        ...
+
+    def read_log_raw(self, date: datetime.date) -> str:
+        """Read raw log file contents."""
+        ...
+
+    def write_log_raw(self, date: datetime.date, contents: str) -> None:
+        """Write raw log file contents."""
+        ...
+
+    def list_log_dates(self) -> List[datetime.date]:
+        """List all log dates."""
+        ...
+
+    def list(self) -> List[models.Log]:
+        """List all logs (returns Log objects)."""
+        ...
+
+    def delete_log(self, date: datetime.date) -> None:
+        """Delete a log for a given date."""
+        ...
+
+    def timezone(self) -> ZoneInfo:
+        """Get the timezone for this log manager."""
+        ...
+
+    def get_log(self, date: datetime.date) -> Optional[models.Log]:
+        """Get a log for a given date (returns None if file doesn't exist)."""
+        ...
+
+    def get_log_or_create(self, date: datetime.date) -> models.Log:
+        """Get a log for a given date (creates empty log if file doesn't exist)."""
+        ...
+
+    def write_log(self, log: models.Log, trackers: Dict[str, str]) -> None:
+        """Write a log to storage."""
+        ...
+
+    def start_intent_now(self, intent: models.Intent, note: Optional[str] = None) -> None:
+        """
+        Start a new session with the given intent.
+
+        Auto-fills current_date, current_time, and trackers from workspace.
+        """
+        ...
+
+    def stop_current_session(self) -> None:
+        """
+        Stop the currently active session.
+
+        Auto-fills current_date, current_time, and trackers from workspace.
+        """
+        ...
+
+class PlanManager:
+    """Manager for plan loading, caching, and querying."""
+
+    def get_plans(self, date: datetime.date) -> Dict[str, models.Plan]:
+        """
+        Get all plans valid for a given date.
+
+        Returns:
+            Dictionary mapping source names to Plans.
+        """
+        ...
+
+    def get_intents(self, date: datetime.date) -> List[models.Intent]:
+        """Get all intents from plans valid for a given date."""
+        ...
+
+    def get_roles(self, date: datetime.date) -> List[str]:
+        """
+        Get all roles from plans valid for a given date.
+
+        Returns roles prefixed with their source (e.g., "element:engineer").
+        """
+        ...
+
+    def get_objectives(self, date: datetime.date) -> List[str]:
+        """Get all objectives from plans valid for a given date."""
+        ...
+
+    def get_actions(self, date: datetime.date) -> List[str]:
+        """Get all actions from plans valid for a given date."""
+        ...
+
+    def get_subjects(self, date: datetime.date) -> List[str]:
+        """Get all subjects from plans valid for a given date."""
+        ...
+
+    def get_trackers(self, date: datetime.date) -> Dict[str, str]:
+        """
+        Get all trackers from plans valid for a given date.
+
+        Returns:
+            Dictionary mapping tracker IDs (prefixed with source) to human-readable names.
+            Example: {"element:12345": "Fix critical bug"}
+        """
+        ...
+
+    def get_plan_by_tracker_id(
+        self,
+        tracker_id: str,
+        date: datetime.date
+    ) -> Optional[models.Plan]:
+        """
+        Get the plan containing a specific tracker ID.
+
+        Returns None if the tracker is not found in any plan for the given date.
+        """
+        ...
+
+    def get_local_plan(self, date: datetime.date) -> Optional[models.Plan]:
+        """
+        Get the local plan for a given date.
+
+        Returns None if the local plan doesn't exist.
+        """
+        ...
+
+    def get_local_plan_or_create(self, date: datetime.date) -> models.Plan:
+        """
+        Get the local plan for a given date, creating an empty one if it doesn't exist.
+        """
+        ...
+
+    def write_plan(self, plan: models.Plan) -> None:
+        """Write a plan to storage."""
+        ...
+
+    def clear_cache(self) -> None:
+        """Clear the plan cache."""
+        ...
+
+    def remotes(self) -> List:
+        """Get plan remote plugin instances (delegates to workspace.plugins.plan_remotes())."""
+        ...
+
+class IdentityManager:
+    """Manager for Ed25519 identity keypairs for signing timesheets."""
+
+    def create_identity(self, name: str, overwrite: bool = False) -> bytes:
+        """
+        Create a new Ed25519 identity keypair.
+
+        Keys are stored as base64-encoded strings in ~/.faff/identities/
+
+        Args:
+            name: Identity name
+            overwrite: Whether to overwrite if identity already exists
+
+        Returns:
+            The private signing key as bytes (32 bytes)
+        """
+        ...
+
+    def get_identity(self, name: str) -> Optional[bytes]:
+        """
+        Get a specific identity by name.
+
+        Args:
+            name: Identity name
+
+        Returns:
+            The private signing key as bytes, or None if not found
+        """
+        ...
+
+    def list_identities(self) -> Dict[str, bytes]:
+        """
+        List all identities.
+
+        Returns:
+            Dictionary mapping identity names to signing keys (as bytes)
+        """
+        ...
+
+    def identity_exists(self, name: str) -> bool:
+        """
+        Check if an identity exists.
+
+        Args:
+            name: Identity name
+
+        Returns:
+            True if the identity exists, False otherwise
+        """
+        ...
+
+    def delete_identity(self, name: str) -> None:
+        """
+        Delete an identity.
+
+        Removes both the private and public key files.
+
+        Args:
+            name: Identity name
+        """
+        ...
+
+class PluginManager:
+    """Manager for loading and executing Python plugins."""
+
+    def load_plugins(self) -> Dict[str, object]:
+        """
+        Load all available plugins from the plugins directory.
+
+        Returns:
+            Dictionary of plugin_name -> plugin_class
+        """
+        ...
+
+    def instantiate_plugin(
+        self,
+        plugin_name: str,
+        instance_name: str,
+        config: Dict,
+        defaults: Dict
+    ) -> object:
+        """
+        Instantiate a plugin with the given config.
+
+        Args:
+            plugin_name: Name of the plugin to instantiate
+            instance_name: Name for this instance
+            config: Plugin-specific configuration
+            defaults: Default configuration values
+
+        Returns:
+            The instantiated plugin object
+        """
+        ...
+
+    def plan_remotes(self) -> List:
+        """
+        Get instantiated plan remote plugins based on config.
+
+        Returns:
+            List of plan remote plugin instances
+        """
+        ...
+
+    def audiences(self) -> List:
+        """
+        Get instantiated audience plugins based on config.
+
+        Returns:
+            List of audience plugin instances
+        """
+        ...
+
+    def get_audience_by_id(self, audience_id: str) -> Optional:
+        """
+        Get a specific audience plugin by ID.
+
+        Args:
+            audience_id: The ID of the audience to find
+
+        Returns:
+            The audience plugin instance, or None if not found
+        """
+        ...
+
+class TimesheetManager:
+    """Manager for timesheet operations."""
+
+    def write_timesheet(self, timesheet: models.Timesheet) -> None:
+        """Write a timesheet to storage."""
+        ...
 
     def get_timesheet(
         self,
@@ -425,9 +693,13 @@ class models:
         """
         ...
 
-    def audiences(self) -> List: ...
+    def audiences(self) -> List[models.TimesheetAudience]:
+        """Get all audience plugin instances."""
+        ...
 
-    def get_audience(self, audience_id: str) -> Optional: ...
+    def get_audience(self, audience_id: str) -> Optional[models.TimesheetAudience]:
+        """Get a specific audience plugin by ID."""
+        ...
 
     def submit(self, timesheet: models.Timesheet) -> None:
         """Submit a timesheet via its audience plugin."""
@@ -438,67 +710,69 @@ class Workspace:
     Workspace manager for accessing logs, plans, and configuration.
 
     This is the main entry point for interacting with a Faff workspace.
+    Provides coordinated access to all managers through properties.
     """
 
+    # Manager properties
+    logs: LogManager
+    """Log manager for reading/writing daily work logs."""
+
+    plans: PlanManager
+    """Plan manager for accessing plans, intents, and vocabulary."""
+
     timesheets: TimesheetManager
+    """Timesheet manager for compiled, signed work records."""
 
-    def __init__(self, root_path: str) -> None:
+    identities: IdentityManager
+    """Identity manager for Ed25519 keypairs used in signing."""
+
+    plugins: PluginManager
+    """Plugin manager for loading and executing Python plugins."""
+
+    def __init__(self, storage: Optional[object] = None) -> None:
         """
-        Initialize workspace at the given root path.
+        Initialize workspace.
 
         Args:
-            root_path: Path to workspace root (containing .faff/ directory)
+            storage: Optional custom storage implementation. If None, uses
+                    FileSystemStorage and searches for .faff directory from cwd.
         """
         ...
 
-    def get_log(self, date: datetime.date) -> models.Log:
+    def now(self) -> datetime.datetime:
         """
-        Load a log for the specified date.
-
-        Args:
-            date: Date to load log for
+        Get the current time in the configured timezone.
 
         Returns:
-            Log instance (may be empty if file doesn't exist)
+            Current datetime with timezone applied.
         """
         ...
 
-    def save_log(self, log: models.Log) -> None:
+    def today(self) -> datetime.date:
         """
-        Save a log to disk.
-
-        Args:
-            log: Log instance to save
-        """
-        ...
-
-    def get_plan(self, plan_id: str) -> models.Plan:
-        """
-        Load a plan by ID.
-
-        Args:
-            plan_id: Plan identifier (slug)
+        Get today's date in the configured timezone.
 
         Returns:
-            Plan instance
-
-        Raises:
-            FileNotFoundError: If plan doesn't exist
+            Current date in workspace timezone.
         """
         ...
 
-    def save_plan(self, plan: models.Plan) -> None:
-        """Save a plan to disk."""
+    def timezone(self) -> ZoneInfo:
+        """
+        Get the configured timezone.
+
+        Returns:
+            ZoneInfo for the workspace timezone.
+        """
         ...
 
-    def list_plans(self) -> List[str]:
-        """List all available plan IDs."""
+    def config(self) -> models.Config:
+        """
+        Get the workspace configuration.
+
+        Returns:
+            Config object with timezone, plan remotes, audiences, and roles.
+        """
         ...
 
-    def get_config(self) -> models.Config:
-        """Load workspace configuration."""
-        ...
-
-    def save_config(self, config: models.Config) -> None:
-        """Save workspace configuration."""
-        ...
+    def __repr__(self) -> str: ...

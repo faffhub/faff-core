@@ -72,7 +72,22 @@ impl PyTimesheetManager {
     }
 
     /// Get all audience plugin instances
+    ///
+    /// This delegates to the Rust TimesheetManager's audiences() method.
     pub fn audiences(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "TimesheetManager has no workspace reference. This should not happen.",
+            )
+        })?;
+
+        self.manager
+            .audiences(workspace.plugins())
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Get a specific audience plugin by ID
+    pub fn get_audience(&self, _py: Python<'_>, audience_id: &str) -> PyResult<Option<Py<PyAny>>> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
             pyo3::exceptions::PyRuntimeError::new_err(
                 "TimesheetManager has no workspace reference. This should not happen.",
@@ -81,43 +96,26 @@ impl PyTimesheetManager {
 
         let plugin_manager_arc = workspace.plugins();
         let mut plugin_manager = plugin_manager_arc.lock().unwrap();
+
         plugin_manager
-            .audiences()
+            .get_audience_by_id(audience_id)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
-    /// Get a specific audience plugin by ID
-    pub fn get_audience(&self, py: Python<'_>, audience_id: &str) -> PyResult<Option<Py<PyAny>>> {
-        let audiences = self.audiences(py)?;
-
-        for audience in audiences {
-            let id: String = audience.getattr(py, "id")?.extract(py)?;
-            if id == audience_id {
-                return Ok(Some(audience));
-            }
-        }
-
-        Ok(None)
-    }
-
     /// Submit a timesheet via its audience plugin
-    pub fn submit(&self, py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
-        let audience_id = &timesheet.inner.meta.audience_id;
-        let audience = self.get_audience(py, audience_id)?.ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err(format!(
-                "No audience found for {}",
-                audience_id
-            ))
+    pub fn submit(&self, _py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "TimesheetManager has no workspace reference. This should not happen.",
+            )
         })?;
 
-        // Call audience.submit_timesheet(timesheet)
-        audience.call_method1(py, "submit_timesheet", (timesheet.clone(),))?;
+        let plugin_manager_arc = workspace.plugins();
+        let mut plugin_manager = plugin_manager_arc.lock().unwrap();
 
-        // Update timesheet meta with submission info
-        // TODO: Add submitted_at and submitted_by to the meta
-        self.write_timesheet(timesheet)?;
-
-        Ok(())
+        self.manager
+            .submit(&timesheet.inner, &mut *plugin_manager)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
 

@@ -119,6 +119,15 @@ pub mod mock_storage {
             Ok(())
         }
 
+        fn delete(&self, path: &PathBuf) -> Result<()> {
+            let mut files = self.files.write().unwrap();
+            if files.remove(path).is_some() {
+                Ok(())
+            } else {
+                anyhow::bail!("File not found: {:?}", path)
+            }
+        }
+
         fn exists(&self, path: &PathBuf) -> bool {
             let files = self.files.read().unwrap();
             files.contains_key(path)
