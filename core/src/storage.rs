@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::NaiveDate;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Storage abstraction for Faffage data persistence.
 ///
@@ -19,16 +19,16 @@ pub trait Storage: Send + Sync {
     fn config_file(&self) -> PathBuf;
 
     // File operations
-    fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>>;
-    fn read_string(&self, path: &PathBuf) -> Result<String>;
-    fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()>;
-    fn write_string(&self, path: &PathBuf, data: &str) -> Result<()>;
-    fn delete(&self, path: &PathBuf) -> Result<()>;
+    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>>;
+    fn read_string(&self, path: &Path) -> Result<String>;
+    fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()>;
+    fn write_string(&self, path: &Path, data: &str) -> Result<()>;
+    fn delete(&self, path: &Path) -> Result<()>;
 
     // Directory operations
-    fn exists(&self, path: &PathBuf) -> bool;
-    fn create_dir_all(&self, path: &PathBuf) -> Result<()>;
-    fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>>;
+    fn exists(&self, path: &Path) -> bool;
+    fn create_dir_all(&self, path: &Path) -> Result<()>;
+    fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>>;
 
     // Faffage-specific path construction helpers
     fn log_file_path(&self, date: NaiveDate) -> PathBuf {

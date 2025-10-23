@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use faff_core::storage::Storage;
 
@@ -86,7 +86,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
+    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let result = self
@@ -100,7 +100,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn read_string(&self, path: &PathBuf) -> Result<String> {
+    fn read_string(&self, path: &Path) -> Result<String> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let result = self
@@ -111,7 +111,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
+    fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let py_bytes = PyBytes::new(py, data);
@@ -122,7 +122,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
+    fn write_string(&self, path: &Path, data: &str) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
@@ -132,7 +132,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn delete(&self, path: &PathBuf) -> Result<()> {
+    fn delete(&self, path: &Path) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
@@ -142,7 +142,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn exists(&self, path: &PathBuf) -> bool {
+    fn exists(&self, path: &Path) -> bool {
         Python::attach(|py| {
             let path_str = path.to_str().expect("Path contains invalid UTF-8");
             let result = self
@@ -153,7 +153,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn create_dir_all(&self, path: &PathBuf) -> Result<()> {
+    fn create_dir_all(&self, path: &Path) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
@@ -163,7 +163,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>> {
+    fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         Python::attach(|py| {
             let dir_str = dir
                 .to_str()

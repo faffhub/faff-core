@@ -12,7 +12,7 @@ use faff_core::models::session::Session;
 use faff_core::models::timesheet::{Timesheet, TimesheetMeta};
 use faff_core::storage::Storage;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 /// Shared in-memory storage for integration tests
@@ -58,7 +58,7 @@ impl Storage for IntegrationStorage {
         PathBuf::from("/faff/config.toml")
     }
 
-    fn read_bytes(&self, path: &PathBuf) -> anyhow::Result<Vec<u8>> {
+    fn read_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
         let files = self.files.read().unwrap();
         files
             .get(path)
@@ -66,7 +66,7 @@ impl Storage for IntegrationStorage {
             .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
     }
 
-    fn read_string(&self, path: &PathBuf) -> anyhow::Result<String> {
+    fn read_string(&self, path: &Path) -> anyhow::Result<String> {
         let files = self.files.read().unwrap();
         files
             .get(path)
@@ -74,20 +74,20 @@ impl Storage for IntegrationStorage {
             .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
     }
 
-    fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> anyhow::Result<()> {
+    fn write_bytes(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
         let content = String::from_utf8(data.to_vec())?;
         let mut files = self.files.write().unwrap();
-        files.insert(path.clone(), content);
+        files.insert(path.to_path_buf(), content);
         Ok(())
     }
 
-    fn write_string(&self, path: &PathBuf, data: &str) -> anyhow::Result<()> {
+    fn write_string(&self, path: &Path, data: &str) -> anyhow::Result<()> {
         let mut files = self.files.write().unwrap();
-        files.insert(path.clone(), data.to_string());
+        files.insert(path.to_path_buf(), data.to_string());
         Ok(())
     }
 
-    fn delete(&self, path: &PathBuf) -> anyhow::Result<()> {
+    fn delete(&self, path: &Path) -> anyhow::Result<()> {
         let mut files = self.files.write().unwrap();
         files
             .remove(path)
@@ -95,23 +95,23 @@ impl Storage for IntegrationStorage {
         Ok(())
     }
 
-    fn exists(&self, path: &PathBuf) -> bool {
+    fn exists(&self, path: &Path) -> bool {
         let files = self.files.read().unwrap();
         files.contains_key(path)
     }
 
-    fn create_dir_all(&self, _path: &PathBuf) -> anyhow::Result<()> {
+    fn create_dir_all(&self, _path: &Path) -> anyhow::Result<()> {
         Ok(())
     }
 
-    fn list_files(&self, dir: &PathBuf, pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
+    fn list_files(&self, dir: &Path, pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
         let files = self.files.read().unwrap();
         let glob_pattern = glob::Pattern::new(pattern)?;
 
         Ok(files
             .keys()
             .filter(|path| {
-                path.parent() == Some(dir.as_path())
+                path.parent() == Some(dir)
                     && path
                         .file_name()
                         .and_then(|n| n.to_str())

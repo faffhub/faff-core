@@ -23,5 +23,6 @@ mod tests {
     fn test_version_exists() {
         let v = version();
         assert!(!v.is_empty(), "Version should not be empty");
+        // Testing dirty flag
     }
 }

@@ -7,7 +7,7 @@
 pub mod mock_storage {
     use anyhow::Result;
     use std::collections::HashMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::RwLock;
 
     use crate::storage::Storage;
@@ -90,7 +90,7 @@ pub mod mock_storage {
             self.config_file.clone()
         }
 
-        fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
+        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
             let files = self.files.read().unwrap();
             files
                 .get(path)
@@ -98,7 +98,7 @@ pub mod mock_storage {
                 .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
         }
 
-        fn read_string(&self, path: &PathBuf) -> Result<String> {
+        fn read_string(&self, path: &Path) -> Result<String> {
             let files = self.files.read().unwrap();
             files
                 .get(path)
@@ -106,20 +106,20 @@ pub mod mock_storage {
                 .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
         }
 
-        fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
+        fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
             let content = String::from_utf8(data.to_vec())?;
             let mut files = self.files.write().unwrap();
-            files.insert(path.clone(), content);
+            files.insert(path.to_path_buf(), content);
             Ok(())
         }
 
-        fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
+        fn write_string(&self, path: &Path, data: &str) -> Result<()> {
             let mut files = self.files.write().unwrap();
-            files.insert(path.clone(), data.to_string());
+            files.insert(path.to_path_buf(), data.to_string());
             Ok(())
         }
 
-        fn delete(&self, path: &PathBuf) -> Result<()> {
+        fn delete(&self, path: &Path) -> Result<()> {
             let mut files = self.files.write().unwrap();
             if files.remove(path).is_some() {
                 Ok(())
@@ -128,17 +128,17 @@ pub mod mock_storage {
             }
         }
 
-        fn exists(&self, path: &PathBuf) -> bool {
+        fn exists(&self, path: &Path) -> bool {
             let files = self.files.read().unwrap();
             files.contains_key(path)
         }
 
-        fn create_dir_all(&self, _path: &PathBuf) -> Result<()> {
+        fn create_dir_all(&self, _path: &Path) -> Result<()> {
             // No-op for in-memory storage
             Ok(())
         }
 
-        fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>> {
+        fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
             let files = self.files.read().unwrap();
 
             // Use glob::Pattern for proper glob matching
@@ -148,7 +148,7 @@ pub mod mock_storage {
                 .keys()
                 .filter(|path| {
                     // Check if the file is in the specified directory
-                    path.parent() == Some(dir.as_path())
+                    path.parent() == Some(dir)
                         && path
                             .file_name()
                             .and_then(|n| n.to_str())

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::storage::Storage;
 
@@ -11,6 +11,7 @@ use crate::storage::Storage;
 #[derive(Clone)]
 pub struct FileSystemStorage {
     faff_root: PathBuf,
+    faff_dir: PathBuf,
 }
 
 impl FileSystemStorage {
@@ -25,7 +26,8 @@ impl FileSystemStorage {
     /// Create a new FileSystemStorage by searching for .faff directory starting from a specific path
     pub fn from_path(start_path: PathBuf) -> Result<Self> {
         let faff_root = Self::find_faff_root(&start_path)?;
-        Ok(Self { faff_root })
+        let faff_dir = faff_root.join(".faff");
+        Ok(Self { faff_root, faff_dir })
     }
 
     /// Search upward from a given path for a `.faff` directory
@@ -60,65 +62,65 @@ impl Storage for FileSystemStorage {
     }
 
     fn log_dir(&self) -> PathBuf {
-        self.faff_root.join(".faff").join("logs")
+        self.faff_dir.join("logs")
     }
 
     fn plan_dir(&self) -> PathBuf {
-        self.faff_root.join(".faff").join("plans")
+        self.faff_dir.join("plans")
     }
 
     fn identity_dir(&self) -> PathBuf {
-        self.faff_root.join(".faff").join("keys")
+        self.faff_dir.join("keys")
     }
 
     fn timesheet_dir(&self) -> PathBuf {
-        self.faff_root.join(".faff").join("timesheets")
+        self.faff_dir.join("timesheets")
     }
 
     fn config_file(&self) -> PathBuf {
-        self.faff_root.join(".faff").join("config.toml")
+        self.faff_dir.join("config.toml")
     }
 
-    fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
-        std::fs::read(path).context(format!("Failed to read file: {}", path.display()))
+    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))
     }
 
-    fn read_string(&self, path: &PathBuf) -> Result<String> {
-        std::fs::read_to_string(path).context(format!("Failed to read file: {}", path.display()))
+    fn read_string(&self, path: &Path) -> Result<String> {
+        std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path.display()))
     }
 
-    fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
+    fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .context(format!("Failed to create directory: {}", parent.display()))?;
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
-        std::fs::write(path, data).context(format!("Failed to write file: {}", path.display()))
+        std::fs::write(path, data).with_context(|| format!("Failed to write file: {}", path.display()))
     }
 
-    fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
+    fn write_string(&self, path: &Path, data: &str) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
-                .context(format!("Failed to create directory: {}", parent.display()))?;
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
-        std::fs::write(path, data).context(format!("Failed to write file: {}", path.display()))
+        std::fs::write(path, data).with_context(|| format!("Failed to write file: {}", path.display()))
     }
 
-    fn delete(&self, path: &PathBuf) -> Result<()> {
-        std::fs::remove_file(path).context(format!("Failed to delete file: {}", path.display()))
+    fn delete(&self, path: &Path) -> Result<()> {
+        std::fs::remove_file(path).with_context(|| format!("Failed to delete file: {}", path.display()))
     }
 
-    fn exists(&self, path: &PathBuf) -> bool {
+    fn exists(&self, path: &Path) -> bool {
         path.exists()
     }
 
-    fn create_dir_all(&self, path: &PathBuf) -> Result<()> {
+    fn create_dir_all(&self, path: &Path) -> Result<()> {
         std::fs::create_dir_all(path)
-            .context(format!("Failed to create directory: {}", path.display()))
+            .with_context(|| format!("Failed to create directory: {}", path.display()))
     }
 
-    fn list_files(&self, dir: &PathBuf, pattern: &str) -> Result<Vec<PathBuf>> {
+    fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         if !dir.exists() {
             return Ok(vec![]);
         }
