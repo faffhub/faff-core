@@ -9,7 +9,7 @@ fn hello_world() -> PyResult<String> {
 }
 
 #[pyfunction]
-fn version() -> PyResult<&'static str> {
+fn version() -> PyResult<String> {
     Ok(::faff_core::version::version())
 }
 
