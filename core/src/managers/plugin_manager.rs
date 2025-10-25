@@ -16,7 +16,7 @@ use crate::storage::Storage;
 pub struct PluginManager {
     storage: Arc<dyn Storage>,
     config: Config,
-    pub plugins_cache: Arc<Mutex<Option<HashMap<String, Py<PyAny>>>>>,
+    pub plugins_cache: Arc<Mutex<Option<HashMap<String, (PathBuf, Py<PyAny>)>>>>,
 }
 
 impl PluginManager {
@@ -55,8 +55,8 @@ impl PluginManager {
             return Ok(());
         }
 
-        // List all .py files in the plugin directory
-        let pattern = "*.py";
+        // List all .py files in plugin/ subdirectories within each plugin repo
+        let pattern = "*/plugin/*.py";
         let plugin_files = self
             .storage
             .list_files(&plugin_dir, pattern)
@@ -146,8 +146,11 @@ impl PluginManager {
                         continue;
                     }
 
-                    // This is a concrete plugin class
-                    plugins.insert(module_name.to_string(), attr_value.into());
+                    // This is a concrete plugin class - store both the file path and the class
+                    plugins.insert(
+                        module_name.to_string(),
+                        (plugin_file.clone(), attr_value.into()),
+                    );
                 }
             }
 
@@ -173,16 +176,19 @@ impl PluginManager {
         // Ensure plugins are loaded
         self.load_plugins()?;
 
-        // Verify plugin exists
-        {
+        // Verify plugin exists and get its file path
+        let plugin_file_path = {
             let cache = self.plugins_cache.lock().unwrap();
             let plugins = cache
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("Plugins not loaded"))?;
-            if !plugins.contains_key(plugin_name) {
-                return Err(anyhow::anyhow!("Plugin '{}' not found", plugin_name));
-            }
-        } // Lock released here
+
+            let (file_path, _) = plugins
+                .get(plugin_name)
+                .ok_or_else(|| anyhow::anyhow!("Plugin '{}' not found", plugin_name))?;
+
+            file_path.clone()
+        }; // Lock released here
 
         // Get paths needed for plugin instantiation (can now access self.storage)
         let root_dir = self.storage.root_dir();
@@ -200,21 +206,19 @@ impl PluginManager {
         let plugin_name_owned = plugin_name.to_string();
         let instance_name_owned = instance_name.to_string();
         let state_path_str = state_path.to_str().unwrap().to_string();
+        let plugin_file_str = plugin_file_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid plugin file path"))?
+            .to_string();
 
         Python::attach(move |py| -> PyResult<Py<PyAny>> {
             // Re-import to get the plugin class (avoids lifetime issues)
             let importlib = py.import("importlib.util")?;
-            let root_py = py
-                .import("pathlib")?
-                .call_method0("Path")?
-                .call_method1("__truediv__", (root_dir.to_str().unwrap(),))?;
-            let faff_dir = root_py.call_method1("__truediv__", (".faff",))?;
-            let plugins_dir = faff_dir.call_method1("__truediv__", ("plugins",))?;
-            let plugin_file =
-                plugins_dir.call_method1("__truediv__", (format!("{}.py", plugin_name_owned),))?;
 
-            let spec = importlib
-                .call_method1("spec_from_file_location", (&plugin_name_owned, plugin_file))?;
+            let spec = importlib.call_method1(
+                "spec_from_file_location",
+                (&plugin_name_owned, &plugin_file_str),
+            )?;
             let module = importlib.call_method1("module_from_spec", (&spec,))?;
             let loader = spec.getattr("loader")?;
             loader.call_method1("exec_module", (&module,))?;

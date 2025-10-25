@@ -62,7 +62,7 @@ impl PyPluginManager {
             .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Plugins not loaded"))?;
 
         let result = PyDict::new(py);
-        for (name, plugin_class) in plugins.iter() {
+        for (name, (_path, plugin_class)) in plugins.iter() {
             result.set_item(name, plugin_class.clone_ref(py))?;
         }
         Ok(result)
