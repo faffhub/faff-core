@@ -1,9 +1,13 @@
+use chrono::NaiveDate;
+use rand::Rng;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Intent {
+    #[serde(default)]
+    pub intent_id: String,
     pub alias: Option<String>,
     pub role: Option<String>,
     pub objective: Option<String>,
@@ -50,7 +54,45 @@ where
 }
 
 impl Intent {
+    /// Generate a new intent ID in the format i-YYYYMMDD-{6 random chars}
+    ///
+    /// # Arguments
+    /// * `date` - The date to use in the ID (typically the current date)
+    ///
+    /// # Returns
+    /// A string in the format "i-20250125-abc123"
+    pub fn generate_intent_id(date: NaiveDate) -> String {
+        let date_str = date.format("%Y%m%d");
+        let random_suffix: String = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(6)
+            .map(|c| c.to_ascii_lowercase())
+            .map(char::from)
+            .collect();
+        format!("i-{}-{}", date_str, random_suffix)
+    }
+
     pub fn new(
+        alias: Option<String>,
+        role: Option<String>,
+        objective: Option<String>,
+        action: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
+    ) -> Self {
+        Self::new_with_id(
+            None, // Auto-generate ID with current date
+            alias,
+            role,
+            objective,
+            action,
+            subject,
+            trackers,
+        )
+    }
+
+    pub fn new_with_id(
+        intent_id: Option<String>,
         alias: Option<String>,
         role: Option<String>,
         objective: Option<String>,
@@ -70,7 +112,12 @@ impl Intent {
             ))
         });
 
+        let intent_id = intent_id.unwrap_or_else(|| {
+            Self::generate_intent_id(chrono::Local::now().date_naive())
+        });
+
         Self {
+            intent_id,
             alias,
             role,
             objective,

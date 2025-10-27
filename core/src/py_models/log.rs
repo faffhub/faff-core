@@ -166,6 +166,15 @@ impl PyLog {
         PyDelta::new(py, days, seconds, micros, false)
     }
 
+    fn to_log_file(&self, trackers: Bound<'_, PyDict>) -> PyResult<String> {
+        // Convert Python dict to HashMap<String, String>
+        let trackers_map: std::collections::HashMap<String, String> =
+            pythonize::depythonize(&trackers)
+                .map_err(|e| PyValueError::new_err(format!("Invalid trackers dict: {}", e)))?;
+
+        Ok(self.inner.to_log_file(&trackers_map))
+    }
+
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "Log(date={}, timezone={}, timeline=[{} sessions])",

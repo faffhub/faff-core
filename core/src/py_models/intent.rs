@@ -24,7 +24,7 @@ pub(crate) fn intent_from_dict_internal(dict: &Bound<'_, PyDict>) -> PyResult<Py
 #[pymethods]
 impl PyIntent {
     #[new]
-    #[pyo3(signature = (alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![]))]
+    #[pyo3(signature = (alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![], intent_id=None))]
     pub fn new(
         alias: Option<String>,
         role: Option<String>,
@@ -32,10 +32,16 @@ impl PyIntent {
         action: Option<String>,
         subject: Option<String>,
         trackers: Vec<String>,
+        intent_id: Option<String>,
     ) -> Self {
         Self {
-            inner: RustIntent::new(alias, role, objective, action, subject, trackers),
+            inner: RustIntent::new_with_id(intent_id, alias, role, objective, action, subject, trackers),
         }
+    }
+
+    #[getter]
+    fn intent_id(&self) -> String {
+        self.inner.intent_id.clone()
     }
 
     #[getter]
@@ -104,7 +110,8 @@ impl PyIntent {
 
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "Intent(alias={:?}, role={:?}, objective={:?}, action={:?}, subject={:?}, trackers={:?})",
+            "Intent(intent_id={:?}, alias={:?}, role={:?}, objective={:?}, action={:?}, subject={:?}, trackers={:?})",
+            self.inner.intent_id,
             self.inner.alias,
             self.inner.role,
             self.inner.objective,
@@ -132,6 +139,7 @@ impl PyIntent {
             Option<String>,
             Option<String>,
             Vec<String>,
+            Option<String>,
         ),
     )> {
         let intent_type = py.get_type::<Self>();
@@ -144,6 +152,7 @@ impl PyIntent {
                 self.inner.action.clone(),
                 self.inner.subject.clone(),
                 self.inner.trackers.clone(),
+                Some(self.inner.intent_id.clone()),
             ),
         ))
     }

@@ -209,6 +209,9 @@ impl Log {
         trackers: &HashMap<String, String>,
         date_format: &str,
     ) {
+        // Intent ID
+        lines.push(format!("intent_id = \"{}\"", session.intent.intent_id));
+
         // Alias
         if let Some(alias) = &session.intent.alias {
             lines.push(format!("alias = \"{}\"", alias));

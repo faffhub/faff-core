@@ -23,7 +23,9 @@ class models:
 
         Most fields are optional except trackers which defaults to empty list.
         If alias is not provided, it's auto-generated.
+        If intent_id is not provided, it's auto-generated with the current date.
         """
+        intent_id: str
         alias: Optional[str]
         role: Optional[str]
         objective: Optional[str]
@@ -38,7 +40,8 @@ class models:
             objective: Optional[str] = None,
             action: Optional[str] = None,
             subject: Optional[str] = None,
-            trackers: List[str] = []
+            trackers: List[str] = [],
+            intent_id: Optional[str] = None
         ) -> None: ...
 
         def as_dict(self) -> Dict: ...
@@ -167,6 +170,18 @@ class models:
 
             For open sessions on today, uses current time.
             For open sessions on past dates, uses end of day.
+            """
+            ...
+
+        def to_log_file(self, trackers: Dict[str, str]) -> str:
+            """
+            Format the log as a TOML string for saving to file.
+
+            Args:
+                trackers: Dictionary mapping tracker IDs to human-readable names
+
+            Returns:
+                Formatted TOML string
             """
             ...
 
