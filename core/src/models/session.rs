@@ -542,13 +542,12 @@ mod tests {
 
     #[test]
     fn test_session_equality() {
-        let intent1 = sample_intent();
-        let intent2 = sample_intent();
+        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
 
-        let session1 = Session::new(intent1, start, Some(end), None);
-        let session2 = Session::new(intent2, start, Some(end), None);
+        let session1 = Session::new(intent.clone(), start, Some(end), None);
+        let session2 = Session::new(intent, start, Some(end), None);
 
         assert_eq!(session1, session2);
     }

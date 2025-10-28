@@ -120,9 +120,9 @@ mod tests {
     fn create_test_workspace() -> Workspace {
         let storage = Arc::new(MockStorage::new());
 
-        // Add a config file to storage
+        // Add a config file to storage at the correct path
         storage.add_file(
-            PathBuf::from("/faff/config.toml"),
+            PathBuf::from("/faff/.faff/config.toml"),
             r#"timezone = "America/New_York""#.to_string(),
         );
 
@@ -183,7 +183,7 @@ mod tests {
     fn test_workspace_with_utc_timezone() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/config.toml"),
+            PathBuf::from("/faff/.faff/config.toml"),
             r#"timezone = "UTC""#.to_string(),
         );
 
@@ -195,7 +195,7 @@ mod tests {
     fn test_workspace_with_london_timezone() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/config.toml"),
+            PathBuf::from("/faff/.faff/config.toml"),
             r#"timezone = "Europe/London""#.to_string(),
         );
 
@@ -216,7 +216,7 @@ mod tests {
     fn test_workspace_fails_with_invalid_config() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/config.toml"),
+            PathBuf::from("/faff/.faff/config.toml"),
             r#"invalid toml content {"#.to_string(),
         );
 

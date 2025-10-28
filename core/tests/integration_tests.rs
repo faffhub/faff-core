@@ -34,28 +34,8 @@ impl IntegrationStorage {
 }
 
 impl Storage for IntegrationStorage {
-    fn root_dir(&self) -> PathBuf {
-        PathBuf::from("/faff")
-    }
-
-    fn log_dir(&self) -> PathBuf {
-        PathBuf::from("/faff/logs")
-    }
-
-    fn plan_dir(&self) -> PathBuf {
-        PathBuf::from("/faff/plans")
-    }
-
-    fn identity_dir(&self) -> PathBuf {
-        PathBuf::from("/faff/keys")
-    }
-
-    fn timesheet_dir(&self) -> PathBuf {
-        PathBuf::from("/faff/timesheets")
-    }
-
-    fn config_file(&self) -> PathBuf {
-        PathBuf::from("/faff/config.toml")
+    fn base_dir(&self) -> PathBuf {
+        PathBuf::from("/faff/.faff")
     }
 
     fn read_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
@@ -130,7 +110,7 @@ fn test_plan_and_log_integration() {
 
     // Add a plan with trackers
     storage.add_file(
-        PathBuf::from("/faff/plans/local.20250315.toml"),
+        PathBuf::from("/faff/.faff/plans/local.20250315.toml"),
         r#"
 source = "local"
 valid_from = "2025-03-15"
@@ -347,7 +327,7 @@ fn test_plan_caching_across_calls() {
     let storage = Arc::new(IntegrationStorage::new());
 
     storage.add_file(
-        PathBuf::from("/faff/plans/local.20250315.toml"),
+        PathBuf::from("/faff/.faff/plans/local.20250315.toml"),
         r#"
 source = "local"
 valid_from = "2025-03-15"

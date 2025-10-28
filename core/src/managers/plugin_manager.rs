@@ -465,6 +465,7 @@ impl AudiencePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::Mutex;
 
     struct MockStorage {
@@ -482,29 +483,14 @@ mod tests {
     }
 
     impl Storage for MockStorage {
-        fn root_dir(&self) -> PathBuf {
-            self.root.clone()
+        fn base_dir(&self) -> PathBuf {
+            self.root.join(".faff")
         }
-        fn log_dir(&self) -> PathBuf {
-            self.root.join("logs")
-        }
-        fn plan_dir(&self) -> PathBuf {
-            self.root.join("plans")
-        }
-        fn identity_dir(&self) -> PathBuf {
-            self.root.join("identities")
-        }
-        fn timesheet_dir(&self) -> PathBuf {
-            self.root.join("timesheets")
-        }
-        fn config_file(&self) -> PathBuf {
-            self.root.join("config.toml")
-        }
-        fn read_string(&self, path: &PathBuf) -> Result<String> {
+        fn read_string(&self, path: &Path) -> Result<String> {
             let bytes = self.read_bytes(path)?;
             Ok(String::from_utf8(bytes)?)
         }
-        fn read_bytes(&self, path: &PathBuf) -> Result<Vec<u8>> {
+        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
             self.files
                 .lock()
                 .unwrap()
@@ -512,17 +498,17 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("File not found"))
         }
-        fn write_string(&self, path: &PathBuf, data: &str) -> Result<()> {
+        fn write_string(&self, path: &Path, data: &str) -> Result<()> {
             self.write_bytes(path, data.as_bytes())
         }
-        fn write_bytes(&self, path: &PathBuf, data: &[u8]) -> Result<()> {
+        fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
             self.files
                 .lock()
                 .unwrap()
-                .insert(path.clone(), data.to_vec());
+                .insert(path.to_path_buf(), data.to_vec());
             Ok(())
         }
-        fn delete(&self, path: &PathBuf) -> Result<()> {
+        fn delete(&self, path: &Path) -> Result<()> {
             let mut files = self.files.lock().unwrap();
             if files.remove(path).is_some() {
                 Ok(())
@@ -530,13 +516,13 @@ mod tests {
                 anyhow::bail!("File not found: {:?}", path)
             }
         }
-        fn exists(&self, path: &PathBuf) -> bool {
+        fn exists(&self, path: &Path) -> bool {
             self.files.lock().unwrap().contains_key(path)
         }
-        fn create_dir_all(&self, _path: &PathBuf) -> Result<()> {
+        fn create_dir_all(&self, _path: &Path) -> Result<()> {
             Ok(())
         }
-        fn list_files(&self, _dir: &PathBuf, _pattern: &str) -> Result<Vec<PathBuf>> {
+        fn list_files(&self, _dir: &Path, _pattern: &str) -> Result<Vec<PathBuf>> {
             Ok(vec![])
         }
     }

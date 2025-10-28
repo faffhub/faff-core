@@ -448,7 +448,7 @@ objective = "{}:development"
     fn test_load_single_plan() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
 
@@ -464,7 +464,7 @@ objective = "{}:development"
     fn test_get_trackers() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
 
@@ -479,7 +479,7 @@ objective = "{}:development"
     fn test_cache_works() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
 
@@ -520,7 +520,7 @@ objective = "{}:development"
     fn test_get_plan_by_tracker_id_returns_none() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
 
@@ -535,11 +535,11 @@ objective = "{}:development"
     fn test_list_plans() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
         storage.add_file(
-            PathBuf::from("/faff/plans/remote.20250115.toml"),
+            PathBuf::from("/faff/.faff/plans/remote.20250115.toml"),
             sample_plan_toml("remote", "2025-01-15"),
         );
 
@@ -557,7 +557,7 @@ objective = "{}:development"
     fn test_plan_exists() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
 
@@ -572,7 +572,7 @@ objective = "{}:development"
     fn test_delete_plan() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/plans/local.20250101.toml"),
+            PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
             sample_plan_toml("local", "2025-01-01"),
         );
 
