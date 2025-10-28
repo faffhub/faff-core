@@ -121,6 +121,33 @@ impl PyWorkspace {
             .into_owned()
     }
 
+    /// Parse a natural language date string relative to today
+    ///
+    /// Supports:
+    /// - ISO dates: "2025-08-03"
+    /// - Relative dates: "yesterday", "last monday", "today"
+    /// - Month names: "April 1"
+    /// - Time intervals: "2 days ago"
+    ///
+    /// Args:
+    ///     date_str: The date string to parse (None returns today)
+    ///
+    /// Returns:
+    ///     A Python date object
+    fn parse_natural_date<'py>(
+        &self,
+        py: Python<'py>,
+        date_str: Option<&str>,
+    ) -> PyResult<Bound<'py, PyDate>> {
+        let today = self.inner.today();
+        let timezone = self.inner.timezone();
+
+        let parsed = faff_core::date_parsing::parse_natural_date(date_str, today, timezone)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+        faff_core::type_mapping::date_rust_to_py(py, &parsed)
+    }
+
     /// Get the PlanManager
     #[getter]
     fn plans(&self) -> PyPlanManager {

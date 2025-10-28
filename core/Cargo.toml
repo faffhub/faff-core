@@ -23,6 +23,7 @@ serde_canonical_json.workspace = true
 # Date/time handling
 chrono.workspace = true
 chrono-tz.workspace = true
+chrono-english.workspace = true
 iana-time-zone.workspace = true
 
 # Python integration (for plugin system) - optional
