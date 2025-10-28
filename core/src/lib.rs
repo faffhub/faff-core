@@ -3,6 +3,7 @@ pub mod managers;
 pub mod models;
 #[cfg(feature = "python")]
 pub mod py_models;
+pub mod query;
 pub mod storage;
 #[cfg(test)]
 pub mod test_utils;
