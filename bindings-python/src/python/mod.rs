@@ -25,6 +25,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_submodule(&managers_mod)?;
 
     workspace::register(m)?;
+    storage::register(m)?;
 
     Ok(())
 }

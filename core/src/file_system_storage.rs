@@ -33,6 +33,58 @@ impl FileSystemStorage {
         })
     }
 
+    /// Create a FileSystemStorage at a specific path (doesn't check if .faff exists)
+    ///
+    /// This is useful for initialization where .faff doesn't exist yet.
+    pub fn at_path(path: PathBuf) -> Self {
+        Self {
+            faff_root: path.clone(),
+            faff_dir: path.join(".faff"),
+        }
+    }
+
+    /// Initialize a new faff repository at the given path
+    ///
+    /// Creates a FileSystemStorage at the path and initializes it with
+    /// the standard faff structure and default config.
+    ///
+    /// Returns an error if:
+    /// - .faff already exists at target (unless force=true)
+    /// - Parent directory contains a .faff (unless force=true)
+    pub fn init_at(path: PathBuf, force: bool) -> Result<Self> {
+        let faff_dir = path.join(".faff");
+
+        // Check if .faff already exists at target
+        if faff_dir.exists() && !force {
+            anyhow::bail!(
+                ".faff directory already exists at {}",
+                path.display()
+            );
+        }
+
+        // Check for parent .faff if not forcing
+        if !force {
+            match Self::find_faff_root(&path) {
+                Ok(parent_root) => {
+                    if parent_root != path {
+                        anyhow::bail!(
+                            "Cannot initialize inside existing faff repository at {}. Use --force to override.",
+                            parent_root.display()
+                        );
+                    }
+                }
+                Err(_) => {
+                    // No parent .faff found, this is good
+                }
+            }
+        }
+
+        // Create the storage and initialize it
+        let storage = Self::at_path(path);
+        storage.init()?;
+        Ok(storage)
+    }
+
     /// Search upward from a given path for a `.faff` directory
     ///
     /// Returns the directory containing `.faff`, not the `.faff` directory itself.
@@ -60,29 +112,16 @@ impl FileSystemStorage {
 }
 
 impl Storage for FileSystemStorage {
+    fn base_dir(&self) -> PathBuf {
+        self.faff_dir.clone()
+    }
+
+    // Override root_dir() to use cached value instead of computing from parent
     fn root_dir(&self) -> PathBuf {
         self.faff_root.clone()
     }
 
-    fn log_dir(&self) -> PathBuf {
-        self.faff_dir.join("logs")
-    }
-
-    fn plan_dir(&self) -> PathBuf {
-        self.faff_dir.join("plans")
-    }
-
-    fn identity_dir(&self) -> PathBuf {
-        self.faff_dir.join("keys")
-    }
-
-    fn timesheet_dir(&self) -> PathBuf {
-        self.faff_dir.join("timesheets")
-    }
-
-    fn config_file(&self) -> PathBuf {
-        self.faff_dir.join("config.toml")
-    }
+    // Gets log_dir(), plan_dir(), etc. from trait defaults
 
     fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
         std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))

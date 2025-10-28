@@ -51,6 +51,41 @@ pub struct Role {
 }
 
 impl Config {
+    /// Create a default config using the system's detected timezone
+    ///
+    /// Attempts to detect the system timezone using IANA timezone database.
+    /// Falls back to UTC if detection fails.
+    pub fn with_system_timezone() -> Self {
+        let timezone = match iana_time_zone::get_timezone() {
+            Ok(tz_name) => match tz_name.parse::<Tz>() {
+                Ok(tz) => tz,
+                Err(_) => {
+                    eprintln!(
+                        "Warning: Could not parse detected timezone '{}', defaulting to UTC",
+                        tz_name
+                    );
+                    chrono_tz::UTC
+                }
+            },
+            Err(_) => {
+                eprintln!("Warning: Could not detect system timezone, defaulting to UTC");
+                chrono_tz::UTC
+            }
+        };
+
+        Self {
+            timezone,
+            plan_remote: vec![PlanRemote {
+                name: "local".to_string(),
+                plugin: "local".to_string(),
+                config: HashMap::new(),
+                defaults: PlanDefaults::default(),
+            }],
+            timesheet_audience: vec![],
+            role: vec![],
+        }
+    }
+
     /// Load config from TOML string
     pub fn from_toml(toml_str: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(toml_str)

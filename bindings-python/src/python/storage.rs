@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use faff_core::file_system_storage::FileSystemStorage;
 use faff_core::storage::Storage;
 
 /// Python wrapper that implements the Storage trait by delegating to a Python object.
@@ -20,68 +22,13 @@ impl PyStorage {
 }
 
 impl Storage for PyStorage {
-    fn root_dir(&self) -> PathBuf {
+    fn base_dir(&self) -> PathBuf {
         Python::attach(|py| {
             let result = self
                 .py_obj
-                .call_method0(py, "root_dir")
-                .expect("Failed to call root_dir");
-            let path_str: String = result.extract(py).expect("root_dir must return str");
-            PathBuf::from(path_str)
-        })
-    }
-
-    fn log_dir(&self) -> PathBuf {
-        Python::attach(|py| {
-            let result = self
-                .py_obj
-                .call_method0(py, "log_dir")
-                .expect("Failed to call log_dir");
-            let path_str: String = result.extract(py).expect("log_dir must return str");
-            PathBuf::from(path_str)
-        })
-    }
-
-    fn plan_dir(&self) -> PathBuf {
-        Python::attach(|py| {
-            let result = self
-                .py_obj
-                .call_method0(py, "plan_dir")
-                .expect("Failed to call plan_dir");
-            let path_str: String = result.extract(py).expect("plan_dir must return str");
-            PathBuf::from(path_str)
-        })
-    }
-
-    fn identity_dir(&self) -> PathBuf {
-        Python::attach(|py| {
-            let result = self
-                .py_obj
-                .call_method0(py, "identity_dir")
-                .expect("Failed to call identity_dir");
-            let path_str: String = result.extract(py).expect("identity_dir must return str");
-            PathBuf::from(path_str)
-        })
-    }
-
-    fn timesheet_dir(&self) -> PathBuf {
-        Python::attach(|py| {
-            let result = self
-                .py_obj
-                .call_method0(py, "timesheet_dir")
-                .expect("Failed to call timesheet_dir");
-            let path_str: String = result.extract(py).expect("timesheet_dir must return str");
-            PathBuf::from(path_str)
-        })
-    }
-
-    fn config_file(&self) -> PathBuf {
-        Python::attach(|py| {
-            let result = self
-                .py_obj
-                .call_method0(py, "config_file")
-                .expect("Failed to call config_file");
-            let path_str: String = result.extract(py).expect("config_file must return str");
+                .call_method0(py, "base_dir")
+                .expect("Failed to call base_dir");
+            let path_str: String = result.extract(py).expect("base_dir must return str");
             PathBuf::from(path_str)
         })
     }
@@ -178,6 +125,200 @@ impl Storage for PyStorage {
             Ok(paths.into_iter().map(PathBuf::from).collect())
         })
     }
+}
+
+/// Python wrapper for Rust's FileSystemStorage
+///
+/// This exposes the Rust FileSystemStorage implementation to Python,
+/// allowing Python code to use the native Rust storage backend.
+#[pyclass(name = "FileSystemStorage")]
+#[derive(Clone)]
+pub struct PyFileSystemStorage {
+    storage: Arc<FileSystemStorage>,
+}
+
+#[pymethods]
+impl PyFileSystemStorage {
+    /// Create a new FileSystemStorage by searching for .faff directory
+    ///
+    /// Starts from the current working directory and searches upward.
+    #[staticmethod]
+    pub fn new() -> PyResult<Self> {
+        let storage = FileSystemStorage::new()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(Self {
+            storage: Arc::new(storage),
+        })
+    }
+
+    /// Create a new FileSystemStorage by searching for .faff directory starting from a specific path
+    #[staticmethod]
+    pub fn from_path(path: String) -> PyResult<Self> {
+        let storage = FileSystemStorage::from_path(PathBuf::from(path))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(Self {
+            storage: Arc::new(storage),
+        })
+    }
+
+    /// Create a FileSystemStorage at a specific path (doesn't check if .faff exists)
+    ///
+    /// This is useful for initialization where .faff doesn't exist yet.
+    #[staticmethod]
+    pub fn at_path(path: String) -> Self {
+        let storage = FileSystemStorage::at_path(PathBuf::from(path));
+        Self {
+            storage: Arc::new(storage),
+        }
+    }
+
+    /// Initialize a new faff repository at the given path
+    ///
+    /// Creates a FileSystemStorage at the path and initializes it with
+    /// the standard faff structure and default config.
+    ///
+    /// Args:
+    ///     path: The directory path where .faff should be created
+    ///     force: If True, override existing .faff or parent .faff checks
+    ///
+    /// Returns:
+    ///     A new FileSystemStorage instance for the initialized repository
+    #[staticmethod]
+    #[pyo3(signature = (path, force=false))]
+    pub fn init_at(path: String, force: bool) -> PyResult<Self> {
+        let storage = FileSystemStorage::init_at(PathBuf::from(path), force)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(Self {
+            storage: Arc::new(storage),
+        })
+    }
+
+    /// Get the root directory (parent of .faff)
+    pub fn root_dir(&self) -> String {
+        self.storage
+            .root_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the base directory (.faff directory)
+    pub fn base_dir(&self) -> String {
+        self.storage
+            .base_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the log directory
+    pub fn log_dir(&self) -> String {
+        self.storage
+            .log_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the plan directory
+    pub fn plan_dir(&self) -> String {
+        self.storage
+            .plan_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the identity directory
+    pub fn identity_dir(&self) -> String {
+        self.storage
+            .identity_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the timesheet directory
+    pub fn timesheet_dir(&self) -> String {
+        self.storage
+            .timesheet_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the config file path
+    pub fn config_file(&self) -> String {
+        self.storage
+            .config_file()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Read file as bytes
+    pub fn read_bytes<'py>(&self, py: Python<'py>, path: String) -> PyResult<Bound<'py, PyBytes>> {
+        let bytes = self.storage
+            .read_bytes(&PathBuf::from(path))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(PyBytes::new(py, &bytes))
+    }
+
+    /// Read file as string
+    pub fn read_string(&self, path: String) -> PyResult<String> {
+        self.storage
+            .read_string(&PathBuf::from(path))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Write bytes to file
+    pub fn write_bytes(&self, path: String, data: Vec<u8>) -> PyResult<()> {
+        self.storage
+            .write_bytes(&PathBuf::from(path), &data)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Write string to file
+    pub fn write_string(&self, path: String, data: String) -> PyResult<()> {
+        self.storage
+            .write_string(&PathBuf::from(path), &data)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Delete a file
+    pub fn delete(&self, path: String) -> PyResult<()> {
+        self.storage
+            .delete(&PathBuf::from(path))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Check if a file exists
+    pub fn exists(&self, path: String) -> bool {
+        self.storage.exists(&PathBuf::from(path))
+    }
+
+    /// Create directory and all parent directories
+    pub fn create_dir_all(&self, path: String) -> PyResult<()> {
+        self.storage
+            .create_dir_all(&PathBuf::from(path))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// List files matching a pattern
+    pub fn list_files(&self, dir: String, pattern: String) -> PyResult<Vec<String>> {
+        let paths = self.storage
+            .list_files(&PathBuf::from(dir), &pattern)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(paths
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect())
+    }
+}
+
+impl PyFileSystemStorage {
+    /// Get the underlying Arc<FileSystemStorage> for use in Rust code
+    pub fn storage(&self) -> Arc<dyn Storage> {
+        self.storage.clone()
+    }
+}
+
+pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyFileSystemStorage>()?;
+    Ok(())
 }
 
 #[cfg(test)]

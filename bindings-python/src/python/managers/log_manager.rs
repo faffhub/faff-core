@@ -72,6 +72,15 @@ impl PyLogManager {
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
+    /// Get the file path for a log
+    fn log_file_path(&self, date: Bound<'_, PyDate>) -> PyResult<String> {
+        let naive_date = date_py_to_rust(date)?;
+        Ok(self.inner
+            .log_file_path(naive_date)
+            .to_string_lossy()
+            .into_owned())
+    }
+
     /// List all log dates
     fn list_log_dates<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDate>>> {
         let dates = self

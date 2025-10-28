@@ -443,6 +443,7 @@ dependencies = [
  "ed25519-dalek",
  "glob",
  "hex",
+ "iana-time-zone",
  "pyo3",
  "pythonize",
  "rand",
