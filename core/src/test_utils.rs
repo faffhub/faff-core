@@ -18,12 +18,7 @@ pub mod mock_storage {
     /// Provides a simple HashMap-based storage that implements the Storage trait.
     pub struct MockStorage {
         files: RwLock<HashMap<PathBuf, String>>,
-        root_dir: PathBuf,
-        log_dir: PathBuf,
-        plan_dir: PathBuf,
-        identity_dir: PathBuf,
-        timesheet_dir: PathBuf,
-        config_file: PathBuf,
+        base_dir: PathBuf,
     }
 
     impl MockStorage {
@@ -31,12 +26,7 @@ pub mod mock_storage {
         pub fn new() -> Self {
             Self {
                 files: RwLock::new(HashMap::new()),
-                root_dir: PathBuf::from("/faff"),
-                log_dir: PathBuf::from("/faff/logs"),
-                plan_dir: PathBuf::from("/faff/plans"),
-                identity_dir: PathBuf::from("/faff/keys"),
-                timesheet_dir: PathBuf::from("/faff/timesheets"),
-                config_file: PathBuf::from("/faff/config.toml"),
+                base_dir: PathBuf::from("/faff/.faff"),
             }
         }
 
@@ -66,28 +56,8 @@ pub mod mock_storage {
     }
 
     impl Storage for MockStorage {
-        fn root_dir(&self) -> PathBuf {
-            self.root_dir.clone()
-        }
-
-        fn log_dir(&self) -> PathBuf {
-            self.log_dir.clone()
-        }
-
-        fn plan_dir(&self) -> PathBuf {
-            self.plan_dir.clone()
-        }
-
-        fn identity_dir(&self) -> PathBuf {
-            self.identity_dir.clone()
-        }
-
-        fn timesheet_dir(&self) -> PathBuf {
-            self.timesheet_dir.clone()
-        }
-
-        fn config_file(&self) -> PathBuf {
-            self.config_file.clone()
+        fn base_dir(&self) -> PathBuf {
+            self.base_dir.clone()
         }
 
         fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
