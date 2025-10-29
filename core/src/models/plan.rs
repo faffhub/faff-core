@@ -61,7 +61,14 @@ impl Plan {
     }
 
     /// Add an intent to the plan, deduplicating if it already exists
-    pub fn add_intent(&self, intent: Intent) -> Plan {
+    ///
+    /// If the intent doesn't have an ID, generates one using the plan's source prefix.
+    pub fn add_intent(&self, mut intent: Intent) -> Plan {
+        // Ensure intent has an ID (with source prefix)
+        if intent.intent_id.is_empty() {
+            intent.intent_id = Intent::generate_intent_id(&self.source, self.valid_from);
+        }
+
         let mut new_intents = self.intents.clone();
 
         // Only add if not already present (deduplication)

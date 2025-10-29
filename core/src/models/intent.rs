@@ -54,14 +54,15 @@ where
 }
 
 impl Intent {
-    /// Generate a new intent ID in the format i-YYYYMMDD-{6 random chars}
+    /// Generate a new intent ID in the format source:i-YYYYMMDD-{6 random chars}
     ///
     /// # Arguments
+    /// * `source` - The source prefix (e.g., "local", "element", "jira")
     /// * `date` - The date to use in the ID (typically the current date)
     ///
     /// # Returns
-    /// A string in the format "i-20250125-abc123"
-    pub fn generate_intent_id(date: NaiveDate) -> String {
+    /// A string in the format "local:i-20250125-abc123"
+    pub fn generate_intent_id(source: &str, date: NaiveDate) -> String {
         let date_str = date.format("%Y%m%d");
         let random_suffix: String = rand::thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
@@ -69,7 +70,7 @@ impl Intent {
             .map(|c| c.to_ascii_lowercase())
             .map(char::from)
             .collect();
-        format!("i-{}-{}", date_str, random_suffix)
+        format!("{}:i-{}-{}", source, date_str, random_suffix)
     }
 
     pub fn new(
@@ -112,9 +113,9 @@ impl Intent {
             ))
         });
 
-        let intent_id = intent_id.unwrap_or_else(|| {
-            Self::generate_intent_id(chrono::Local::now().date_naive())
-        });
+        // Use provided ID or empty string
+        // Note: Plan::add_intent() will generate a properly prefixed ID if empty
+        let intent_id = intent_id.unwrap_or_default();
 
         Self {
             intent_id,
