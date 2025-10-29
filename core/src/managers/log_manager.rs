@@ -191,6 +191,56 @@ impl LogManager {
             anyhow::bail!("No active session to stop")
         }
     }
+
+    /// Find all logs that contain sessions using the given intent
+    ///
+    /// Returns a list of (date, session_count) tuples
+    pub fn find_logs_with_intent(&self, intent_id: &str) -> Result<Vec<(NaiveDate, usize)>> {
+        let all_dates = self.list_logs()?;
+        let mut logs_with_intent = Vec::new();
+
+        for date in all_dates {
+            if let Ok(Some(log)) = self.get_log(date) {
+                let count = log
+                    .timeline
+                    .iter()
+                    .filter(|s| s.intent.intent_id == intent_id)
+                    .count();
+
+                if count > 0 {
+                    logs_with_intent.push((date, count));
+                }
+            }
+        }
+
+        Ok(logs_with_intent)
+    }
+
+    /// Update an intent across all log files
+    ///
+    /// Returns the total number of sessions updated
+    pub fn update_intent_in_logs(
+        &self,
+        intent_id: &str,
+        updated_intent: crate::models::Intent,
+        trackers: &std::collections::HashMap<String, String>,
+    ) -> Result<usize> {
+        let logs_with_intent = self.find_logs_with_intent(intent_id)?;
+        let mut total_updated = 0;
+
+        for (date, _) in logs_with_intent {
+            if let Ok(Some(log)) = self.get_log(date) {
+                let (updated_log, count) = log.update_intent(intent_id, updated_intent.clone());
+
+                if count > 0 {
+                    self.write_log(&updated_log, trackers)?;
+                    total_updated += count;
+                }
+            }
+        }
+
+        Ok(total_updated)
+    }
 }
 
 #[cfg(test)]

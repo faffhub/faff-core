@@ -396,6 +396,73 @@ impl PlanManager {
         Ok(())
     }
 
+    /// Find an intent by ID across all plan files
+    ///
+    /// Searches all plan files for an intent with the given intent_id.
+    /// Returns None if the intent is not found.
+    ///
+    /// # Returns
+    /// - Ok(Some((source, intent, plan_file_path))) if found
+    /// - Ok(None) if not found
+    /// - Err if there's an error reading files
+    pub fn find_intent_by_id(&self, intent_id: &str) -> Result<Option<(String, Intent, PathBuf)>> {
+        let plan_dir = self.storage.plan_dir();
+        let plan_files = self.storage.list_files(&plan_dir, "*.toml")
+            .context("Failed to list plan files")?;
+
+        for file_path in plan_files {
+            let content = self.storage.read_string(&file_path)
+                .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
+
+            let plan: Plan = match toml::from_str(&content) {
+                Ok(p) => p,
+                Err(_) => continue, // Skip invalid plan files
+            };
+
+            // Search for the intent in this plan
+            for intent in &plan.intents {
+                if intent.intent_id == intent_id {
+                    return Ok(Some((plan.source.clone(), intent.clone(), file_path)));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Update an intent by ID across all plan files
+    ///
+    /// Searches all plan files for an intent with the given intent_id and updates it.
+    /// Returns the updated plan if found and successfully updated.
+    ///
+    /// # Returns
+    /// - Ok(Some(plan)) if the intent was found and updated
+    /// - Ok(None) if the intent was not found
+    /// - Err if there's an error reading/writing files or updating the intent
+    pub fn update_intent_by_id(&self, intent_id: &str, updated_intent: Intent) -> Result<Option<Plan>> {
+        // First find the intent
+        let found = self.find_intent_by_id(intent_id)?;
+
+        if let Some((_source, _original_intent, file_path)) = found {
+            // Load the plan
+            let content = self.storage.read_string(&file_path)
+                .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
+
+            let plan: Plan = toml::from_str(&content)
+                .with_context(|| format!("Failed to parse plan file: {}", file_path.display()))?;
+
+            // Update the intent
+            let updated_plan = plan.update_intent(intent_id, updated_intent)?;
+
+            // Write it back
+            self.write_plan(&updated_plan)?;
+
+            Ok(Some(updated_plan))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Get plan remote plugin instances
     ///
     /// This is a convenience method that delegates to the plugin manager.

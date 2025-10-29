@@ -222,6 +222,46 @@ impl PyPlanManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
+    /// Find an intent by ID across all plan files
+    ///
+    /// Returns: tuple (source, Intent, plan_file_path) or None if not found
+    pub fn find_intent_by_id(
+        &self,
+        py: Python,
+        intent_id: &str,
+    ) -> PyResult<Option<Py<PyAny>>> {
+        let result = self
+            .manager
+            .find_intent_by_id(intent_id)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        match result {
+            Some((source, intent, path)) => {
+                let py_intent = PyIntent { inner: intent };
+                let path_str = path.to_string_lossy().to_string();
+                let tuple = (source, py_intent, path_str).into_pyobject(py)?;
+                Ok(Some(tuple.unbind().into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Update an intent by ID across all plan files
+    ///
+    /// Returns: updated Plan or None if intent not found
+    pub fn update_intent_by_id(
+        &self,
+        intent_id: &str,
+        updated_intent: &PyIntent,
+    ) -> PyResult<Option<PyPlan>> {
+        let result = self
+            .manager
+            .update_intent_by_id(intent_id, updated_intent.inner.clone())
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(result.map(|inner| PyPlan { inner }))
+    }
+
     /// Get plan remote plugin instances
     ///
     /// This delegates to the Rust PlanManager's remotes() method.

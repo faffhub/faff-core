@@ -88,6 +88,40 @@ impl Plan {
             intents: new_intents,
         }
     }
+
+    /// Update an existing intent in the plan
+    ///
+    /// Finds the intent by ID and replaces it with the updated version.
+    /// Returns an error if the intent is not found.
+    pub fn update_intent(&self, intent_id: &str, updated_intent: Intent) -> anyhow::Result<Plan> {
+        let mut new_intents = self.intents.clone();
+
+        // Find the intent and update it
+        let found = new_intents.iter_mut().any(|intent| {
+            if intent.intent_id == intent_id {
+                *intent = updated_intent.clone();
+                true
+            } else {
+                false
+            }
+        });
+
+        if !found {
+            anyhow::bail!("Intent with ID '{}' not found in plan", intent_id);
+        }
+
+        Ok(Plan {
+            source: self.source.clone(),
+            valid_from: self.valid_from,
+            valid_until: self.valid_until,
+            roles: self.roles.clone(),
+            actions: self.actions.clone(),
+            objectives: self.objectives.clone(),
+            subjects: self.subjects.clone(),
+            trackers: self.trackers.clone(),
+            intents: new_intents,
+        })
+    }
 }
 
 #[cfg(test)]

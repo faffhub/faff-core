@@ -228,4 +228,40 @@ impl PyLogManager {
             .stop_current_session(current_date, current_time, &trackers)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
+
+    /// Find all logs that contain sessions using the given intent
+    ///
+    /// Returns: list of tuples (date, session_count)
+    fn find_logs_with_intent<'py>(
+        &self,
+        py: Python<'py>,
+        intent_id: &str,
+    ) -> PyResult<Vec<(Bound<'py, PyDate>, usize)>> {
+        let results = self
+            .inner
+            .find_logs_with_intent(intent_id)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        results
+            .into_iter()
+            .map(|(date, count)| {
+                let py_date = date_rust_to_py(py, &date)?;
+                Ok((py_date, count))
+            })
+            .collect()
+    }
+
+    /// Update an intent across all log files
+    ///
+    /// Returns: total number of sessions updated
+    fn update_intent_in_logs(
+        &self,
+        intent_id: &str,
+        updated_intent: &faff_core::py_models::intent::PyIntent,
+        trackers: std::collections::HashMap<String, String>,
+    ) -> PyResult<usize> {
+        self.inner
+            .update_intent_in_logs(intent_id, updated_intent.inner.clone(), &trackers)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
 }

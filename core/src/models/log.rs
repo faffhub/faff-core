@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use thiserror::Error;
 
+use crate::models::intent::Intent;
 use crate::models::session::Session;
 
 // Compiled regex for commentifying derived values - validated at compile time
@@ -387,6 +388,23 @@ impl Log {
         DERIVED_VALUE_REGEX
             .replace_all(toml_string, "# $1")
             .to_string()
+    }
+
+    /// Update all sessions in the log that use the given intent
+    ///
+    /// Returns a tuple of (updated_log, count) where count is the number of sessions updated
+    pub fn update_intent(&self, intent_id: &str, updated_intent: Intent) -> (Log, usize) {
+        let mut new_timeline = self.timeline.clone();
+        let mut count = 0;
+
+        for session in &mut new_timeline {
+            if session.intent.intent_id == intent_id {
+                session.intent = updated_intent.clone();
+                count += 1;
+            }
+        }
+
+        (Log::new(self.date, self.timezone, new_timeline), count)
     }
 }
 
