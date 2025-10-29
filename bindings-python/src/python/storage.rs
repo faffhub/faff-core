@@ -7,10 +7,23 @@ use std::sync::Arc;
 use faff_core::file_system_storage::FileSystemStorage;
 use faff_core::storage::Storage;
 
-/// Python wrapper that implements the Storage trait by delegating to a Python object.
+/// Python-to-Rust storage adapter: Wraps a Python storage object for use in Rust.
 ///
-/// This allows Python code to provide storage implementations (e.g., FileSystem)
-/// that Rust code can use through the Storage trait.
+/// This implements the Rust `Storage` trait by delegating to a Python object.
+/// Direction: Python → Rust
+///
+/// Use case: When Python code provides a custom storage implementation and passes it
+/// to the Rust `Workspace` constructor, we wrap it in `PyStorage` so Rust code can
+/// call Storage trait methods on it.
+///
+/// Example:
+/// ```python
+/// class MyCustomStorage:
+///     def base_dir(self): return "/custom/path"
+///     # ... other Storage methods
+///
+/// ws = Workspace(storage=MyCustomStorage())  # Wrapped in PyStorage internally
+/// ```
 pub struct PyStorage {
     py_obj: Py<PyAny>,
 }
@@ -316,8 +329,115 @@ impl PyFileSystemStorage {
     }
 }
 
+/// Rust-to-Python storage adapter: Exposes a Rust Storage trait object to Python.
+///
+/// This wraps `Arc<dyn Storage>` as a Python class, exposing Storage trait methods.
+/// Direction: Rust → Python
+///
+/// Use case: When Python code needs to access the storage object from a Workspace
+/// (e.g., to get directory paths for utilities), we wrap the Rust storage in
+/// `PyStorageWrapper` so Python can call methods on it.
+///
+/// Unlike `PyFileSystemStorage` which wraps a concrete type, this works with any
+/// Storage implementation via the trait interface.
+///
+/// Example:
+/// ```python
+/// ws = Workspace()
+/// storage = ws.storage()  # Returns PyStorageWrapper
+/// plan_dir = storage.plan_dir()  # Calls trait method on wrapped Rust object
+/// ```
+#[pyclass(name = "Storage")]
+#[derive(Clone)]
+pub struct PyStorageWrapper {
+    storage: Arc<dyn Storage>,
+}
+
+#[pymethods]
+impl PyStorageWrapper {
+    /// Get the root directory (parent of .faff)
+    pub fn root_dir(&self) -> String {
+        self.storage
+            .root_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the base directory (.faff directory)
+    pub fn base_dir(&self) -> String {
+        self.storage
+            .base_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the log directory
+    pub fn log_dir(&self) -> String {
+        self.storage
+            .log_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the plan directory
+    pub fn plan_dir(&self) -> String {
+        self.storage
+            .plan_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the identity directory
+    pub fn identity_dir(&self) -> String {
+        self.storage
+            .identity_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the timesheet directory
+    pub fn timesheet_dir(&self) -> String {
+        self.storage
+            .timesheet_dir()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Get the config file path
+    pub fn config_file(&self) -> String {
+        self.storage
+            .config_file()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Check if a file exists
+    pub fn exists(&self, path: String) -> bool {
+        self.storage.exists(&PathBuf::from(path))
+    }
+
+    /// List files matching a pattern
+    pub fn list_files(&self, dir: String, pattern: String) -> PyResult<Vec<String>> {
+        let paths = self.storage
+            .list_files(&PathBuf::from(dir), &pattern)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        Ok(paths
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect())
+    }
+}
+
+impl PyStorageWrapper {
+    /// Create a new wrapper from an Arc<dyn Storage>
+    pub fn new(storage: Arc<dyn Storage>) -> Self {
+        Self { storage }
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFileSystemStorage>()?;
+    m.add_class::<PyStorageWrapper>()?;
     Ok(())
 }
 

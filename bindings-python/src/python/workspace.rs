@@ -2,7 +2,7 @@ use crate::python::managers::{
     identity_manager::PyIdentityManager, log_manager::PyLogManager, plan_manager::PyPlanManager,
     plugin_manager::PyPluginManager, timesheet_manager::PyTimesheetManager,
 };
-use crate::python::storage::PyStorage;
+use crate::python::storage::{PyStorage, PyStorageWrapper};
 use faff_core::type_mapping::{date_rust_to_py, datetime_rust_to_py};
 use faff_core::workspace::Workspace as RustWorkspace;
 use pyo3::prelude::*;
@@ -93,32 +93,9 @@ impl PyWorkspace {
         }
     }
 
-    // ============================================================================
-    // Repository-level path helpers
-    //
-    // These are anomalous - they don't belong to any specific manager.
-    // They're workspace-level concerns that need to be exposed for CLI operations
-    // like editing the config file or displaying the repo root.
-    // After Storage is given to Workspace, the CLI shouldn't need to reference
-    // Storage again, so these helpers provide access to essential paths.
-    // ============================================================================
-
-    /// Get the root directory (parent of .faff)
-    fn root_dir(&self) -> String {
-        self.inner
-            .storage()
-            .root_dir()
-            .to_string_lossy()
-            .into_owned()
-    }
-
-    /// Get the config file path
-    fn config_path(&self) -> String {
-        self.inner
-            .storage()
-            .config_file()
-            .to_string_lossy()
-            .into_owned()
+    /// Get the storage object
+    fn storage(&self) -> PyStorageWrapper {
+        PyStorageWrapper::new(self.inner.storage().clone())
     }
 
     /// Parse a natural language date string relative to today
