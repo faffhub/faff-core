@@ -225,11 +225,7 @@ impl PyPlanManager {
     /// Find an intent by ID across all plan files
     ///
     /// Returns: tuple (source, Intent, plan_file_path) or None if not found
-    pub fn find_intent_by_id(
-        &self,
-        py: Python,
-        intent_id: &str,
-    ) -> PyResult<Option<Py<PyAny>>> {
+    pub fn find_intent_by_id(&self, py: Python, intent_id: &str) -> PyResult<Option<Py<PyAny>>> {
         let result = self
             .manager
             .find_intent_by_id(intent_id)

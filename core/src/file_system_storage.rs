@@ -56,10 +56,7 @@ impl FileSystemStorage {
 
         // Check if .faff already exists at target
         if faff_dir.exists() && !force {
-            anyhow::bail!(
-                ".faff directory already exists at {}",
-                path.display()
-            );
+            anyhow::bail!(".faff directory already exists at {}", path.display());
         }
 
         // Check for parent .faff if not forcing

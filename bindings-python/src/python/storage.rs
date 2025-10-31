@@ -208,63 +208,43 @@ impl PyFileSystemStorage {
 
     /// Get the root directory (parent of .faff)
     pub fn root_dir(&self) -> String {
-        self.storage
-            .root_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.root_dir().to_string_lossy().into_owned()
     }
 
     /// Get the base directory (.faff directory)
     pub fn base_dir(&self) -> String {
-        self.storage
-            .base_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.base_dir().to_string_lossy().into_owned()
     }
 
     /// Get the log directory
     pub fn log_dir(&self) -> String {
-        self.storage
-            .log_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.log_dir().to_string_lossy().into_owned()
     }
 
     /// Get the plan directory
     pub fn plan_dir(&self) -> String {
-        self.storage
-            .plan_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.plan_dir().to_string_lossy().into_owned()
     }
 
     /// Get the identity directory
     pub fn identity_dir(&self) -> String {
-        self.storage
-            .identity_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.identity_dir().to_string_lossy().into_owned()
     }
 
     /// Get the timesheet directory
     pub fn timesheet_dir(&self) -> String {
-        self.storage
-            .timesheet_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.timesheet_dir().to_string_lossy().into_owned()
     }
 
     /// Get the config file path
     pub fn config_file(&self) -> String {
-        self.storage
-            .config_file()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.config_file().to_string_lossy().into_owned()
     }
 
     /// Read file as bytes
     pub fn read_bytes<'py>(&self, py: Python<'py>, path: String) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.storage
+        let bytes = self
+            .storage
             .read_bytes(&PathBuf::from(path))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(PyBytes::new(py, &bytes))
@@ -312,7 +292,8 @@ impl PyFileSystemStorage {
 
     /// List files matching a pattern
     pub fn list_files(&self, dir: String, pattern: String) -> PyResult<Vec<String>> {
-        let paths = self.storage
+        let paths = self
+            .storage
             .list_files(&PathBuf::from(dir), &pattern)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(paths
@@ -357,58 +338,37 @@ pub struct PyStorageWrapper {
 impl PyStorageWrapper {
     /// Get the root directory (parent of .faff)
     pub fn root_dir(&self) -> String {
-        self.storage
-            .root_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.root_dir().to_string_lossy().into_owned()
     }
 
     /// Get the base directory (.faff directory)
     pub fn base_dir(&self) -> String {
-        self.storage
-            .base_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.base_dir().to_string_lossy().into_owned()
     }
 
     /// Get the log directory
     pub fn log_dir(&self) -> String {
-        self.storage
-            .log_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.log_dir().to_string_lossy().into_owned()
     }
 
     /// Get the plan directory
     pub fn plan_dir(&self) -> String {
-        self.storage
-            .plan_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.plan_dir().to_string_lossy().into_owned()
     }
 
     /// Get the identity directory
     pub fn identity_dir(&self) -> String {
-        self.storage
-            .identity_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.identity_dir().to_string_lossy().into_owned()
     }
 
     /// Get the timesheet directory
     pub fn timesheet_dir(&self) -> String {
-        self.storage
-            .timesheet_dir()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.timesheet_dir().to_string_lossy().into_owned()
     }
 
     /// Get the config file path
     pub fn config_file(&self) -> String {
-        self.storage
-            .config_file()
-            .to_string_lossy()
-            .into_owned()
+        self.storage.config_file().to_string_lossy().into_owned()
     }
 
     /// Check if a file exists
@@ -418,7 +378,8 @@ impl PyStorageWrapper {
 
     /// List files matching a pattern
     pub fn list_files(&self, dir: String, pattern: String) -> PyResult<Vec<String>> {
-        let paths = self.storage
+        let paths = self
+            .storage
             .list_files(&PathBuf::from(dir), &pattern)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(paths

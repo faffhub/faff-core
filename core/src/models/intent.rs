@@ -83,12 +83,7 @@ impl Intent {
     ) -> Self {
         Self::new_with_id(
             None, // Auto-generate ID with current date
-            alias,
-            role,
-            objective,
-            action,
-            subject,
-            trackers,
+            alias, role, objective, action, subject, trackers,
         )
     }
 

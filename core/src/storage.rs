@@ -115,9 +115,9 @@ pub trait Storage: Send + Sync {
 
         // Create default config with system timezone
         let config = Config::with_system_timezone();
-        let config_toml = config.to_toml().map_err(|e| {
-            anyhow::anyhow!("Failed to serialize default config: {}", e)
-        })?;
+        let config_toml = config
+            .to_toml()
+            .map_err(|e| anyhow::anyhow!("Failed to serialize default config: {}", e))?;
         self.write_string(&self.config_file(), &config_toml)?;
 
         Ok(())

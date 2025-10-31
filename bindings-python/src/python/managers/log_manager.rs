@@ -75,7 +75,8 @@ impl PyLogManager {
     /// Get the file path for a log
     fn log_file_path(&self, date: Bound<'_, PyDate>) -> PyResult<String> {
         let naive_date = date_py_to_rust(date)?;
-        Ok(self.inner
+        Ok(self
+            .inner
             .log_file_path(naive_date)
             .to_string_lossy()
             .into_owned())

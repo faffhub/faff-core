@@ -17,16 +17,18 @@ pub enum FilterError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterOperator {
-    Equals,      // =
-    Contains,    // ~
-    NotEquals,   // !=
+    Equals,    // =
+    Contains,  // ~
+    NotEquals, // !=
 }
 
 impl FilterOperator {
     fn matches(&self, field_value: &str, filter_value: &str) -> bool {
         match self {
             FilterOperator::Equals => field_value == filter_value,
-            FilterOperator::Contains => field_value.to_lowercase().contains(&filter_value.to_lowercase()),
+            FilterOperator::Contains => field_value
+                .to_lowercase()
+                .contains(&filter_value.to_lowercase()),
             FilterOperator::NotEquals => field_value != filter_value,
         }
     }
@@ -103,17 +105,29 @@ impl FromStr for Filter {
         // Try != first (two characters) before = (one character)
         if let Some((field_str, value)) = s.split_once("!=") {
             let field = FilterField::from_str(field_str.trim())?;
-            return Ok(Filter::new(field, FilterOperator::NotEquals, value.trim().to_string()));
+            return Ok(Filter::new(
+                field,
+                FilterOperator::NotEquals,
+                value.trim().to_string(),
+            ));
         }
 
         if let Some((field_str, value)) = s.split_once('=') {
             let field = FilterField::from_str(field_str.trim())?;
-            return Ok(Filter::new(field, FilterOperator::Equals, value.trim().to_string()));
+            return Ok(Filter::new(
+                field,
+                FilterOperator::Equals,
+                value.trim().to_string(),
+            ));
         }
 
         if let Some((field_str, value)) = s.split_once('~') {
             let field = FilterField::from_str(field_str.trim())?;
-            return Ok(Filter::new(field, FilterOperator::Contains, value.trim().to_string()));
+            return Ok(Filter::new(
+                field,
+                FilterOperator::Contains,
+                value.trim().to_string(),
+            ));
         }
 
         Err(FilterError::InvalidFormat(s.to_string()))
@@ -158,11 +172,7 @@ pub fn query_sessions(
             // Build key from filter field values
             let key: Vec<String> = filters
                 .iter()
-                .map(|filter| {
-                    filter.field.get_value(session)
-                        .unwrap_or("")
-                        .to_string()
-                })
+                .map(|filter| filter.field.get_value(session).unwrap_or("").to_string())
                 .collect();
 
             // Calculate session duration
@@ -172,7 +182,10 @@ pub fn query_sessions(
             };
 
             // Add to results
-            results.entry(key).and_modify(|d| *d = *d + duration).or_insert(duration);
+            results
+                .entry(key)
+                .and_modify(|d| *d = *d + duration)
+                .or_insert(duration);
         }
     }
 
@@ -201,8 +214,14 @@ mod tests {
             vec![],
         );
 
-        let start = Utc.with_ymd_and_hms(2025, 1, 1, 9, 0, 0).unwrap().with_timezone(&New_York);
-        let end = Utc.with_ymd_and_hms(2025, 1, 1, 10, 0, 0).unwrap().with_timezone(&New_York);
+        let start = Utc
+            .with_ymd_and_hms(2025, 1, 1, 9, 0, 0)
+            .unwrap()
+            .with_timezone(&New_York);
+        let end = Utc
+            .with_ymd_and_hms(2025, 1, 1, 10, 0, 0)
+            .unwrap()
+            .with_timezone(&New_York);
 
         Session::new(intent, start, Some(end), note.map(String::from))
     }
@@ -250,7 +269,7 @@ mod tests {
 
         // Not equals operator
         let filter: Filter = "note!=meeting".parse().unwrap();
-        assert!(filter.matches(&session));  // "daily standup" != "meeting"
+        assert!(filter.matches(&session)); // "daily standup" != "meeting"
 
         let filter: Filter = "note!=daily standup".parse().unwrap();
         assert!(!filter.matches(&session)); // "daily standup" == "daily standup"
@@ -259,18 +278,8 @@ mod tests {
     #[test]
     fn test_query_sessions() {
         let sessions = vec![
-            create_test_session(
-                Some("coding"),
-                Some("engineer"),
-                Some("feature-a"),
-                None,
-            ),
-            create_test_session(
-                Some("review"),
-                Some("engineer"),
-                Some("feature-b"),
-                None,
-            ),
+            create_test_session(Some("coding"), Some("engineer"), Some("feature-a"), None),
+            create_test_session(Some("review"), Some("engineer"), Some("feature-b"), None),
         ];
 
         let log = Log::new(

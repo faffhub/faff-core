@@ -93,20 +93,19 @@ fn query_sessions<'py>(
     let rust_logs: Vec<_> = logs.iter().map(|py_log| py_log.inner.clone()).collect();
 
     // Convert Python filters to Rust filters (cloned to own the data)
-    let rust_filters: Vec<_> = filters.iter().map(|py_filter| py_filter.inner.clone()).collect();
+    let rust_filters: Vec<_> = filters
+        .iter()
+        .map(|py_filter| py_filter.inner.clone())
+        .collect();
 
     // Convert Python dates to Rust dates
     let from_date_rust = from_date.map(|d| date_py_to_rust(d)).transpose()?;
     let to_date_rust = to_date.map(|d| date_py_to_rust(d)).transpose()?;
 
     // Call Rust query function
-    let results = faff_core::query::query_sessions(
-        &rust_logs,
-        &rust_filters,
-        from_date_rust,
-        to_date_rust,
-    )
-    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let results =
+        faff_core::query::query_sessions(&rust_logs, &rust_filters, from_date_rust, to_date_rust)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
     // Convert to Python dict with tuple keys (tuples are hashable, lists are not)
     let py_dict = pyo3::types::PyDict::new(py);

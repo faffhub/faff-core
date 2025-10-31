@@ -35,7 +35,9 @@ impl PyIntent {
         intent_id: Option<String>,
     ) -> Self {
         Self {
-            inner: RustIntent::new_with_id(intent_id, alias, role, objective, action, subject, trackers),
+            inner: RustIntent::new_with_id(
+                intent_id, alias, role, objective, action, subject, trackers,
+            ),
         }
     }
 

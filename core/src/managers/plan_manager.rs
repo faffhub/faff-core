@@ -407,11 +407,15 @@ impl PlanManager {
     /// - Err if there's an error reading files
     pub fn find_intent_by_id(&self, intent_id: &str) -> Result<Option<(String, Intent, PathBuf)>> {
         let plan_dir = self.storage.plan_dir();
-        let plan_files = self.storage.list_files(&plan_dir, "*.toml")
+        let plan_files = self
+            .storage
+            .list_files(&plan_dir, "*.toml")
             .context("Failed to list plan files")?;
 
         for file_path in plan_files {
-            let content = self.storage.read_string(&file_path)
+            let content = self
+                .storage
+                .read_string(&file_path)
                 .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
 
             let plan: Plan = match toml::from_str(&content) {
@@ -439,13 +443,19 @@ impl PlanManager {
     /// - Ok(Some(plan)) if the intent was found and updated
     /// - Ok(None) if the intent was not found
     /// - Err if there's an error reading/writing files or updating the intent
-    pub fn update_intent_by_id(&self, intent_id: &str, updated_intent: Intent) -> Result<Option<Plan>> {
+    pub fn update_intent_by_id(
+        &self,
+        intent_id: &str,
+        updated_intent: Intent,
+    ) -> Result<Option<Plan>> {
         // First find the intent
         let found = self.find_intent_by_id(intent_id)?;
 
         if let Some((_source, _original_intent, file_path)) = found {
             // Load the plan
-            let content = self.storage.read_string(&file_path)
+            let content = self
+                .storage
+                .read_string(&file_path)
                 .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
 
             let plan: Plan = toml::from_str(&content)
