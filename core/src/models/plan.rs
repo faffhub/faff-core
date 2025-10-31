@@ -258,14 +258,30 @@ mod tests {
         let new_plan = plan.add_intent(intent.clone());
 
         assert_eq!(new_plan.intents.len(), 1);
-        assert_eq!(new_plan.intents[0], intent);
+        // The added intent should have the same ROAST values but a generated ID
+        assert_eq!(new_plan.intents[0].alias, intent.alias);
+        assert_eq!(new_plan.intents[0].role, intent.role);
+        assert_eq!(new_plan.intents[0].objective, intent.objective);
+        assert_eq!(new_plan.intents[0].action, intent.action);
+        assert_eq!(new_plan.intents[0].subject, intent.subject);
+        assert!(!new_plan.intents[0].intent_id.is_empty(), "Intent should have a generated ID");
+        assert!(new_plan.intents[0].intent_id.starts_with("local:i-"), "Intent ID should have correct prefix");
         // Original unchanged
         assert_eq!(plan.intents.len(), 0);
     }
 
     #[test]
     fn test_add_intent_to_plan_with_intents() {
-        let intent1 = sample_intent();
+        // Create intent1 with an ID so it can be compared
+        let intent1 = Intent::new_with_id(
+            Some(Intent::generate_intent_id("local", NaiveDate::from_ymd_opt(2025, 3, 20).unwrap())),
+            Some("work".to_string()),
+            Some("engineer".to_string()),
+            Some("development".to_string()),
+            Some("coding".to_string()),
+            Some("features".to_string()),
+            vec![],
+        );
         let plan = Plan::new(
             "local".to_string(),
             NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
@@ -291,12 +307,27 @@ mod tests {
 
         assert_eq!(new_plan.intents.len(), 2);
         assert!(new_plan.intents.contains(&intent1));
-        assert!(new_plan.intents.contains(&intent2));
+        // Check that second intent exists with correct ROAST values
+        let added_intent2 = new_plan.intents.iter().find(|i| i.alias.as_deref() == Some("review")).unwrap();
+        assert_eq!(added_intent2.role, intent2.role);
+        assert_eq!(added_intent2.objective, intent2.objective);
+        assert_eq!(added_intent2.action, intent2.action);
+        assert_eq!(added_intent2.subject, intent2.subject);
+        assert!(!added_intent2.intent_id.is_empty(), "Intent should have a generated ID");
     }
 
     #[test]
     fn test_add_duplicate_intent_deduplicates() {
-        let intent = sample_intent();
+        // Create intent with an ID so deduplication can work
+        let intent = Intent::new_with_id(
+            Some(Intent::generate_intent_id("local", NaiveDate::from_ymd_opt(2025, 3, 20).unwrap())),
+            Some("work".to_string()),
+            Some("engineer".to_string()),
+            Some("development".to_string()),
+            Some("coding".to_string()),
+            Some("features".to_string()),
+            vec![],
+        );
         let plan = Plan::new(
             "local".to_string(),
             NaiveDate::from_ymd_opt(2025, 3, 20).unwrap(),
