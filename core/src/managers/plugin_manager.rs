@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::models::log::Log;
 use crate::models::plan::Plan;
+use crate::models::remote::Remote;
 use crate::models::timesheet::Timesheet;
 use crate::models::Config;
 use crate::storage::Storage;
@@ -289,31 +290,88 @@ impl PluginManager {
         .map_err(|e: PyErr| anyhow::anyhow!("Failed to instantiate plugin: {}", e))
     }
 
-    /// Get instantiated plan remote plugins based on config
+    /// Get instantiated plan remote plugins from remotes directory
     pub fn plan_remotes(&mut self) -> Result<Vec<Py<PyAny>>> {
         self.load_plugins()?;
 
-        // Clone the config values we need to avoid borrow checker issues
-        let plan_remotes = self.config.plan_remote.clone();
+        // List all remote config files
+        let remotes_dir = self.storage.remotes_dir();
+        let remote_files = self
+            .storage
+            .list_files(&remotes_dir, "*.toml")
+            .context("Failed to list remote config files")?;
 
         let mut instances = Vec::new();
-        for plan_remote in &plan_remotes {
-            // Convert PlanDefaults to HashMap<String, toml::Value>
-            // FIXME: This is a temporary solution - we should properly serialize PlanDefaults
-            let defaults = HashMap::new();
+        for remote_file in remote_files {
+            // Load remote config from file
+            let remote_toml = self
+                .storage
+                .read_string(&remote_file)
+                .with_context(|| format!("Failed to read remote file: {:?}", remote_file))?;
+
+            let remote = Remote::from_toml(&remote_toml).with_context(|| {
+                format!("Failed to parse remote config: {:?}", remote_file)
+            })?;
+
+            // Convert RemoteVocabulary to HashMap for plugin
+            let mut defaults = HashMap::new();
+            if !remote.vocabulary.roles.is_empty() {
+                defaults.insert(
+                    "roles".to_string(),
+                    toml::Value::Array(
+                        remote
+                            .vocabulary
+                            .roles
+                            .iter()
+                            .map(|s| toml::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                );
+            }
+            if !remote.vocabulary.objectives.is_empty() {
+                defaults.insert(
+                    "objectives".to_string(),
+                    toml::Value::Array(
+                        remote
+                            .vocabulary
+                            .objectives
+                            .iter()
+                            .map(|s| toml::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                );
+            }
+            if !remote.vocabulary.actions.is_empty() {
+                defaults.insert(
+                    "actions".to_string(),
+                    toml::Value::Array(
+                        remote
+                            .vocabulary
+                            .actions
+                            .iter()
+                            .map(|s| toml::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                );
+            }
+            if !remote.vocabulary.subjects.is_empty() {
+                defaults.insert(
+                    "subjects".to_string(),
+                    toml::Value::Array(
+                        remote
+                            .vocabulary
+                            .subjects
+                            .iter()
+                            .map(|s| toml::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                );
+            }
 
             let instance = self
-                .instantiate_plugin(
-                    &plan_remote.plugin,
-                    &plan_remote.name,
-                    plan_remote.config.clone(),
-                    defaults,
-                )
+                .instantiate_plugin(&remote.plugin, &remote.id, remote.connection, defaults)
                 .with_context(|| {
-                    format!(
-                        "Failed to instantiate plan remote plugin '{}'",
-                        plan_remote.name
-                    )
+                    format!("Failed to instantiate plan remote plugin '{}'", remote.id)
                 })?;
             instances.push(instance);
         }
@@ -321,32 +379,14 @@ impl PluginManager {
         Ok(instances)
     }
 
-    /// Get instantiated audience plugins based on config
+    /// Get instantiated audience plugins from remotes directory
+    ///
+    /// TODO: For now this returns all remotes. In the future we may want to
+    /// filter remotes that are specifically configured for timesheet audiences.
     pub fn audiences(&mut self) -> Result<Vec<Py<PyAny>>> {
-        self.load_plugins()?;
-
-        // Clone the config values we need to avoid borrow checker issues
-        let audiences = self.config.timesheet_audience.clone();
-
-        let mut instances = Vec::new();
-        for audience in &audiences {
-            // TimesheetAudience doesn't have defaults
-            let defaults = HashMap::new();
-
-            let instance = self
-                .instantiate_plugin(
-                    &audience.plugin,
-                    &audience.name,
-                    audience.config.clone(),
-                    defaults,
-                )
-                .with_context(|| {
-                    format!("Failed to instantiate audience plugin '{}'", audience.name)
-                })?;
-            instances.push(instance);
-        }
-
-        Ok(instances)
+        // For now, audiences are the same as plan remotes
+        // A plugin can implement both PlanRemote and TimesheetAudience interfaces
+        self.plan_remotes()
     }
 
     /// Get a specific audience plugin by ID

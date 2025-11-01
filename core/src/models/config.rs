@@ -6,41 +6,7 @@ use std::collections::HashMap;
 pub struct Config {
     pub timezone: Tz,
     #[serde(default)]
-    pub plan_remote: Vec<PlanRemote>,
-    #[serde(default)]
-    pub timesheet_audience: Vec<TimesheetAudience>,
-    #[serde(default)]
     pub role: Vec<Role>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PlanRemote {
-    pub name: String,
-    pub plugin: String,
-    #[serde(default)]
-    pub config: HashMap<String, toml::Value>,
-    #[serde(default)]
-    pub defaults: PlanDefaults,
-}
-
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
-pub struct PlanDefaults {
-    #[serde(default)]
-    pub roles: Vec<String>,
-    #[serde(default)]
-    pub objectives: Vec<String>,
-    #[serde(default)]
-    pub actions: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TimesheetAudience {
-    pub name: String,
-    pub plugin: String,
-    #[serde(default)]
-    pub config: HashMap<String, toml::Value>,
-    #[serde(default)]
-    pub signing_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -75,13 +41,6 @@ impl Config {
 
         Self {
             timezone,
-            plan_remote: vec![PlanRemote {
-                name: "local".to_string(),
-                plugin: "local".to_string(),
-                config: HashMap::new(),
-                defaults: PlanDefaults::default(),
-            }],
-            timesheet_audience: vec![],
             role: vec![],
         }
     }
@@ -109,8 +68,6 @@ mod tests {
 
         let config = Config::from_toml(toml_str).unwrap();
         assert_eq!(config.timezone.name(), "Europe/London");
-        assert_eq!(config.plan_remote.len(), 0);
-        assert_eq!(config.timesheet_audience.len(), 0);
         assert_eq!(config.role.len(), 0);
     }
 
@@ -119,33 +76,14 @@ mod tests {
         let toml_str = r#"
             timezone = "America/New_York"
 
-            [[plan_remote]]
-            name = "test"
-            plugin = "myhours"
-            config.email = "test@example.com"
-
-            [plan_remote.defaults]
-            roles = ["role1", "role2"]
-            objectives = ["obj1"]
-            actions = ["action1"]
-
-            [[timesheet_audience]]
-            name = "audience1"
-            plugin = "myhours"
-            signing_ids = ["id1", "id2"]
-
             [[role]]
             name = "developer"
         "#;
 
         let config = Config::from_toml(toml_str).unwrap();
         assert_eq!(config.timezone.name(), "America/New_York");
-        assert_eq!(config.plan_remote.len(), 1);
-        assert_eq!(config.plan_remote[0].name, "test");
-        assert_eq!(config.plan_remote[0].plugin, "myhours");
-        assert_eq!(config.plan_remote[0].defaults.roles, vec!["role1", "role2"]);
-        assert_eq!(config.timesheet_audience.len(), 1);
         assert_eq!(config.role.len(), 1);
+        assert_eq!(config.role[0].name, "developer");
     }
 
     #[test]

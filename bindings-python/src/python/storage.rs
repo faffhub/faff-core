@@ -236,6 +236,11 @@ impl PyFileSystemStorage {
         self.storage.timesheet_dir().to_string_lossy().into_owned()
     }
 
+    /// Get the remotes directory
+    pub fn remotes_dir(&self) -> String {
+        self.storage.remotes_dir().to_string_lossy().into_owned()
+    }
+
     /// Get the config file path
     pub fn config_file(&self) -> String {
         self.storage.config_file().to_string_lossy().into_owned()
@@ -364,6 +369,11 @@ impl PyStorageWrapper {
     /// Get the timesheet directory
     pub fn timesheet_dir(&self) -> String {
         self.storage.timesheet_dir().to_string_lossy().into_owned()
+    }
+
+    /// Get the remotes directory
+    pub fn remotes_dir(&self) -> String {
+        self.storage.remotes_dir().to_string_lossy().into_owned()
     }
 
     /// Get the config file path

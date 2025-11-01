@@ -69,6 +69,10 @@ pub trait Storage: Send + Sync {
         self.base_dir().join("timesheets")
     }
 
+    fn remotes_dir(&self) -> PathBuf {
+        self.base_dir().join("remotes")
+    }
+
     fn config_file(&self) -> PathBuf {
         self.base_dir().join("config.toml")
     }
@@ -95,6 +99,10 @@ pub trait Storage: Send + Sync {
             .join(format!("{}.{}.meta.json", audience_id, date))
     }
 
+    fn remote_file_path(&self, remote_id: &str) -> PathBuf {
+        self.remotes_dir().join(format!("{}.toml", remote_id))
+    }
+
     // ============================================================================
     // Default implementation: Repository initialization
     // ============================================================================
@@ -108,6 +116,7 @@ pub trait Storage: Send + Sync {
         self.create_dir_all(&self.log_dir())?;
         self.create_dir_all(&self.plan_dir())?;
         self.create_dir_all(&self.timesheet_dir())?;
+        self.create_dir_all(&self.remotes_dir())?;
         self.create_dir_all(&self.identity_dir())?;
         self.create_dir_all(&self.base_dir().join("intents"))?;
         self.create_dir_all(&self.base_dir().join("plugins"))?;
