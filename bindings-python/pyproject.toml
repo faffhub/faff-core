@@ -4,8 +4,16 @@ build-backend = "maturin"
 
 [project]
 name = "faff-core"
+description = "Core library for the Faffage time tracking ecosystem."
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
+
+urls = { 
+  "Homepage" = "https://github.com/faffhub/faff-core",
+  "Repository" = "https://github.com/faffhub/faff-core",
+  "Issues" = "https://github.com/faffhub/faff-core/issues"
+}
+
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
