@@ -31,9 +31,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pymethods]
 impl PyTimesheetMeta {
     #[new]
-    #[pyo3(signature = (audience_id, submitted_at=None))]
+    #[pyo3(signature = (audience_id, log_hash="".to_string(), submitted_at=None))]
     fn py_new<'py>(
         audience_id: String,
+        log_hash: String,
         submitted_at: Option<Bound<'py, PyDateTime>>,
     ) -> PyResult<Self> {
         let submitted_at = match submitted_at {
@@ -42,7 +43,7 @@ impl PyTimesheetMeta {
         };
 
         Ok(Self {
-            inner: RustTimesheetMeta::new(audience_id, submitted_at),
+            inner: RustTimesheetMeta::new(audience_id, submitted_at, log_hash),
         })
     }
 
@@ -57,6 +58,25 @@ impl PyTimesheetMeta {
             Some(dt) => Ok(Some(type_mapping::datetime_rust_to_py(py, dt)?)),
             None => Ok(None),
         }
+    }
+
+    #[getter]
+    fn log_hash(&self) -> Option<String> {
+        self.inner.log_hash.clone()
+    }
+
+    #[getter]
+    fn submission_status(&self) -> Option<String> {
+        self.inner.submission_status.as_ref().map(|s| match s {
+            crate::models::SubmissionStatus::Success => "success".to_string(),
+            crate::models::SubmissionStatus::Failed => "failed".to_string(),
+            crate::models::SubmissionStatus::Partial => "partial".to_string(),
+        })
+    }
+
+    #[getter]
+    fn submission_error(&self) -> Option<String> {
+        self.inner.submission_error.clone()
     }
 
     #[classmethod]
@@ -88,6 +108,23 @@ impl PyTimesheetMeta {
         if let Some(submitted_at) = &self.inner.submitted_at {
             let dt = type_mapping::datetime_rust_to_py(py, submitted_at)?;
             dict.set_item("submitted_at", dt)?;
+        }
+
+        if let Some(log_hash) = &self.inner.log_hash {
+            dict.set_item("log_hash", log_hash)?;
+        }
+
+        if let Some(status) = &self.inner.submission_status {
+            let status_str = match status {
+                crate::models::SubmissionStatus::Success => "success",
+                crate::models::SubmissionStatus::Failed => "failed",
+                crate::models::SubmissionStatus::Partial => "partial",
+            };
+            dict.set_item("submission_status", status_str)?;
+        }
+
+        if let Some(error) = &self.inner.submission_error {
+            dict.set_item("submission_error", error)?;
         }
 
         Ok(dict)

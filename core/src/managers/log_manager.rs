@@ -68,6 +68,7 @@ impl LogManager {
 
             let log = Log::from_log_file(&toml_str)
                 .with_context(|| format!("Failed to parse log file for {}", date))?;
+
             Ok(Some(log))
         } else {
             Ok(None)

@@ -250,10 +250,14 @@ class models:
         """
         audience_id: str
         submitted_at: Optional[datetime.datetime]
+        log_hash: Optional[str]
+        submission_status: Optional[str]  # "success", "failed", or "partial"
+        submission_error: Optional[str]
 
         def __init__(
             self,
             audience_id: str,
+            log_hash: str,
             submitted_at: Optional[datetime.datetime] = None
         ) -> None: ...
 

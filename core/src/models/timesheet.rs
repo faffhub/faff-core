@@ -85,6 +85,14 @@ pub struct UnsignedTimesheet {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubmissionStatus {
+    Success,
+    Failed,
+    Partial,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TimesheetMeta {
     pub audience_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,6 +101,12 @@ pub struct TimesheetMeta {
         deserialize_with = "deserialize_optional_datetime"
     )]
     pub submitted_at: Option<DateTime<Tz>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission_status: Option<SubmissionStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission_error: Option<String>,
 }
 
 impl Default for TimesheetMeta {
@@ -100,6 +114,9 @@ impl Default for TimesheetMeta {
         Self {
             audience_id: String::new(),
             submitted_at: None,
+            log_hash: None,
+            submission_status: None,
+            submission_error: None,
         }
     }
 }
@@ -108,11 +125,27 @@ impl TimesheetMeta {
     pub fn new(
         audience_id: String,
         submitted_at: Option<DateTime<Tz>>,
+        log_hash: String,
     ) -> Self {
         Self {
             audience_id,
             submitted_at,
+            log_hash: Some(log_hash),
+            submission_status: None,
+            submission_error: None,
         }
+    }
+
+    pub fn with_submission_result(
+        mut self,
+        status: SubmissionStatus,
+        error: Option<String>,
+        submitted_at: DateTime<Tz>,
+    ) -> Self {
+        self.submission_status = Some(status);
+        self.submission_error = error;
+        self.submitted_at = Some(submitted_at);
+        self
     }
 
     pub fn from_dict(dict: HashMap<String, ValueType>) -> Result<Self> {
@@ -128,9 +161,32 @@ impl TimesheetMeta {
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono_tz::UTC));
 
+        let log_hash = dict
+            .get("log_hash")
+            .and_then(|v| v.as_string())
+            .cloned();
+
+        let submission_status = dict
+            .get("submission_status")
+            .and_then(|v| v.as_string())
+            .and_then(|s| match s.as_str() {
+                "success" => Some(SubmissionStatus::Success),
+                "failed" => Some(SubmissionStatus::Failed),
+                "partial" => Some(SubmissionStatus::Partial),
+                _ => None,
+            });
+
+        let submission_error = dict
+            .get("submission_error")
+            .and_then(|v| v.as_string())
+            .cloned();
+
         Ok(Self {
             audience_id,
             submitted_at,
+            log_hash,
+            submission_status,
+            submission_error,
         })
     }
 }
@@ -237,7 +293,30 @@ impl Timesheet {
         let new_meta = TimesheetMeta {
             audience_id,
             submitted_at,
+            log_hash: self.meta.log_hash.clone(),
+            submission_status: self.meta.submission_status.clone(),
+            submission_error: self.meta.submission_error.clone(),
         };
+
+        Self {
+            actor: self.actor.clone(),
+            version: self.version.clone(),
+            date: self.date,
+            compiled: self.compiled,
+            timezone: self.timezone,
+            timeline: self.timeline.clone(),
+            signatures: self.signatures.clone(),
+            meta: new_meta,
+        }
+    }
+
+    pub fn with_submission_result(
+        &self,
+        status: SubmissionStatus,
+        error: Option<String>,
+        submitted_at: DateTime<Tz>,
+    ) -> Self {
+        let new_meta = self.meta.clone().with_submission_result(status, error, submitted_at);
 
         Self {
             actor: self.actor.clone(),
@@ -301,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_create_timesheet() {
-        let meta = TimesheetMeta::new("test-audience".to_string(), None);
+        let meta = TimesheetMeta::new("test-audience".to_string(), None, "test-hash".to_string());
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let compiled = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
@@ -325,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_update_meta() {
-        let meta = TimesheetMeta::new("audience1".to_string(), None);
+        let meta = TimesheetMeta::new("audience1".to_string(), None, "test-hash".to_string());
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let compiled = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
@@ -359,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_submittable_timesheet() {
-        let meta = TimesheetMeta::new("test-audience".to_string(), None);
+        let meta = TimesheetMeta::new("test-audience".to_string(), None, "test-hash".to_string());
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let compiled = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)

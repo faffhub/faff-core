@@ -222,7 +222,7 @@ fn test_log_and_timesheet_integration() {
     log_manager.write_log(&log, &trackers).unwrap();
 
     // Create a timesheet from the log data
-    let meta = TimesheetMeta::new("client1".to_string(), None);
+    let meta = TimesheetMeta::new("client1".to_string(), None, "test-hash".to_string());
     let compiled = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
 
     let timesheet = Timesheet::new(
@@ -271,7 +271,7 @@ fn test_identity_and_timesheet_integration() {
     // Create a timesheet
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
     let compiled = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
-    let meta = TimesheetMeta::new("client1".to_string(), None);
+    let meta = TimesheetMeta::new("client1".to_string(), None, "test-hash".to_string());
 
     let timesheet = Timesheet::new(
         HashMap::new(),
@@ -421,7 +421,7 @@ fn test_timesheet_list_filtering() {
 
     // Create timesheets for different audiences and dates
     for (audience, date) in [("client1", date1), ("client2", date1), ("client1", date2)] {
-        let meta = TimesheetMeta::new(audience.to_string(), None);
+        let meta = TimesheetMeta::new(audience.to_string(), None, "test-hash".to_string());
         let timesheet = Timesheet::new(
             HashMap::new(),
             date,

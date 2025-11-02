@@ -102,6 +102,34 @@ impl PyTimesheetManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
+    /// Compile a timesheet from a log using an audience plugin
+    ///
+    /// This automatically calculates and stores the log hash in the timesheet metadata.
+    pub fn compile(
+        &self,
+        py: Python<'_>,
+        log: &faff_core::py_models::log::PyLog,
+        plugin: Bound<'_, PyAny>,
+    ) -> PyResult<PyTimesheet> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "TimesheetManager has no workspace reference. This should not happen.",
+            )
+        })?;
+
+        let log_manager = workspace.logs();
+
+        // Convert Bound to Py for the Rust API
+        let plugin_py: Py<PyAny> = plugin.unbind();
+
+        let timesheet = self
+            .manager
+            .compile(&log.inner, log_manager, &plugin_py)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(PyTimesheet { inner: timesheet })
+    }
+
     /// Submit a timesheet via its audience plugin
     pub fn submit(&self, _py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {

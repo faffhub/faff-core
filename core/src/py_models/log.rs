@@ -72,6 +72,20 @@ impl PyLog {
             .collect()
     }
 
+    fn hash(&self, trackers: Bound<'_, PyDict>) -> PyResult<String> {
+        // Convert Python dict to HashMap<String, String>
+        let trackers_map: std::collections::HashMap<String, String> =
+            pythonize::depythonize(&trackers)
+                .map_err(|e| PyValueError::new_err(format!("Invalid trackers dict: {}", e)))?;
+
+        Ok(self.inner.hash(&trackers_map))
+    }
+
+    #[staticmethod]
+    fn calculate_hash(toml_content: &str) -> String {
+        RustLog::calculate_hash(toml_content)
+    }
+
     #[classmethod]
     fn from_dict(_cls: &Bound<'_, PyType>, data: &Bound<'_, PyDict>) -> PyResult<Self> {
         // Extract date

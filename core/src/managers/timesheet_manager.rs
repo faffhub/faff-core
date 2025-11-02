@@ -220,12 +220,71 @@ impl TimesheetManager {
         Ok(())
     }
 
+    /// Compile a timesheet from a log using an audience plugin
+    ///
+    /// This method:
+    /// 1. Calculates the log hash from the raw log file
+    /// 2. Calls the plugin's compile_time_sheet method
+    /// 3. Updates the timesheet metadata with the log hash
+    /// 4. Returns the compiled timesheet (does not write to storage)
+    ///
+    /// # Arguments
+    /// * `log` - The log to compile
+    /// * `log_manager` - LogManager to read the raw log file for hashing
+    /// * `plugin` - The audience plugin to use for compilation
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The log file cannot be read
+    /// - The plugin compilation fails
+    #[cfg(feature = "python")]
+    pub fn compile(
+        &self,
+        log: &crate::models::Log,
+        log_manager: &crate::managers::LogManager,
+        plugin: &pyo3::Py<pyo3::PyAny>,
+    ) -> anyhow::Result<Timesheet> {
+        use pyo3::prelude::*;
+
+        // Calculate hash of the raw log file
+        let log_hash = log_manager
+            .read_log_raw(log.date)
+            .map(|raw| crate::models::Log::calculate_hash(&raw))?;
+
+        // Call the plugin's compile_time_sheet method
+        let timesheet = Python::attach(|py| -> PyResult<Timesheet> {
+            use crate::py_models::log::PyLog;
+            use crate::py_models::timesheet::PyTimesheet;
+
+            let pylog = Py::new(
+                py,
+                PyLog {
+                    inner: log.clone(),
+                },
+            )?;
+
+            // Call compile_time_sheet on the plugin
+            let result = plugin.call_method1(py, "compile_time_sheet", (pylog,))?;
+            let py_timesheet: PyTimesheet = result.extract(py)?;
+
+            Ok(py_timesheet.inner)
+        })
+        .map_err(|e: PyErr| anyhow::anyhow!("Failed to compile timesheet: {}", e))?;
+
+        // Update the timesheet metadata with the log hash
+        let mut updated_timesheet = timesheet;
+        updated_timesheet.meta.log_hash = Some(log_hash);
+
+        Ok(updated_timesheet)
+    }
+
     /// Submit a timesheet via its audience plugin
     ///
     /// This method:
     /// 1. Looks up the audience plugin by the timesheet's audience_id
     /// 2. Calls the plugin's submit_timesheet method
-    /// 3. Writes the timesheet back to storage
+    /// 3. Updates the timesheet metadata with submission status (success/failed)
+    /// 4. Writes the timesheet back to storage
     ///
     /// # Arguments
     /// * `timesheet` - The timesheet to submit
@@ -234,8 +293,9 @@ impl TimesheetManager {
     /// # Errors
     /// Returns an error if:
     /// - The audience plugin is not found
-    /// - The plugin submission fails
     /// - Writing the timesheet back fails
+    ///
+    /// Note: Plugin submission failures are captured in metadata, not returned as errors
     #[cfg(feature = "python")]
     pub fn submit(
         &self,
@@ -245,14 +305,15 @@ impl TimesheetManager {
         use pyo3::prelude::*;
 
         let audience_id = &timesheet.meta.audience_id;
+        let submitted_at = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
 
         // Get the audience plugin
         let audience = plugin_manager
             .get_audience_by_id(audience_id)?
             .ok_or_else(|| anyhow::anyhow!("No audience found for {}", audience_id))?;
 
-        // Call the plugin's submit_timesheet method
-        Python::attach(|py| -> PyResult<()> {
+        // Try to call the plugin's submit_timesheet method and capture the result
+        let submission_result = Python::attach(|py| -> PyResult<()> {
             // Create a PyTimesheet wrapper
             use crate::py_models::timesheet::PyTimesheet;
             let pytimesheet = Py::new(
@@ -266,12 +327,27 @@ impl TimesheetManager {
             audience.call_method1(py, "submit_timesheet", (pytimesheet,))?;
 
             Ok(())
-        })
-        .map_err(|e: PyErr| anyhow::anyhow!("Failed to submit timesheet: {}", e))?;
+        });
 
-        // Update timesheet metadata with submitted_at timestamp
-        let mut updated_timesheet = timesheet.clone();
-        updated_timesheet.meta.submitted_at = Some(chrono::Utc::now().with_timezone(&chrono_tz::UTC));
+        // Update timesheet metadata based on submission result
+        let updated_timesheet = match submission_result {
+            Ok(()) => {
+                // Submission succeeded
+                timesheet.with_submission_result(
+                    crate::models::SubmissionStatus::Success,
+                    None,
+                    submitted_at,
+                )
+            }
+            Err(e) => {
+                // Submission failed - capture the error
+                timesheet.with_submission_result(
+                    crate::models::SubmissionStatus::Failed,
+                    Some(e.to_string()),
+                    submitted_at,
+                )
+            }
+        };
 
         self.write_timesheet(&updated_timesheet)?;
 
@@ -313,7 +389,7 @@ mod tests {
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
-        let meta = TimesheetMeta::new("test_audience".to_string(), None);
+        let meta = TimesheetMeta::new("test_audience".to_string(), None, "test-hash".to_string());
 
         let timesheet = Timesheet::new(
             HashMap::new(),
@@ -350,7 +426,7 @@ mod tests {
 
         // Write two timesheets
         for (audience, date) in [("aud1", date1), ("aud2", date2)] {
-            let meta = TimesheetMeta::new(audience.to_string(), None);
+            let meta = TimesheetMeta::new(audience.to_string(), None, "test-hash".to_string());
             let timesheet = Timesheet::new(
                 HashMap::new(),
                 date,
@@ -383,7 +459,7 @@ mod tests {
 
         assert!(!manager.timesheet_exists("test_audience", date));
 
-        let meta = TimesheetMeta::new("test_audience".to_string(), None);
+        let meta = TimesheetMeta::new("test_audience".to_string(), None, "test-hash".to_string());
         let timesheet = Timesheet::new(
             HashMap::new(),
             date,
@@ -406,7 +482,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
 
-        let meta = TimesheetMeta::new("test_audience".to_string(), None);
+        let meta = TimesheetMeta::new("test_audience".to_string(), None, "test-hash".to_string());
         let timesheet = Timesheet::new(
             HashMap::new(),
             date,

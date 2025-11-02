@@ -1,6 +1,7 @@
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use thiserror::Error;
@@ -38,6 +39,22 @@ impl Log {
             timezone,
             timeline,
         }
+    }
+
+    /// Calculate SHA256 hash of raw TOML content
+    pub fn calculate_hash(toml_content: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(toml_content.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    /// Calculate the hash of this log's TOML representation
+    ///
+    /// This generates the TOML and hashes it, which can be used to detect
+    /// if the log has changed since a timesheet was compiled from it.
+    pub fn hash(&self, trackers: &HashMap<String, String>) -> String {
+        let toml_content = self.to_log_file(trackers);
+        Self::calculate_hash(&toml_content)
     }
 
     /// Returns the active (open) session if one exists

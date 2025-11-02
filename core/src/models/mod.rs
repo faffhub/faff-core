@@ -14,6 +14,6 @@ pub use log::Log;
 pub use plan::Plan;
 pub use remote::{Remote, RemoteVocabulary};
 pub use session::Session;
-pub use timesheet::{SubmittableTimesheet, Timesheet, TimesheetMeta};
+pub use timesheet::{SubmissionStatus, SubmittableTimesheet, Timesheet, TimesheetMeta};
 pub use toy::Toy;
 pub use valuetype::ValueType;
