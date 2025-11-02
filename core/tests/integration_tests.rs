@@ -222,7 +222,7 @@ fn test_log_and_timesheet_integration() {
     log_manager.write_log(&log, &trackers).unwrap();
 
     // Create a timesheet from the log data
-    let meta = TimesheetMeta::new("client1".to_string(), None, None);
+    let meta = TimesheetMeta::new("client1".to_string(), None);
     let compiled = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
 
     let timesheet = Timesheet::new(
@@ -268,14 +268,10 @@ fn test_identity_and_timesheet_integration() {
 
     assert_eq!(signing_key.to_bytes(), retrieved_key.to_bytes());
 
-    // Create a timesheet with signature metadata
+    // Create a timesheet
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
     let compiled = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
-    let meta = TimesheetMeta::new(
-        "client1".to_string(),
-        None,                      // submitted_at
-        Some("alice".to_string()), // submitted_by
-    );
+    let meta = TimesheetMeta::new("client1".to_string(), None);
 
     let timesheet = Timesheet::new(
         HashMap::new(),
@@ -287,15 +283,21 @@ fn test_identity_and_timesheet_integration() {
         meta,
     );
 
-    timesheet_manager.write_timesheet(&timesheet).unwrap();
+    // Sign the timesheet with the identity
+    let signed_timesheet = timesheet.sign("alice", &signing_key.to_bytes()).unwrap();
 
-    // Read it back and verify identity info is preserved
+    timesheet_manager
+        .write_timesheet(&signed_timesheet)
+        .unwrap();
+
+    // Read it back and verify signature is preserved
     let retrieved = timesheet_manager
         .get_timesheet("client1", date)
         .unwrap()
         .expect("Timesheet should exist");
 
-    assert_eq!(retrieved.meta.submitted_by.as_ref().unwrap(), "alice");
+    assert_eq!(retrieved.signatures.len(), 1);
+    assert!(retrieved.signatures.contains_key("alice"));
 }
 
 #[test]
@@ -419,7 +421,7 @@ fn test_timesheet_list_filtering() {
 
     // Create timesheets for different audiences and dates
     for (audience, date) in [("client1", date1), ("client2", date1), ("client1", date2)] {
-        let meta = TimesheetMeta::new(audience.to_string(), None, None);
+        let meta = TimesheetMeta::new(audience.to_string(), None);
         let timesheet = Timesheet::new(
             HashMap::new(),
             date,

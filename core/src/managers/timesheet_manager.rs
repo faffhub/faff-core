@@ -269,9 +269,11 @@ impl TimesheetManager {
         })
         .map_err(|e: PyErr| anyhow::anyhow!("Failed to submit timesheet: {}", e))?;
 
-        // TODO: Update timesheet metadata with submitted_at and submitted_by
-        // For now, just write it back as-is
-        self.write_timesheet(timesheet)?;
+        // Update timesheet metadata with submitted_at timestamp
+        let mut updated_timesheet = timesheet.clone();
+        updated_timesheet.meta.submitted_at = Some(chrono::Utc::now().with_timezone(&chrono_tz::UTC));
+
+        self.write_timesheet(&updated_timesheet)?;
 
         Ok(())
     }
@@ -311,7 +313,7 @@ mod tests {
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
-        let meta = TimesheetMeta::new("test_audience".to_string(), None, None);
+        let meta = TimesheetMeta::new("test_audience".to_string(), None);
 
         let timesheet = Timesheet::new(
             HashMap::new(),
@@ -348,7 +350,7 @@ mod tests {
 
         // Write two timesheets
         for (audience, date) in [("aud1", date1), ("aud2", date2)] {
-            let meta = TimesheetMeta::new(audience.to_string(), None, None);
+            let meta = TimesheetMeta::new(audience.to_string(), None);
             let timesheet = Timesheet::new(
                 HashMap::new(),
                 date,
@@ -381,7 +383,7 @@ mod tests {
 
         assert!(!manager.timesheet_exists("test_audience", date));
 
-        let meta = TimesheetMeta::new("test_audience".to_string(), None, None);
+        let meta = TimesheetMeta::new("test_audience".to_string(), None);
         let timesheet = Timesheet::new(
             HashMap::new(),
             date,
@@ -404,7 +406,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
 
-        let meta = TimesheetMeta::new("test_audience".to_string(), None, None);
+        let meta = TimesheetMeta::new("test_audience".to_string(), None);
         let timesheet = Timesheet::new(
             HashMap::new(),
             date,

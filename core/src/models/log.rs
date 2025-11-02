@@ -173,7 +173,11 @@ impl Log {
 
         // Metadata
         lines.push("version = \"1.1\"".to_string());
-        lines.push(format!("date = \"{}\"", self.date));
+
+        // Date with day of week comment
+        let day_of_week = self.date.format("%A").to_string();
+        lines.push(format!("date = \"{}\" # {}", self.date, day_of_week));
+
         lines.push(format!("timezone = \"{}\"", self.timezone));
 
         // Date format hint (derived value, becomes comment)

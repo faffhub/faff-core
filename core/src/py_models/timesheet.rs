@@ -31,11 +31,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pymethods]
 impl PyTimesheetMeta {
     #[new]
-    #[pyo3(signature = (audience_id, submitted_at=None, submitted_by=None))]
+    #[pyo3(signature = (audience_id, submitted_at=None))]
     fn py_new<'py>(
         audience_id: String,
         submitted_at: Option<Bound<'py, PyDateTime>>,
-        submitted_by: Option<String>,
     ) -> PyResult<Self> {
         let submitted_at = match submitted_at {
             Some(dt) => Some(type_mapping::datetime_py_to_rust(dt)?),
@@ -43,7 +42,7 @@ impl PyTimesheetMeta {
         };
 
         Ok(Self {
-            inner: RustTimesheetMeta::new(audience_id, submitted_at, submitted_by),
+            inner: RustTimesheetMeta::new(audience_id, submitted_at),
         })
     }
 
@@ -58,11 +57,6 @@ impl PyTimesheetMeta {
             Some(dt) => Ok(Some(type_mapping::datetime_rust_to_py(py, dt)?)),
             None => Ok(None),
         }
-    }
-
-    #[getter]
-    fn submitted_by(&self) -> Option<String> {
-        self.inner.submitted_by.clone()
     }
 
     #[classmethod]
@@ -94,10 +88,6 @@ impl PyTimesheetMeta {
         if let Some(submitted_at) = &self.inner.submitted_at {
             let dt = type_mapping::datetime_rust_to_py(py, submitted_at)?;
             dict.set_item("submitted_at", dt)?;
-        }
-
-        if let Some(submitted_by) = &self.inner.submitted_by {
-            dict.set_item("submitted_by", submitted_by)?;
         }
 
         Ok(dict)
@@ -205,12 +195,11 @@ impl PyTimesheet {
         Ok(Self { inner })
     }
 
-    #[pyo3(signature = (audience_id, submitted_at=None, submitted_by=None))]
+    #[pyo3(signature = (audience_id, submitted_at=None))]
     fn update_meta<'py>(
         &self,
         audience_id: String,
         submitted_at: Option<Bound<'py, PyDateTime>>,
-        submitted_by: Option<String>,
     ) -> PyResult<Self> {
         let submitted_at = match submitted_at {
             Some(dt) => Some(type_mapping::datetime_py_to_rust(dt)?),
@@ -220,7 +209,7 @@ impl PyTimesheet {
         Ok(Self {
             inner: self
                 .inner
-                .update_meta(audience_id, submitted_at, submitted_by),
+                .update_meta(audience_id, submitted_at),
         })
     }
 

@@ -9,22 +9,19 @@ use crate::models::log::Log;
 use crate::models::plan::Plan;
 use crate::models::remote::Remote;
 use crate::models::timesheet::Timesheet;
-use crate::models::Config;
 use crate::storage::Storage;
 
 /// Manages loading and executing Python plugins
 #[derive(Clone)]
 pub struct PluginManager {
     storage: Arc<dyn Storage>,
-    config: Config,
     pub plugins_cache: Arc<Mutex<Option<HashMap<String, (PathBuf, Py<PyAny>)>>>>,
 }
 
 impl PluginManager {
-    pub fn new(storage: Arc<dyn Storage>, config: Config) -> Self {
+    pub fn new(storage: Arc<dyn Storage>) -> Self {
         Self {
             storage,
-            config,
             plugins_cache: Arc::new(Mutex::new(None)),
         }
     }
@@ -570,13 +567,7 @@ mod tests {
     #[test]
     fn test_plugin_manager_creation() {
         let storage = Arc::new(MockStorage::new());
-        let config = crate::models::Config {
-            timezone: chrono_tz::America::New_York,
-            plan_remote: vec![],
-            timesheet_audience: vec![],
-            role: vec![],
-        };
-        let mut manager = PluginManager::new(storage, config);
+        let mut manager = PluginManager::new(storage);
 
         // Should load successfully even when no files exist
         manager.load_plugins().unwrap();

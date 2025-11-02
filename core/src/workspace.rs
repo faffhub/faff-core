@@ -45,7 +45,7 @@ impl Workspace {
         let timesheet_manager = TimesheetManager::new(storage.clone());
         let identity_manager = IdentityManager::new(storage.clone());
         #[cfg(feature = "python")]
-        let plugin_manager = Mutex::new(PluginManager::new(storage.clone(), config.clone()));
+        let plugin_manager = Mutex::new(PluginManager::new(storage.clone()));
 
         Ok(Self {
             storage,

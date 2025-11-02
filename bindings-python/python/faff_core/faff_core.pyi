@@ -250,13 +250,11 @@ class models:
         """
         audience_id: str
         submitted_at: Optional[datetime.datetime]
-        submitted_by: Optional[str]
 
         def __init__(
             self,
             audience_id: str,
-            submitted_at: Optional[datetime.datetime] = None,
-            submitted_by: Optional[str] = None
+            submitted_at: Optional[datetime.datetime] = None
         ) -> None: ...
 
         @classmethod
@@ -303,8 +301,7 @@ class models:
         def update_meta(
             self,
             audience_id: str,
-            submitted_at: Optional[datetime.datetime] = None,
-            submitted_by: Optional[str] = None
+            submitted_at: Optional[datetime.datetime] = None
         ) -> models.Timesheet:
             """
             Update metadata (returns new instance).

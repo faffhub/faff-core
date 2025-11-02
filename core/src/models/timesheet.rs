@@ -93,8 +93,6 @@ pub struct TimesheetMeta {
         deserialize_with = "deserialize_optional_datetime"
     )]
     pub submitted_at: Option<DateTime<Tz>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub submitted_by: Option<String>,
 }
 
 impl Default for TimesheetMeta {
@@ -102,7 +100,6 @@ impl Default for TimesheetMeta {
         Self {
             audience_id: String::new(),
             submitted_at: None,
-            submitted_by: None,
         }
     }
 }
@@ -111,12 +108,10 @@ impl TimesheetMeta {
     pub fn new(
         audience_id: String,
         submitted_at: Option<DateTime<Tz>>,
-        submitted_by: Option<String>,
     ) -> Self {
         Self {
             audience_id,
             submitted_at,
-            submitted_by,
         }
     }
 
@@ -133,15 +128,9 @@ impl TimesheetMeta {
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono_tz::UTC));
 
-        let submitted_by = dict
-            .get("submitted_by")
-            .and_then(|v| v.as_string())
-            .cloned();
-
         Ok(Self {
             audience_id,
             submitted_at,
-            submitted_by,
         })
     }
 }
@@ -244,12 +233,10 @@ impl Timesheet {
         &self,
         audience_id: String,
         submitted_at: Option<DateTime<Tz>>,
-        submitted_by: Option<String>,
     ) -> Self {
         let new_meta = TimesheetMeta {
             audience_id,
             submitted_at,
-            submitted_by,
         };
 
         Self {
@@ -314,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_create_timesheet() {
-        let meta = TimesheetMeta::new("test-audience".to_string(), None, None);
+        let meta = TimesheetMeta::new("test-audience".to_string(), None);
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let compiled = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
@@ -338,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_update_meta() {
-        let meta = TimesheetMeta::new("audience1".to_string(), None, None);
+        let meta = TimesheetMeta::new("audience1".to_string(), None);
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let compiled = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)
@@ -361,12 +348,10 @@ mod tests {
         let updated = timesheet.update_meta(
             "audience2".to_string(),
             Some(submitted_at),
-            Some("user123".to_string()),
         );
 
         assert_eq!(updated.meta.audience_id, "audience2");
         assert_eq!(updated.meta.submitted_at, Some(submitted_at));
-        assert_eq!(updated.meta.submitted_by, Some("user123".to_string()));
 
         // Original unchanged
         assert_eq!(timesheet.meta.audience_id, "audience1");
@@ -374,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_submittable_timesheet() {
-        let meta = TimesheetMeta::new("test-audience".to_string(), None, None);
+        let meta = TimesheetMeta::new("test-audience".to_string(), None);
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let compiled = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 18, 30, 0)

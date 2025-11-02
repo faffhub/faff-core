@@ -3,7 +3,6 @@ use faff_core::managers::{
     AudiencePlugin as RustAudiencePlugin, PlanSourcePlugin as RustPlanSourcePlugin,
     PluginManager as RustPluginManager,
 };
-use faff_core::models::Config;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
@@ -25,16 +24,7 @@ impl PyPluginManager {
         let py_storage = PyStorage::new(storage);
         let storage_arc: Arc<dyn Storage> = Arc::new(py_storage);
 
-        // Read config from storage
-        let config_path = storage_arc.config_file();
-        let config_str = storage_arc
-            .read_string(&config_path)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        let config = Config::from_toml(&config_str).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse config: {}", e))
-        })?;
-
-        let manager = RustPluginManager::new(storage_arc, config);
+        let manager = RustPluginManager::new(storage_arc);
         Ok(Self {
             manager: Arc::new(Mutex::new(manager)),
         })

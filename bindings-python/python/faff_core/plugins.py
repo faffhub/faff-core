@@ -85,7 +85,7 @@ class Audience(Plugin):
             log: The log to compile into a timesheet
 
         Returns:
-            A compiled Timesheet
+            A compiled Timesheet (may be empty if there are no relevant sessions for this audience)
         """
         pass
 
