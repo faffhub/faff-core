@@ -414,12 +414,7 @@ impl TimesheetManager {
         let all_timesheets = self.list_timesheets(date)?;
         let failed: Vec<Timesheet> = all_timesheets
             .into_iter()
-            .filter(|ts| {
-                matches!(
-                    ts.meta.submission_status,
-                    Some(SubmissionStatus::Failed)
-                )
-            })
+            .filter(|ts| matches!(ts.meta.submission_status, Some(SubmissionStatus::Failed)))
             .collect();
 
         Ok(failed)
@@ -456,9 +451,12 @@ impl TimesheetManager {
             match identity_manager.get_identity(signing_id) {
                 Ok(Some(signing_key)) => {
                     let key_bytes = signing_key.to_bytes();
-                    signed_timesheet = signed_timesheet
-                        .sign(signing_id, &key_bytes)
-                        .with_context(|| format!("Failed to sign with identity '{}'", signing_id))?;
+                    signed_timesheet =
+                        signed_timesheet
+                            .sign(signing_id, &key_bytes)
+                            .with_context(|| {
+                                format!("Failed to sign with identity '{}'", signing_id)
+                            })?;
                     signed_at_least_once = true;
                 }
                 Ok(None) => {

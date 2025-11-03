@@ -145,7 +145,10 @@ impl PyTimesheetManager {
             .find_stale_timesheets(log_manager, naive_date)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        Ok(stale.into_iter().map(|t| PyTimesheet { inner: t }).collect())
+        Ok(stale
+            .into_iter()
+            .map(|t| PyTimesheet { inner: t })
+            .collect())
     }
 
     /// Find timesheets with failed submissions
@@ -162,7 +165,10 @@ impl PyTimesheetManager {
             .find_failed_submissions(naive_date)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        Ok(failed.into_iter().map(|t| PyTimesheet { inner: t }).collect())
+        Ok(failed
+            .into_iter()
+            .map(|t| PyTimesheet { inner: t })
+            .collect())
     }
 
     /// Sign a timesheet with the given signing identities
