@@ -73,6 +73,18 @@ pub trait Storage: Send + Sync {
         self.base_dir().join("remotes")
     }
 
+    fn plugin_state_dir(&self) -> PathBuf {
+        self.base_dir().join("plugin_state")
+    }
+
+    fn plugins_dir(&self) -> PathBuf {
+        self.base_dir().join("plugins")
+    }
+
+    fn intents_dir(&self) -> PathBuf {
+        self.base_dir().join("intents")
+    }
+
     fn config_file(&self) -> PathBuf {
         self.base_dir().join("config.toml")
     }
@@ -118,9 +130,9 @@ pub trait Storage: Send + Sync {
         self.create_dir_all(&self.timesheet_dir())?;
         self.create_dir_all(&self.remotes_dir())?;
         self.create_dir_all(&self.identity_dir())?;
-        self.create_dir_all(&self.base_dir().join("intents"))?;
-        self.create_dir_all(&self.base_dir().join("plugins"))?;
-        self.create_dir_all(&self.base_dir().join("plugin_state"))?;
+        self.create_dir_all(&self.intents_dir())?;
+        self.create_dir_all(&self.plugins_dir())?;
+        self.create_dir_all(&self.plugin_state_dir())?;
 
         // Create default config with system timezone
         let config = Config::with_system_timezone();

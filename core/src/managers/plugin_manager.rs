@@ -28,7 +28,7 @@ impl PluginManager {
 
     /// Get the plugin directory path
     fn plugin_dir(&self) -> PathBuf {
-        self.storage.root_dir().join(".faff").join("plugins")
+        self.storage.plugins_dir()
     }
 
     /// Load all available plugins from the plugins directory
@@ -53,12 +53,11 @@ impl PluginManager {
             return Ok(());
         }
 
-        // List all .py files in plugin/ subdirectories within each plugin repo
-        let pattern = "*/plugin/*.py";
-        let plugin_files = self
+        // List all plugin directories
+        let plugin_dirs = self
             .storage
-            .list_files(&plugin_dir, pattern)
-            .context("Failed to list plugin files")?;
+            .list_files(&plugin_dir, "*")
+            .context("Failed to list plugin directories")?;
 
         Python::attach(|py| -> PyResult<()> {
             // Import the base Plugin classes from faff_core.plugins
@@ -66,31 +65,37 @@ impl PluginManager {
             let plan_source_cls = faff_plugins.getattr("PlanSource")?;
             let audience_cls = faff_plugins.getattr("Audience")?;
 
-            for plugin_file in plugin_files {
-                let filename = plugin_file
+            for plugin_candidate in plugin_dirs {
+                // Skip non-directories and hidden directories
+                if !plugin_candidate.is_dir() {
+                    continue;
+                }
+                let dir_name = plugin_candidate
                     .file_name()
                     .and_then(|s| s.to_str())
                     .ok_or_else(|| {
-                        pyo3::exceptions::PyValueError::new_err("Invalid plugin filename")
+                        pyo3::exceptions::PyValueError::new_err("Invalid plugin directory name")
                     })?;
 
-                // Skip __init__.py
-                if filename == "__init__.py" {
+                if dir_name.starts_with('.') {
                     continue;
                 }
 
-                let module_name = plugin_file
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .ok_or_else(|| {
-                        pyo3::exceptions::PyValueError::new_err("Invalid module name")
-                    })?;
+                // Check for standardized entry point: plugin/plugin.py
+                let plugin_file = plugin_candidate.join("plugin").join("plugin.py");
+                if !plugin_file.exists() {
+                    // Skip directories without the standard entry point
+                    continue;
+                }
+
+                // Use directory name as the plugin identifier
+                let plugin_name = dir_name;
 
                 // Load the module using importlib
                 let importlib = py.import("importlib.util")?;
                 let spec = importlib.call_method1(
                     "spec_from_file_location",
-                    (module_name, plugin_file.to_str()),
+                    (plugin_name, plugin_file.to_str()),
                 )?;
 
                 if spec.is_none() {
@@ -144,9 +149,10 @@ impl PluginManager {
                         continue;
                     }
 
-                    // This is a concrete plugin class - store both the file path and the class
+                    // This is a concrete plugin class - store both the directory path and the class
+                    // Use directory name as the plugin identifier
                     plugins.insert(
-                        module_name.to_string(),
+                        plugin_name.to_string(),
                         (plugin_file.clone(), attr_value.into()),
                     );
                 }
@@ -189,11 +195,7 @@ impl PluginManager {
         }; // Lock released here
 
         // Get paths needed for plugin instantiation (can now access self.storage)
-        let root_dir = self.storage.root_dir();
-        let state_path = root_dir
-            .join(".faff")
-            .join("plugin_state")
-            .join(instance_name);
+        let state_path = self.storage.plugin_state_dir().join(instance_name);
 
         // Ensure state directory exists
         self.storage
