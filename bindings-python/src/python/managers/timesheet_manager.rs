@@ -65,12 +65,6 @@ impl PyTimesheetManager {
             .collect())
     }
 
-    /// Alias for list_timesheets (for backwards compatibility)
-    #[pyo3(signature = (date=None))]
-    pub fn list(&self, date: Option<Bound<'_, PyDate>>) -> PyResult<Vec<PyTimesheet>> {
-        self.list_timesheets(date)
-    }
-
     /// Get all audience plugin instances
     ///
     /// This delegates to the Rust TimesheetManager's audiences() method.

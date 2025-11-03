@@ -95,8 +95,8 @@ impl PyLogManager {
             .collect()
     }
 
-    /// List all logs (returns an iterator of Log objects)
-    fn list(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::py_models::log::PyLog>> {
+    /// List all logs (returns Log objects)
+    fn list_logs(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::py_models::log::PyLog>> {
         let dates = self
             .inner
             .list_logs()
