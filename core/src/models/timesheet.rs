@@ -122,11 +122,7 @@ impl Default for TimesheetMeta {
 }
 
 impl TimesheetMeta {
-    pub fn new(
-        audience_id: String,
-        submitted_at: Option<DateTime<Tz>>,
-        log_hash: String,
-    ) -> Self {
+    pub fn new(audience_id: String, submitted_at: Option<DateTime<Tz>>, log_hash: String) -> Self {
         Self {
             audience_id,
             submitted_at,
@@ -161,10 +157,7 @@ impl TimesheetMeta {
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono_tz::UTC));
 
-        let log_hash = dict
-            .get("log_hash")
-            .and_then(|v| v.as_string())
-            .cloned();
+        let log_hash = dict.get("log_hash").and_then(|v| v.as_string()).cloned();
 
         let submission_status = dict
             .get("submission_status")
@@ -285,11 +278,7 @@ impl Timesheet {
         })
     }
 
-    pub fn update_meta(
-        &self,
-        audience_id: String,
-        submitted_at: Option<DateTime<Tz>>,
-    ) -> Self {
+    pub fn update_meta(&self, audience_id: String, submitted_at: Option<DateTime<Tz>>) -> Self {
         let new_meta = TimesheetMeta {
             audience_id,
             submitted_at,
@@ -316,7 +305,10 @@ impl Timesheet {
         error: Option<String>,
         submitted_at: DateTime<Tz>,
     ) -> Self {
-        let new_meta = self.meta.clone().with_submission_result(status, error, submitted_at);
+        let new_meta = self
+            .meta
+            .clone()
+            .with_submission_result(status, error, submitted_at);
 
         Self {
             actor: self.actor.clone(),
@@ -424,10 +416,7 @@ mod tests {
         let submitted_at = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 19, 0, 0)
             .unwrap();
-        let updated = timesheet.update_meta(
-            "audience2".to_string(),
-            Some(submitted_at),
-        );
+        let updated = timesheet.update_meta("audience2".to_string(), Some(submitted_at));
 
         assert_eq!(updated.meta.audience_id, "audience2");
         assert_eq!(updated.meta.submitted_at, Some(submitted_at));

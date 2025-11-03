@@ -256,12 +256,7 @@ impl TimesheetManager {
             use crate::py_models::log::PyLog;
             use crate::py_models::timesheet::PyTimesheet;
 
-            let pylog = Py::new(
-                py,
-                PyLog {
-                    inner: log.clone(),
-                },
-            )?;
+            let pylog = Py::new(py, PyLog { inner: log.clone() })?;
 
             // Call compile_time_sheet on the plugin
             let result = plugin.call_method1(py, "compile_time_sheet", (pylog,))?;

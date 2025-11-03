@@ -306,9 +306,8 @@ impl PluginManager {
                 .read_string(&remote_file)
                 .with_context(|| format!("Failed to read remote file: {:?}", remote_file))?;
 
-            let remote = Remote::from_toml(&remote_toml).with_context(|| {
-                format!("Failed to parse remote config: {:?}", remote_file)
-            })?;
+            let remote = Remote::from_toml(&remote_toml)
+                .with_context(|| format!("Failed to parse remote config: {:?}", remote_file))?;
 
             // Convert RemoteVocabulary to HashMap for plugin
             let mut defaults = HashMap::new();

@@ -244,9 +244,7 @@ impl PyTimesheet {
         };
 
         Ok(Self {
-            inner: self
-                .inner
-                .update_meta(audience_id, submitted_at),
+            inner: self.inner.update_meta(audience_id, submitted_at),
         })
     }
 
