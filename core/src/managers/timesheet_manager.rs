@@ -349,6 +349,140 @@ impl TimesheetManager {
         Ok(())
     }
 
+    /// Find timesheets that are stale (log has changed since compilation)
+    ///
+    /// A timesheet is considered stale if the hash of its source log file
+    /// no longer matches the log_hash stored in its metadata.
+    ///
+    /// # Arguments
+    /// * `log_manager` - Reference to the log manager to read raw log files
+    /// * `date` - Optional date filter (None = check all timesheets)
+    ///
+    /// # Returns
+    /// Vector of stale timesheets
+    pub fn find_stale_timesheets(
+        &self,
+        log_manager: &crate::managers::LogManager,
+        date: Option<chrono::NaiveDate>,
+    ) -> anyhow::Result<Vec<Timesheet>> {
+        use crate::models::Log;
+
+        let all_timesheets = self.list_timesheets(date)?;
+        let mut stale = Vec::new();
+
+        for timesheet in all_timesheets {
+            // Skip if no log_hash in metadata (can't determine staleness)
+            if timesheet.meta.log_hash.is_none() {
+                continue;
+            }
+
+            // Try to read the raw log and calculate its current hash
+            match log_manager.read_log_raw(timesheet.date) {
+                Ok(raw_log) => {
+                    let current_hash = Log::calculate_hash(&raw_log);
+
+                    // Compare with stored hash
+                    if let Some(stored_hash) = &timesheet.meta.log_hash {
+                        if stored_hash != &current_hash {
+                            stale.push(timesheet);
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Log no longer exists - skip this timesheet
+                    continue;
+                }
+            }
+        }
+
+        Ok(stale)
+    }
+
+    /// Find timesheets with failed submissions
+    ///
+    /// # Arguments
+    /// * `date` - Optional date filter (None = check all timesheets)
+    ///
+    /// # Returns
+    /// Vector of timesheets that have failed submissions
+    pub fn find_failed_submissions(
+        &self,
+        date: Option<chrono::NaiveDate>,
+    ) -> anyhow::Result<Vec<Timesheet>> {
+        use crate::models::SubmissionStatus;
+
+        let all_timesheets = self.list_timesheets(date)?;
+        let failed: Vec<Timesheet> = all_timesheets
+            .into_iter()
+            .filter(|ts| {
+                matches!(
+                    ts.meta.submission_status,
+                    Some(SubmissionStatus::Failed)
+                )
+            })
+            .collect();
+
+        Ok(failed)
+    }
+
+    /// Sign a timesheet with the given signing identities
+    ///
+    /// This method signs a timesheet using the specified signing IDs.
+    /// For each signing ID, it retrieves the signing key from the identity manager
+    /// and adds a signature to the timesheet.
+    ///
+    /// # Arguments
+    /// * `timesheet` - The timesheet to sign
+    /// * `signing_ids` - List of identity IDs to use for signing
+    /// * `identity_manager` - Reference to the identity manager to get keys from
+    ///
+    /// # Returns
+    /// The signed timesheet, or an error if any signing operation fails
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - No valid signing keys are found for any of the signing IDs
+    /// - The signing operation fails for any key
+    pub fn sign_timesheet(
+        &self,
+        timesheet: &Timesheet,
+        signing_ids: &[String],
+        identity_manager: &crate::managers::IdentityManager,
+    ) -> anyhow::Result<Timesheet> {
+        let mut signed_timesheet = timesheet.clone();
+        let mut signed_at_least_once = false;
+
+        for signing_id in signing_ids {
+            match identity_manager.get_identity(signing_id) {
+                Ok(Some(signing_key)) => {
+                    let key_bytes = signing_key.to_bytes();
+                    signed_timesheet = signed_timesheet
+                        .sign(signing_id, &key_bytes)
+                        .with_context(|| format!("Failed to sign with identity '{}'", signing_id))?;
+                    signed_at_least_once = true;
+                }
+                Ok(None) => {
+                    // Key doesn't exist - this is a warning but not an error
+                    eprintln!("Warning: No identity key found for '{}'", signing_id);
+                }
+                Err(e) => {
+                    // Error reading the key - this is more serious
+                    return Err(e)
+                        .with_context(|| format!("Failed to get identity '{}'", signing_id));
+                }
+            }
+        }
+
+        if !signed_at_least_once && !signing_ids.is_empty() {
+            anyhow::bail!(
+                "No valid signing keys found for any of the {} signing IDs",
+                signing_ids.len()
+            );
+        }
+
+        Ok(signed_timesheet)
+    }
+
     /// Get audience plugin instances
     ///
     /// This is a convenience method that delegates to the plugin manager.

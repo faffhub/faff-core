@@ -5,10 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::models::log::Log;
-use crate::models::plan::Plan;
 use crate::models::remote::Remote;
-use crate::models::timesheet::Timesheet;
 use crate::storage::Storage;
 
 /// Manages loading and executing Python plugins
@@ -412,91 +409,6 @@ impl PluginManager {
             Ok(None)
         })
         .map_err(|e: PyErr| anyhow::anyhow!("Failed to get audience by ID: {}", e))
-    }
-}
-
-/// A PlanSource plugin instance
-pub struct PlanSourcePlugin {
-    instance: Py<PyAny>,
-}
-
-impl PlanSourcePlugin {
-    pub fn new(instance: Py<PyAny>) -> Self {
-        Self { instance }
-    }
-
-    /// Pull a plan for the given date
-    pub fn pull_plan(&self, date: chrono::NaiveDate) -> Result<Plan> {
-        Python::attach(|py| -> PyResult<Plan> {
-            // Convert date to Python date using type_mapping
-            let py_date = crate::type_mapping::date_rust_to_py(py, &date)?;
-
-            // Call the pull_plan method
-            let result = self.instance.call_method1(py, "pull_plan", (py_date,))?;
-
-            // The result should be a PyPlan object
-            // Extract the inner field which contains the Rust Plan
-            use crate::py_models::plan::PyPlan;
-            let pyplan: PyRef<PyPlan> = result.extract(py)?;
-            let rust_plan = pyplan.inner.clone();
-
-            Ok(rust_plan)
-        })
-        .map_err(|e: PyErr| anyhow::anyhow!("Failed to pull plan: {}", e))
-    }
-}
-
-/// An Audience plugin instance
-pub struct AudiencePlugin {
-    instance: Py<PyAny>,
-}
-
-impl AudiencePlugin {
-    pub fn new(instance: Py<PyAny>) -> Self {
-        Self { instance }
-    }
-
-    /// Compile a timesheet for the given log
-    pub fn compile_timesheet(&self, log: &Log) -> Result<Timesheet> {
-        Python::attach(|py| -> PyResult<Timesheet> {
-            // Create a PyLog wrapper around the Rust Log
-            use crate::py_models::log::PyLog;
-            let pylog = Py::new(py, PyLog { inner: log.clone() })?;
-
-            // Call the compile_time_sheet method
-            let result = self
-                .instance
-                .call_method1(py, "compile_time_sheet", (pylog,))?;
-
-            // The result should be a PyTimesheet object
-            use crate::py_models::timesheet::PyTimesheet;
-            let pytimesheet: PyRef<PyTimesheet> = result.extract(py)?;
-            let rust_timesheet = pytimesheet.inner.clone();
-
-            Ok(rust_timesheet)
-        })
-        .map_err(|e: PyErr| anyhow::anyhow!("Failed to compile timesheet: {}", e))
-    }
-
-    /// Submit a timesheet
-    pub fn submit_timesheet(&self, timesheet: &Timesheet) -> Result<()> {
-        Python::attach(|py| -> PyResult<()> {
-            // Create a PyTimesheet wrapper around the Rust Timesheet
-            use crate::py_models::timesheet::PyTimesheet;
-            let pytimesheet = Py::new(
-                py,
-                PyTimesheet {
-                    inner: timesheet.clone(),
-                },
-            )?;
-
-            // Call the submit_timesheet method
-            self.instance
-                .call_method1(py, "submit_timesheet", (pytimesheet,))?;
-
-            Ok(())
-        })
-        .map_err(|e: PyErr| anyhow::anyhow!("Failed to submit timesheet: {}", e))
     }
 }
 

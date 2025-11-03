@@ -130,6 +130,84 @@ impl PyTimesheetManager {
         Ok(PyTimesheet { inner: timesheet })
     }
 
+    /// Find timesheets that are stale (log has changed since compilation)
+    #[pyo3(signature = (date=None))]
+    pub fn find_stale_timesheets(
+        &self,
+        _py: Python<'_>,
+        date: Option<Bound<'_, PyDate>>,
+    ) -> PyResult<Vec<PyTimesheet>> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "TimesheetManager has no workspace reference. This should not happen.",
+            )
+        })?;
+
+        let log_manager = workspace.logs();
+        let naive_date = date.map(date_py_to_rust).transpose()?;
+
+        let stale = self
+            .manager
+            .find_stale_timesheets(log_manager, naive_date)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(stale.into_iter().map(|t| PyTimesheet { inner: t }).collect())
+    }
+
+    /// Find timesheets with failed submissions
+    #[pyo3(signature = (date=None))]
+    pub fn find_failed_submissions(
+        &self,
+        _py: Python<'_>,
+        date: Option<Bound<'_, PyDate>>,
+    ) -> PyResult<Vec<PyTimesheet>> {
+        let naive_date = date.map(date_py_to_rust).transpose()?;
+
+        let failed = self
+            .manager
+            .find_failed_submissions(naive_date)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(failed.into_iter().map(|t| PyTimesheet { inner: t }).collect())
+    }
+
+    /// Sign a timesheet with the given signing identities
+    ///
+    /// This method signs a timesheet using the specified signing IDs.
+    /// For each signing ID, it retrieves the signing key from the identity manager
+    /// and adds a signature to the timesheet.
+    ///
+    /// # Arguments
+    /// * `timesheet` - The timesheet to sign
+    /// * `signing_ids` - List of identity IDs to use for signing
+    ///
+    /// # Returns
+    /// The signed timesheet
+    ///
+    /// # Errors
+    /// Returns an error if no valid signing keys are found or if signing fails
+    pub fn sign_timesheet(
+        &self,
+        _py: Python<'_>,
+        timesheet: &PyTimesheet,
+        signing_ids: Vec<String>,
+    ) -> PyResult<PyTimesheet> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "TimesheetManager has no workspace reference. This should not happen.",
+            )
+        })?;
+
+        let identity_manager = workspace.identities();
+
+        let signed = self
+            .manager
+            .sign_timesheet(&timesheet.inner, &signing_ids, identity_manager)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        Ok(PyTimesheet { inner: signed })
+    }
+
     /// Submit a timesheet via its audience plugin
     pub fn submit(&self, _py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {

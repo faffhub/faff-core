@@ -12,4 +12,4 @@ pub use plan_manager::PlanManager;
 pub use timesheet_manager::TimesheetManager;
 
 #[cfg(feature = "python")]
-pub use plugin_manager::{AudiencePlugin, PlanSourcePlugin, PluginManager};
+pub use plugin_manager::PluginManager;
