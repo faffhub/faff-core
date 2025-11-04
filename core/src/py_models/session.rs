@@ -260,7 +260,11 @@ impl PySession {
         })
     }
 
-    fn with_reflection(&self, score: Option<i32>, reflection: Option<String>) -> PyResult<PySession> {
+    fn with_reflection(
+        &self,
+        score: Option<i32>,
+        reflection: Option<String>,
+    ) -> PyResult<PySession> {
         Ok(PySession {
             inner: self.inner.with_reflection(score, reflection),
         })
