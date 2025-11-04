@@ -61,6 +61,8 @@ class models:
         start: datetime.datetime
         end: Optional[datetime.datetime]
         note: Optional[str]
+        reflection_score: Optional[int]
+        reflection: Optional[str]
 
         def __init__(
             self,

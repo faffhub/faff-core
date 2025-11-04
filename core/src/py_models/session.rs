@@ -61,8 +61,27 @@ pub(crate) fn session_from_dict_internal(
                 .map(|v| v.extract::<String>())
                 .transpose()?;
 
+            let reflection_score = dict
+                .get_item("reflection_score")?
+                .and_then(|v| if v.is_none() { None } else { Some(v) })
+                .map(|v| v.extract::<i32>())
+                .transpose()?;
+
+            let reflection = dict
+                .get_item("reflection")?
+                .and_then(|v| if v.is_none() { None } else { Some(v) })
+                .map(|v| v.extract::<String>())
+                .transpose()?;
+
             return Ok(PySession {
-                inner: RustSession::new(py_intent.inner, start, end, note),
+                inner: RustSession {
+                    intent: py_intent.inner,
+                    start,
+                    end,
+                    note,
+                    reflection_score,
+                    reflection,
+                },
             });
         }
     }
@@ -76,8 +95,10 @@ pub(crate) fn session_from_dict_internal(
             data.insert(key, ValueType::String(v.extract()?));
         } else if v.is_instance_of::<pyo3::types::PyList>() {
             data.insert(key, ValueType::List(v.extract()?));
+        } else if v.is_instance_of::<pyo3::types::PyInt>() {
+            data.insert(key, ValueType::Integer(v.extract()?));
         }
-        // Skip non-string/list types
+        // Skip other types
     }
 
     let inner = RustSession::from_dict_with_tz(data, date, tz)
@@ -125,6 +146,12 @@ impl PySession {
         if let Some(note) = &self.inner.note {
             dict.set_item("note", note)?;
         }
+        if let Some(score) = self.inner.reflection_score {
+            dict.set_item("reflection_score", score)?;
+        }
+        if let Some(reflection) = &self.inner.reflection {
+            dict.set_item("reflection", reflection)?;
+        }
 
         Ok(dict.unbind().into())
     }
@@ -152,6 +179,16 @@ impl PySession {
     #[getter]
     fn note(&self) -> Option<String> {
         self.inner.note.clone()
+    }
+
+    #[getter]
+    fn reflection_score(&self) -> Option<i32> {
+        self.inner.reflection_score
+    }
+
+    #[getter]
+    fn reflection(&self) -> Option<String> {
+        self.inner.reflection.clone()
     }
 
     #[getter]
@@ -191,6 +228,8 @@ impl PySession {
                 data.insert(key, ValueType::String(v.extract()?));
             } else if v.is_instance_of::<pyo3::types::PyList>() {
                 data.insert(key, ValueType::List(v.extract()?));
+            } else if v.is_instance_of::<pyo3::types::PyInt>() {
+                data.insert(key, ValueType::Integer(v.extract()?));
             } else {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
                     "Unsupported type for key '{}'",
@@ -221,6 +260,12 @@ impl PySession {
         })
     }
 
+    fn with_reflection(&self, score: Option<i32>, reflection: Option<String>) -> PyResult<PySession> {
+        Ok(PySession {
+            inner: self.inner.with_reflection(score, reflection),
+        })
+    }
+
     fn as_dict(&self) -> PyResult<Py<PyDict>> {
         Python::attach(|py| {
             let d = PyDict::new(py);
@@ -241,6 +286,12 @@ impl PySession {
             }
             if let Some(note) = &self.inner.note {
                 d.set_item("note", note)?;
+            }
+            if let Some(score) = self.inner.reflection_score {
+                d.set_item("reflection_score", score)?;
+            }
+            if let Some(reflection) = &self.inner.reflection {
+                d.set_item("reflection", reflection)?;
             }
             Ok(d.into())
         })

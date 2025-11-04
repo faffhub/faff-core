@@ -297,6 +297,16 @@ impl Log {
                 lines.push(format!("note = \"{}\"", note));
             }
         }
+
+        // Reflection fields (only include if present)
+        if let Some(score) = session.reflection_score {
+            lines.push(format!("reflection_score = {}", score));
+        }
+        if let Some(reflection) = &session.reflection {
+            if !reflection.is_empty() {
+                lines.push(format!("reflection = \"{}\"", reflection));
+            }
+        }
     }
 
     fn format_datetime_for_log(dt: &DateTime<Tz>, format: &str) -> String {

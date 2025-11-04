@@ -113,6 +113,12 @@ pub struct Session {
     )]
     pub end: Option<DateTime<Tz>>,
     pub note: Option<String>,
+    /// Reflection score (1-5 scale) for filtering and analysis
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reflection_score: Option<i32>,
+    /// Freeform reflection text about this session
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reflection: Option<String>,
 }
 
 impl Session {
@@ -127,6 +133,8 @@ impl Session {
             start,
             end,
             note,
+            reflection_score: None,
+            reflection: None,
         }
     }
 
@@ -183,17 +191,30 @@ impl Session {
 
         let note = dict.get("note").and_then(|v| v.as_string()).cloned();
 
+        let reflection_score = dict.get("reflection_score").and_then(|v| v.as_integer());
+        let reflection = dict.get("reflection").and_then(|v| v.as_string()).cloned();
+
         Ok(Self {
             intent,
             start,
             end,
             note,
+            reflection_score,
+            reflection,
         })
     }
 
     pub fn with_end(&self, end: DateTime<Tz>) -> Self {
         Self {
             end: Some(end),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_reflection(&self, score: Option<i32>, reflection: Option<String>) -> Self {
+        Self {
+            reflection_score: score,
+            reflection: reflection,
             ..self.clone()
         }
     }
@@ -238,7 +259,24 @@ impl Session {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        Ok(Session::new(intent, start, end, note))
+        let reflection_score = table
+            .get("reflection_score")
+            .and_then(|v| v.as_integer())
+            .and_then(|i| i32::try_from(i).ok());
+
+        let reflection = table
+            .get("reflection")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok(Session {
+            intent,
+            start,
+            end,
+            note,
+            reflection_score,
+            reflection,
+        })
     }
 
     fn parse_time_from_toml(
