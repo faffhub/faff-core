@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use regex::{Captures, Regex};
+use slug::slugify;
+
 /// Configuration for a remote plugin instance
 ///
 /// A Remote represents a configured instance of a plugin that can:
@@ -26,6 +29,267 @@ pub struct Remote {
     /// Used when the remote doesn't provide its own ROAST objects
     #[serde(default)]
     pub vocabulary: RemoteVocabulary,
+
+    /// Vocabulary mapping rules for transforming source vocabulary to target vocabulary
+    #[serde(default, rename = "vocabulary_mapping")]
+    pub vocabulary_mappings: Vec<VocabularyMapping>,
+}
+
+/// Type of vocabulary being mapped from or to
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VocabularyType {
+    Tracker,
+    Role,
+    Objective,
+    Action,
+    Subject,
+    Intent,
+}
+
+/// Configuration for mapping vocabulary from one type to another
+///
+/// Uses regex patterns to match source vocabulary and templates to generate
+/// target vocabulary. Supports mapping any vocabulary type to any other type.
+///
+/// Examples:
+/// - tracker → subject: Extract customer name from tracker
+/// - subject → intent: Create standard intents for customer meetings
+/// - tracker → intent: Most common case, direct tracker to intent mapping
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VocabularyMapping {
+    /// Type of vocabulary to match against
+    pub source_type: VocabularyType,
+
+    /// Type of vocabulary to generate
+    pub target_type: VocabularyType,
+
+    /// Regex pattern to match source values (with named capture groups)
+    /// Example: "^POC-(?P<id>\\d+)\\s+(?P<description>.+)$"
+    pub pattern: String,
+
+    /// Template for intent alias (required if target_type is Intent)
+    /// Example: "POC-{id}: {description}"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+
+    /// Template for role (required if target_type is Role, optional for Intent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+
+    /// Template for objective (required if target_type is Objective, optional for Intent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective: Option<String>,
+
+    /// Template for action (required if target_type is Action, optional for Intent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+
+    /// Template for subject (required if target_type is Subject, optional for Intent)
+    /// Supports filters: "customer/{customer|slugify}"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+}
+
+impl VocabularyMapping {
+    /// Create a new vocabulary mapping
+    pub fn new(
+        source_type: VocabularyType,
+        target_type: VocabularyType,
+        pattern: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_type,
+            target_type,
+            pattern: pattern.into(),
+            alias: None,
+            role: None,
+            objective: None,
+            action: None,
+            subject: None,
+        }
+    }
+
+    /// Compile the regex pattern
+    pub fn regex(&self) -> anyhow::Result<Regex> {
+        Regex::new(&self.pattern)
+            .map_err(|e| anyhow::anyhow!("Invalid regex pattern '{}': {}", self.pattern, e))
+    }
+
+    /// Validate that required fields are present for the target type
+    pub fn validate(&self) -> anyhow::Result<()> {
+        match self.target_type {
+            VocabularyType::Intent => {
+                if self.alias.is_none() {
+                    anyhow::bail!("Intent mapping requires 'alias' field");
+                }
+            }
+            VocabularyType::Role => {
+                if self.role.is_none() {
+                    anyhow::bail!("Role mapping requires 'role' field");
+                }
+            }
+            VocabularyType::Objective => {
+                if self.objective.is_none() {
+                    anyhow::bail!("Objective mapping requires 'objective' field");
+                }
+            }
+            VocabularyType::Action => {
+                if self.action.is_none() {
+                    anyhow::bail!("Action mapping requires 'action' field");
+                }
+            }
+            VocabularyType::Subject => {
+                if self.subject.is_none() {
+                    anyhow::bail!("Subject mapping requires 'subject' field");
+                }
+            }
+            VocabularyType::Tracker => {
+                anyhow::bail!("Cannot map to tracker (trackers are source data only)");
+            }
+        }
+        Ok(())
+    }
+
+    /// Try to match this mapping against a source value
+    ///
+    /// Returns Some(MappingResult) if the pattern matches, None otherwise
+    pub fn try_match(&self, source_value: &str, source_id: &str) -> anyhow::Result<Option<MappingResult>> {
+        let regex = self.regex()?;
+
+        if let Some(captures) = regex.captures(source_value) {
+            let mut result = MappingResult {
+                target_type: self.target_type.clone(),
+                alias: None,
+                role: None,
+                objective: None,
+                action: None,
+                subject: None,
+            };
+
+            // Apply templates to each field
+            if let Some(template) = &self.alias {
+                result.alias = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+            }
+            if let Some(template) = &self.role {
+                result.role = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+            }
+            if let Some(template) = &self.objective {
+                result.objective = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+            }
+            if let Some(template) = &self.action {
+                result.action = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+            }
+            if let Some(template) = &self.subject {
+                result.subject = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+            }
+
+            Ok(Some(result))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Apply a template string, substituting captures and applying filters
+    ///
+    /// Template syntax:
+    /// - {name} - substitute named capture
+    /// - {name|filter} - substitute and apply filter
+    /// - {name|filter1|filter2} - chain multiple filters
+    /// - {_original} - the original source value
+    /// - {_source} - the source/remote ID
+    fn apply_template(
+        template: &str,
+        captures: &Captures,
+        original_value: &str,
+        source_id: &str,
+    ) -> anyhow::Result<String> {
+        // Find all {xxx} or {xxx|filter} patterns
+        let placeholder_regex = Regex::new(r"\{([^}|]+)(\|[^}]+)?\}")
+            .expect("Placeholder regex is valid");
+
+        let mut result = String::new();
+        let mut last_end = 0;
+
+        for cap in placeholder_regex.captures_iter(template) {
+            let full_match = cap.get(0).unwrap();
+            let range = full_match.range();
+
+            // Add the part before this match
+            result.push_str(&template[last_end..range.start]);
+
+            let var_name = cap.get(1).unwrap().as_str();
+            let filters = cap.get(2).map(|m| m.as_str().trim_start_matches('|'));
+
+            // Get the value to substitute
+            let value = match var_name {
+                "_original" => original_value.to_string(),
+                "_source" => source_id.to_string(),
+                name => {
+                    captures.name(name)
+                        .map(|m| m.as_str().to_string())
+                        .ok_or_else(|| anyhow::anyhow!("Capture group '{}' not found", name))?
+                }
+            };
+
+            // Apply filters if any
+            let filtered_value = if let Some(filter_chain) = filters {
+                Self::apply_filters(&value, filter_chain)?
+            } else {
+                value
+            };
+
+            // Add the substituted value
+            result.push_str(&filtered_value);
+            last_end = range.end;
+        }
+
+        // Add any remaining part after the last match
+        result.push_str(&template[last_end..]);
+
+        Ok(result)
+    }
+
+    /// Apply a chain of filters to a value
+    ///
+    /// Supported filters: slugify, lowercase, uppercase, trim
+    fn apply_filters(value: &str, filter_chain: &str) -> anyhow::Result<String> {
+        let mut result = value.to_string();
+
+        for filter in filter_chain.split('|') {
+            result = match filter.trim() {
+                "slugify" => slugify(&result),
+                "lowercase" => result.to_lowercase(),
+                "uppercase" => result.to_uppercase(),
+                "trim" => result.trim().to_string(),
+                unknown => anyhow::bail!("Unknown filter: {}", unknown),
+            };
+        }
+
+        Ok(result)
+    }
+}
+
+/// Result of applying a vocabulary mapping
+#[derive(Clone, Debug, PartialEq)]
+pub struct MappingResult {
+    /// Type of vocabulary that was generated
+    pub target_type: VocabularyType,
+
+    /// Generated alias (for Intent targets)
+    pub alias: Option<String>,
+
+    /// Generated role
+    pub role: Option<String>,
+
+    /// Generated objective
+    pub objective: Option<String>,
+
+    /// Generated action
+    pub action: Option<String>,
+
+    /// Generated subject
+    pub subject: Option<String>,
 }
 
 /// Static ROAST vocabulary for a remote
@@ -59,6 +323,7 @@ impl Remote {
             plugin: plugin.into(),
             connection: HashMap::new(),
             vocabulary: RemoteVocabulary::default(),
+            vocabulary_mappings: Vec::new(),
         }
     }
 
@@ -70,6 +335,128 @@ impl Remote {
     /// Serialize remote to TOML string
     pub fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
+    }
+
+    /// Apply vocabulary mappings to a plan, augmenting its vocabulary
+    ///
+    /// This method:
+    /// - Iterates through configured vocabulary mappings
+    /// - Matches source vocabulary (trackers, roles, etc.) against patterns
+    /// - Generates new vocabulary (intents, subjects, etc.) from matches
+    /// - Returns an augmented plan with additional vocabulary
+    ///
+    /// The original plan vocabulary is preserved; mappings only add new items.
+    pub fn apply_vocabulary_mappings(&self, plan: &crate::models::plan::Plan) -> anyhow::Result<crate::models::plan::Plan> {
+        use crate::models::intent::Intent;
+
+        let mut augmented_plan = plan.clone();
+
+        // Validate all mappings first
+        for mapping in &self.vocabulary_mappings {
+            mapping.validate()?;
+        }
+
+        // Apply each mapping
+        for mapping in &self.vocabulary_mappings {
+            // Get source values based on source_type
+            let source_values: Vec<(String, String)> = match mapping.source_type {
+                VocabularyType::Tracker => {
+                    // For trackers: (tracker_id, tracker_description)
+                    plan.trackers
+                        .iter()
+                        .map(|(id, desc)| (id.clone(), desc.clone()))
+                        .collect()
+                }
+                VocabularyType::Role => {
+                    // For roles: (role, role) - use the role itself as both ID and value
+                    plan.roles.iter().map(|r| (r.clone(), r.clone())).collect()
+                }
+                VocabularyType::Objective => {
+                    plan.objectives.iter().map(|o| (o.clone(), o.clone())).collect()
+                }
+                VocabularyType::Action => {
+                    plan.actions.iter().map(|a| (a.clone(), a.clone())).collect()
+                }
+                VocabularyType::Subject => {
+                    plan.subjects.iter().map(|s| (s.clone(), s.clone())).collect()
+                }
+                VocabularyType::Intent => {
+                    // For intents, use the alias as the value to match against
+                    // Filter out intents without an alias
+                    plan.intents
+                        .iter()
+                        .filter_map(|i| {
+                            i.alias.as_ref().map(|alias| (i.intent_id.clone(), alias.clone()))
+                        })
+                        .collect()
+                }
+            };
+
+            // Try to match each source value
+            for (source_id, source_value) in source_values {
+                if let Some(result) = mapping.try_match(&source_value, &source_id)? {
+                    // Generate new vocabulary based on target_type
+                    match result.target_type {
+                        VocabularyType::Intent => {
+                            // Generate a new intent
+                            let alias = result.alias.ok_or_else(|| {
+                                anyhow::anyhow!("Intent mapping must produce an alias")
+                            })?;
+
+                            let intent = Intent::new(
+                                Some(alias),
+                                result.role,
+                                result.objective,
+                                result.action,
+                                result.subject,
+                                vec![], // No trackers for mapped intents
+                            );
+
+                            // Add to plan (using add_intent to handle ID generation and deduplication)
+                            augmented_plan = augmented_plan.add_intent(intent);
+                        }
+                        VocabularyType::Role => {
+                            let role = result.role.ok_or_else(|| {
+                                anyhow::anyhow!("Role mapping must produce a role")
+                            })?;
+                            if !augmented_plan.roles.contains(&role) {
+                                augmented_plan.roles.push(role);
+                            }
+                        }
+                        VocabularyType::Objective => {
+                            let objective = result.objective.ok_or_else(|| {
+                                anyhow::anyhow!("Objective mapping must produce an objective")
+                            })?;
+                            if !augmented_plan.objectives.contains(&objective) {
+                                augmented_plan.objectives.push(objective);
+                            }
+                        }
+                        VocabularyType::Action => {
+                            let action = result.action.ok_or_else(|| {
+                                anyhow::anyhow!("Action mapping must produce an action")
+                            })?;
+                            if !augmented_plan.actions.contains(&action) {
+                                augmented_plan.actions.push(action);
+                            }
+                        }
+                        VocabularyType::Subject => {
+                            let subject = result.subject.ok_or_else(|| {
+                                anyhow::anyhow!("Subject mapping must produce a subject")
+                            })?;
+                            if !augmented_plan.subjects.contains(&subject) {
+                                augmented_plan.subjects.push(subject);
+                            }
+                        }
+                        VocabularyType::Tracker => {
+                            // This shouldn't happen due to validation, but handle it
+                            anyhow::bail!("Cannot map to tracker type");
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(augmented_plan)
     }
 }
 
@@ -141,5 +528,258 @@ mod tests {
         let toml_str = remote.to_toml().unwrap();
         let parsed = Remote::from_toml(&toml_str).unwrap();
         assert_eq!(remote, parsed);
+    }
+
+    #[test]
+    fn test_vocabulary_mapping_parse() {
+        let toml_str = r#"
+            id = "test"
+            plugin = "myhours"
+
+            [[vocabulary_mapping]]
+            source_type = "tracker"
+            target_type = "intent"
+            pattern = "^POC-(?P<id>\\d+)\\s+(?P<description>.+)$"
+            alias = "POC-{id}: {description}"
+            role = "element.io:pre-sales-engineer"
+            objective = "element.io:new-revenue-new-business"
+            action = "element.io:support-poc"
+        "#;
+
+        let remote = Remote::from_toml(toml_str).unwrap();
+        assert_eq!(remote.vocabulary_mappings.len(), 1);
+
+        let mapping = &remote.vocabulary_mappings[0];
+        assert!(matches!(mapping.source_type, VocabularyType::Tracker));
+        assert!(matches!(mapping.target_type, VocabularyType::Intent));
+        assert_eq!(mapping.pattern, "^POC-(?P<id>\\d+)\\s+(?P<description>.+)$");
+        assert_eq!(mapping.alias, Some("POC-{id}: {description}".to_string()));
+    }
+
+    #[test]
+    fn test_template_substitution() {
+        let mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Intent,
+            r"^POC-(?P<id>\d+)\s+(?P<description>.+)$",
+        );
+
+        let result = mapping.try_match("POC-123 Test customer", "456").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_template_with_filters() {
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Subject,
+            r"^Customer:\s+(?P<name>.+)$",
+        );
+        mapping.subject = Some("customer/{name|slugify}".to_string());
+
+        let result = mapping.try_match("Customer: Acme Corp!", "123").unwrap();
+        assert!(result.is_some());
+
+        let result = result.unwrap();
+        assert_eq!(result.subject, Some("customer/acme-corp".to_string()));
+    }
+
+    #[test]
+    fn test_apply_vocabulary_mapping_tracker_to_intent() {
+        use chrono::NaiveDate;
+        use crate::models::plan::Plan;
+
+        let mut remote = Remote::new("element", "myhours");
+
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Intent,
+            r"^POC-(?P<id>\d+)\s+(?P<description>.+)$",
+        );
+        mapping.alias = Some("POC-{id}: {description}".to_string());
+        mapping.role = Some("element.io:pre-sales-engineer".to_string());
+        mapping.objective = Some("element.io:new-revenue-new-business".to_string());
+        mapping.action = Some("element.io:support-poc".to_string());
+
+        remote.vocabulary_mappings.push(mapping);
+
+        // Create a plan with a matching tracker
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("123".to_string(), "POC-456 Acme Corporation".to_string());
+
+        let plan = Plan::new(
+            "element".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+            vec![],
+        );
+
+        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+
+        // Check that an intent was generated
+        assert_eq!(augmented.intents.len(), 1);
+        let intent = &augmented.intents[0];
+        assert_eq!(intent.alias, Some("POC-456: Acme Corporation".to_string()));
+        assert_eq!(intent.role, Some("element.io:pre-sales-engineer".to_string()));
+        assert_eq!(intent.objective, Some("element.io:new-revenue-new-business".to_string()));
+        assert_eq!(intent.action, Some("element.io:support-poc".to_string()));
+    }
+
+    #[test]
+    fn test_apply_vocabulary_mapping_tracker_to_subject() {
+        use chrono::NaiveDate;
+        use crate::models::plan::Plan;
+
+        let mut remote = Remote::new("test", "test");
+
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Subject,
+            r"^Customer:\s+(?P<name>.+)$",
+        );
+        mapping.subject = Some("customer/{name|slugify}".to_string());
+
+        remote.vocabulary_mappings.push(mapping);
+
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("1".to_string(), "Customer: Acme Corp".to_string());
+
+        let plan = Plan::new(
+            "test".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+            vec![],
+        );
+
+        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+
+        // Check that a subject was generated
+        assert_eq!(augmented.subjects.len(), 1);
+        assert_eq!(augmented.subjects[0], "customer/acme-corp");
+    }
+
+    #[test]
+    fn test_vocabulary_mapping_no_match() {
+        use chrono::NaiveDate;
+        use crate::models::plan::Plan;
+
+        let mut remote = Remote::new("test", "test");
+
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Intent,
+            r"^POC-(?P<id>\d+).*$",
+        );
+        mapping.alias = Some("POC-{id}".to_string());
+
+        remote.vocabulary_mappings.push(mapping);
+
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("1".to_string(), "Something completely different".to_string());
+
+        let plan = Plan::new(
+            "test".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+            vec![],
+        );
+
+        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+
+        // No intents should be generated since pattern doesn't match
+        assert_eq!(augmented.intents.len(), 0);
+    }
+
+    #[test]
+    fn test_real_world_poc_mapping() {
+        use chrono::NaiveDate;
+        use crate::models::plan::Plan;
+
+        // Simulate the element.io remote configuration
+        let mut remote = Remote::new("element", "myhours");
+
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Intent,
+            r"^POC-(?P<id>\d+)\s+(?P<description>.+)$",
+        );
+        mapping.alias = Some("POC-{id}: {description}".to_string());
+        mapping.role = Some("customer-success-manager".to_string());
+        mapping.objective = Some("new-revenue-new-business".to_string());
+        mapping.action = Some("drive-poc".to_string());
+        mapping.subject = Some("poc/{description|slugify}".to_string());
+
+        remote.vocabulary_mappings.push(mapping);
+
+        // Create a plan with real POC trackers from element.io
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("2679845".to_string(), "POC-29 European Commission - PoC".to_string());
+        trackers.insert("2821521".to_string(), "POC-62 Unicredit POC".to_string());
+        trackers.insert("2844066".to_string(), "POC-66 EPPO".to_string());
+        trackers.insert("2783059".to_string(), "BIZ-205 Experiment: Transactional Mid-Market Sales Motion".to_string());
+
+        let plan = Plan::new(
+            "element".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+            vec![],
+        );
+
+        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+
+        // Should generate 3 intents from the 3 POC trackers
+        assert_eq!(augmented.intents.len(), 3);
+
+        // Find the POC-29 intent
+        let poc29 = augmented.intents.iter()
+            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-29")).unwrap_or(false))
+            .expect("Should find POC-29 intent");
+
+        assert_eq!(poc29.alias, Some("POC-29: European Commission - PoC".to_string()));
+        assert_eq!(poc29.role, Some("customer-success-manager".to_string()));
+        assert_eq!(poc29.objective, Some("new-revenue-new-business".to_string()));
+        assert_eq!(poc29.action, Some("drive-poc".to_string()));
+        assert_eq!(poc29.subject, Some("poc/european-commission-poc".to_string()));
+
+        // Verify POC-62
+        let poc62 = augmented.intents.iter()
+            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-62")).unwrap_or(false))
+            .expect("Should find POC-62 intent");
+
+        assert_eq!(poc62.alias, Some("POC-62: Unicredit POC".to_string()));
+        assert_eq!(poc62.subject, Some("poc/unicredit-poc".to_string()));
+
+        // Verify POC-66
+        let poc66 = augmented.intents.iter()
+            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-66")).unwrap_or(false))
+            .expect("Should find POC-66 intent");
+
+        assert_eq!(poc66.alias, Some("POC-66: EPPO".to_string()));
+        assert_eq!(poc66.subject, Some("poc/eppo".to_string()));
+
+        // Verify that non-POC trackers are not converted
+        assert!(!augmented.intents.iter().any(|i|
+            i.alias.as_ref().map(|a| a.contains("BIZ-")).unwrap_or(false)
+        ));
     }
 }

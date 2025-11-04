@@ -315,15 +315,46 @@ impl PlanManager {
     }
 
     /// Write a plan to storage
+    ///
+    /// If a remote configuration exists for this plan's source, vocabulary mappings
+    /// will be automatically applied before writing.
+    ///
+    /// Note: Remote files must be named `{source}.toml` where source matches the plan source
+    /// (which is the slugified remote id).
     pub fn write_plan(&self, plan: &Plan) -> Result<()> {
+        use crate::models::remote::Remote;
+
+        // Try to load remote configuration for this plan's source
+        let remote_file = self.storage.remotes_dir().join(format!("{}.toml", plan.source));
+        let plan_to_write = if self.storage.exists(&remote_file) {
+            // Load remote and apply vocabulary mappings if configured
+            let remote_toml = self.storage.read_string(&remote_file)
+                .with_context(|| format!("Failed to read remote config: {}", remote_file.display()))?;
+
+            let remote = Remote::from_toml(&remote_toml)
+                .with_context(|| format!("Failed to parse remote config: {}", remote_file.display()))?;
+
+            if !remote.vocabulary_mappings.is_empty() {
+                // Apply vocabulary mappings and use the augmented plan
+                remote.apply_vocabulary_mappings(plan)
+                    .with_context(|| format!("Failed to apply vocabulary mappings for remote '{}'", remote.id))?
+            } else {
+                // No mappings, use original plan
+                plan.clone()
+            }
+        } else {
+            // No remote config, use original plan
+            plan.clone()
+        };
+
         let plan_dir = self.storage.plan_dir();
         self.storage.create_dir_all(&plan_dir)?;
 
-        let filename = format!("{}.{}.toml", plan.source, plan.valid_from.format("%Y%m%d"));
+        let filename = format!("{}.{}.toml", plan_to_write.source, plan_to_write.valid_from.format("%Y%m%d"));
         let file_path = plan_dir.join(filename);
 
         let toml_content =
-            toml::to_string_pretty(plan).context("Failed to serialize plan to TOML")?;
+            toml::to_string_pretty(&plan_to_write).context("Failed to serialize plan to TOML")?;
 
         self.storage
             .write_string(&file_path, &toml_content)
@@ -672,5 +703,78 @@ objective = "{}:development"
         let result = manager.delete_plan("nonexistent", date);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_write_plan_applies_vocabulary_mappings() {
+        let storage = Arc::new(MockStorage::new());
+
+        // Create a remote configuration with vocabulary mapping
+        let remote_toml = r#"
+id = "test-remote"
+plugin = "test"
+
+[[vocabulary_mapping]]
+source_type = "tracker"
+target_type = "intent"
+pattern = "^POC-(?P<id>\\d+)\\s+(?P<description>.+)$"
+alias = "POC-{id}: {description}"
+role = "customer-success"
+objective = "revenue"
+action = "drive-poc"
+subject = "poc/{description|slugify}"
+        "#;
+
+        // Store the remote config (MockStorage base_dir is /faff/.faff)
+        storage.add_file(
+            PathBuf::from("/faff/.faff/remotes/test-remote.toml"),
+            remote_toml.to_string(),
+        );
+
+        let manager = PlanManager::new(storage.clone());
+
+        // Create a plan with POC trackers
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("1".to_string(), "POC-29 European Commission".to_string());
+        trackers.insert("2".to_string(), "POC-62 Unicredit POC".to_string());
+        trackers.insert("3".to_string(), "Not a POC".to_string());
+
+        let plan = Plan::new(
+            "test-remote".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+            vec![],
+        );
+
+        // Write the plan (should apply vocabulary mappings)
+        manager.write_plan(&plan).expect("Failed to write plan");
+
+        // Read back the written plan (MockStorage base_dir is /faff/.faff)
+        let written_plan_path = PathBuf::from("/faff/.faff/plans/test-remote.20251104.toml");
+        assert!(storage.exists(&written_plan_path), "Plan file should exist after write_plan");
+
+        let written_content = storage.read_string(&written_plan_path)
+            .expect("Failed to read written plan");
+        let written_plan: Plan = toml::from_str(&written_content)
+            .expect("Failed to parse written plan");
+
+        // Verify that intents were generated
+        assert_eq!(written_plan.intents.len(), 2, "Should generate 2 intents from 2 POC trackers");
+
+        // Check that POC-29 intent was created
+        let poc29 = written_plan.intents.iter()
+            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-29")).unwrap_or(false))
+            .expect("Should find POC-29 intent");
+
+        assert_eq!(poc29.alias, Some("POC-29: European Commission".to_string()));
+        assert_eq!(poc29.role, Some("customer-success".to_string()));
+        assert_eq!(poc29.objective, Some("revenue".to_string()));
+        assert_eq!(poc29.action, Some("drive-poc".to_string()));
+        assert_eq!(poc29.subject, Some("poc/european-commission".to_string()));
     }
 }
