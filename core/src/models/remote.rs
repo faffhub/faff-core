@@ -154,7 +154,11 @@ impl VocabularyMapping {
     /// Try to match this mapping against a source value
     ///
     /// Returns Some(MappingResult) if the pattern matches, None otherwise
-    pub fn try_match(&self, source_value: &str, source_id: &str) -> anyhow::Result<Option<MappingResult>> {
+    pub fn try_match(
+        &self,
+        source_value: &str,
+        source_id: &str,
+    ) -> anyhow::Result<Option<MappingResult>> {
         let regex = self.regex()?;
 
         if let Some(captures) = regex.captures(source_value) {
@@ -169,19 +173,44 @@ impl VocabularyMapping {
 
             // Apply templates to each field
             if let Some(template) = &self.alias {
-                result.alias = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+                result.alias = Some(Self::apply_template(
+                    template,
+                    &captures,
+                    source_value,
+                    source_id,
+                )?);
             }
             if let Some(template) = &self.role {
-                result.role = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+                result.role = Some(Self::apply_template(
+                    template,
+                    &captures,
+                    source_value,
+                    source_id,
+                )?);
             }
             if let Some(template) = &self.objective {
-                result.objective = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+                result.objective = Some(Self::apply_template(
+                    template,
+                    &captures,
+                    source_value,
+                    source_id,
+                )?);
             }
             if let Some(template) = &self.action {
-                result.action = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+                result.action = Some(Self::apply_template(
+                    template,
+                    &captures,
+                    source_value,
+                    source_id,
+                )?);
             }
             if let Some(template) = &self.subject {
-                result.subject = Some(Self::apply_template(template, &captures, source_value, source_id)?);
+                result.subject = Some(Self::apply_template(
+                    template,
+                    &captures,
+                    source_value,
+                    source_id,
+                )?);
             }
 
             Ok(Some(result))
@@ -205,8 +234,8 @@ impl VocabularyMapping {
         source_id: &str,
     ) -> anyhow::Result<String> {
         // Find all {xxx} or {xxx|filter} patterns
-        let placeholder_regex = Regex::new(r"\{([^}|]+)(\|[^}]+)?\}")
-            .expect("Placeholder regex is valid");
+        let placeholder_regex =
+            Regex::new(r"\{([^}|]+)(\|[^}]+)?\}").expect("Placeholder regex is valid");
 
         let mut result = String::new();
         let mut last_end = 0;
@@ -225,11 +254,10 @@ impl VocabularyMapping {
             let value = match var_name {
                 "_original" => original_value.to_string(),
                 "_source" => source_id.to_string(),
-                name => {
-                    captures.name(name)
-                        .map(|m| m.as_str().to_string())
-                        .ok_or_else(|| anyhow::anyhow!("Capture group '{}' not found", name))?
-                }
+                name => captures
+                    .name(name)
+                    .map(|m| m.as_str().to_string())
+                    .ok_or_else(|| anyhow::anyhow!("Capture group '{}' not found", name))?,
             };
 
             // Apply filters if any
@@ -346,7 +374,10 @@ impl Remote {
     /// - Returns an augmented plan with additional vocabulary
     ///
     /// The original plan vocabulary is preserved; mappings only add new items.
-    pub fn apply_vocabulary_mappings(&self, plan: &crate::models::plan::Plan) -> anyhow::Result<crate::models::plan::Plan> {
+    pub fn apply_vocabulary_mappings(
+        &self,
+        plan: &crate::models::plan::Plan,
+    ) -> anyhow::Result<crate::models::plan::Plan> {
         use crate::models::intent::Intent;
 
         let mut augmented_plan = plan.clone();
@@ -371,22 +402,30 @@ impl Remote {
                     // For roles: (role, role) - use the role itself as both ID and value
                     plan.roles.iter().map(|r| (r.clone(), r.clone())).collect()
                 }
-                VocabularyType::Objective => {
-                    plan.objectives.iter().map(|o| (o.clone(), o.clone())).collect()
-                }
-                VocabularyType::Action => {
-                    plan.actions.iter().map(|a| (a.clone(), a.clone())).collect()
-                }
-                VocabularyType::Subject => {
-                    plan.subjects.iter().map(|s| (s.clone(), s.clone())).collect()
-                }
+                VocabularyType::Objective => plan
+                    .objectives
+                    .iter()
+                    .map(|o| (o.clone(), o.clone()))
+                    .collect(),
+                VocabularyType::Action => plan
+                    .actions
+                    .iter()
+                    .map(|a| (a.clone(), a.clone()))
+                    .collect(),
+                VocabularyType::Subject => plan
+                    .subjects
+                    .iter()
+                    .map(|s| (s.clone(), s.clone()))
+                    .collect(),
                 VocabularyType::Intent => {
                     // For intents, use the alias as the value to match against
                     // Filter out intents without an alias
                     plan.intents
                         .iter()
                         .filter_map(|i| {
-                            i.alias.as_ref().map(|alias| (i.intent_id.clone(), alias.clone()))
+                            i.alias
+                                .as_ref()
+                                .map(|alias| (i.intent_id.clone(), alias.clone()))
                         })
                         .collect()
                 }
@@ -586,8 +625,8 @@ mod tests {
 
     #[test]
     fn test_apply_vocabulary_mapping_tracker_to_intent() {
-        use chrono::NaiveDate;
         use crate::models::plan::Plan;
+        use chrono::NaiveDate;
 
         let mut remote = Remote::new("element", "myhours");
 
@@ -625,15 +664,21 @@ mod tests {
         assert_eq!(augmented.intents.len(), 1);
         let intent = &augmented.intents[0];
         assert_eq!(intent.alias, Some("POC-456: Acme Corporation".to_string()));
-        assert_eq!(intent.role, Some("element.io:pre-sales-engineer".to_string()));
-        assert_eq!(intent.objective, Some("element.io:new-revenue-new-business".to_string()));
+        assert_eq!(
+            intent.role,
+            Some("element.io:pre-sales-engineer".to_string())
+        );
+        assert_eq!(
+            intent.objective,
+            Some("element.io:new-revenue-new-business".to_string())
+        );
         assert_eq!(intent.action, Some("element.io:support-poc".to_string()));
     }
 
     #[test]
     fn test_apply_vocabulary_mapping_tracker_to_subject() {
-        use chrono::NaiveDate;
         use crate::models::plan::Plan;
+        use chrono::NaiveDate;
 
         let mut remote = Remote::new("test", "test");
 
@@ -670,8 +715,8 @@ mod tests {
 
     #[test]
     fn test_vocabulary_mapping_no_match() {
-        use chrono::NaiveDate;
         use crate::models::plan::Plan;
+        use chrono::NaiveDate;
 
         let mut remote = Remote::new("test", "test");
 
@@ -685,7 +730,10 @@ mod tests {
         remote.vocabulary_mappings.push(mapping);
 
         let mut trackers = std::collections::HashMap::new();
-        trackers.insert("1".to_string(), "Something completely different".to_string());
+        trackers.insert(
+            "1".to_string(),
+            "Something completely different".to_string(),
+        );
 
         let plan = Plan::new(
             "test".to_string(),
@@ -707,8 +755,8 @@ mod tests {
 
     #[test]
     fn test_real_world_poc_mapping() {
-        use chrono::NaiveDate;
         use crate::models::plan::Plan;
+        use chrono::NaiveDate;
 
         // Simulate the element.io remote configuration
         let mut remote = Remote::new("element", "myhours");
@@ -728,10 +776,16 @@ mod tests {
 
         // Create a plan with real POC trackers from element.io
         let mut trackers = std::collections::HashMap::new();
-        trackers.insert("2679845".to_string(), "POC-29 European Commission - PoC".to_string());
+        trackers.insert(
+            "2679845".to_string(),
+            "POC-29 European Commission - PoC".to_string(),
+        );
         trackers.insert("2821521".to_string(), "POC-62 Unicredit POC".to_string());
         trackers.insert("2844066".to_string(), "POC-66 EPPO".to_string());
-        trackers.insert("2783059".to_string(), "BIZ-205 Experiment: Transactional Mid-Market Sales Motion".to_string());
+        trackers.insert(
+            "2783059".to_string(),
+            "BIZ-205 Experiment: Transactional Mid-Market Sales Motion".to_string(),
+        );
 
         let plan = Plan::new(
             "element".to_string(),
@@ -751,35 +805,67 @@ mod tests {
         assert_eq!(augmented.intents.len(), 3);
 
         // Find the POC-29 intent
-        let poc29 = augmented.intents.iter()
-            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-29")).unwrap_or(false))
+        let poc29 = augmented
+            .intents
+            .iter()
+            .find(|i| {
+                i.alias
+                    .as_ref()
+                    .map(|a| a.contains("POC-29"))
+                    .unwrap_or(false)
+            })
             .expect("Should find POC-29 intent");
 
-        assert_eq!(poc29.alias, Some("POC-29: European Commission - PoC".to_string()));
+        assert_eq!(
+            poc29.alias,
+            Some("POC-29: European Commission - PoC".to_string())
+        );
         assert_eq!(poc29.role, Some("customer-success-manager".to_string()));
-        assert_eq!(poc29.objective, Some("new-revenue-new-business".to_string()));
+        assert_eq!(
+            poc29.objective,
+            Some("new-revenue-new-business".to_string())
+        );
         assert_eq!(poc29.action, Some("drive-poc".to_string()));
-        assert_eq!(poc29.subject, Some("poc/european-commission-poc".to_string()));
+        assert_eq!(
+            poc29.subject,
+            Some("poc/european-commission-poc".to_string())
+        );
 
         // Verify POC-62
-        let poc62 = augmented.intents.iter()
-            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-62")).unwrap_or(false))
+        let poc62 = augmented
+            .intents
+            .iter()
+            .find(|i| {
+                i.alias
+                    .as_ref()
+                    .map(|a| a.contains("POC-62"))
+                    .unwrap_or(false)
+            })
             .expect("Should find POC-62 intent");
 
         assert_eq!(poc62.alias, Some("POC-62: Unicredit POC".to_string()));
         assert_eq!(poc62.subject, Some("poc/unicredit-poc".to_string()));
 
         // Verify POC-66
-        let poc66 = augmented.intents.iter()
-            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-66")).unwrap_or(false))
+        let poc66 = augmented
+            .intents
+            .iter()
+            .find(|i| {
+                i.alias
+                    .as_ref()
+                    .map(|a| a.contains("POC-66"))
+                    .unwrap_or(false)
+            })
             .expect("Should find POC-66 intent");
 
         assert_eq!(poc66.alias, Some("POC-66: EPPO".to_string()));
         assert_eq!(poc66.subject, Some("poc/eppo".to_string()));
 
         // Verify that non-POC trackers are not converted
-        assert!(!augmented.intents.iter().any(|i|
-            i.alias.as_ref().map(|a| a.contains("BIZ-")).unwrap_or(false)
-        ));
+        assert!(!augmented.intents.iter().any(|i| i
+            .alias
+            .as_ref()
+            .map(|a| a.contains("BIZ-"))
+            .unwrap_or(false)));
     }
 }

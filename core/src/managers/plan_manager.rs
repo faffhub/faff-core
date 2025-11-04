@@ -325,19 +325,28 @@ impl PlanManager {
         use crate::models::remote::Remote;
 
         // Try to load remote configuration for this plan's source
-        let remote_file = self.storage.remotes_dir().join(format!("{}.toml", plan.source));
+        let remote_file = self
+            .storage
+            .remotes_dir()
+            .join(format!("{}.toml", plan.source));
         let plan_to_write = if self.storage.exists(&remote_file) {
             // Load remote and apply vocabulary mappings if configured
-            let remote_toml = self.storage.read_string(&remote_file)
-                .with_context(|| format!("Failed to read remote config: {}", remote_file.display()))?;
+            let remote_toml = self.storage.read_string(&remote_file).with_context(|| {
+                format!("Failed to read remote config: {}", remote_file.display())
+            })?;
 
-            let remote = Remote::from_toml(&remote_toml)
-                .with_context(|| format!("Failed to parse remote config: {}", remote_file.display()))?;
+            let remote = Remote::from_toml(&remote_toml).with_context(|| {
+                format!("Failed to parse remote config: {}", remote_file.display())
+            })?;
 
             if !remote.vocabulary_mappings.is_empty() {
                 // Apply vocabulary mappings and use the augmented plan
-                remote.apply_vocabulary_mappings(plan)
-                    .with_context(|| format!("Failed to apply vocabulary mappings for remote '{}'", remote.id))?
+                remote.apply_vocabulary_mappings(plan).with_context(|| {
+                    format!(
+                        "Failed to apply vocabulary mappings for remote '{}'",
+                        remote.id
+                    )
+                })?
             } else {
                 // No mappings, use original plan
                 plan.clone()
@@ -350,7 +359,11 @@ impl PlanManager {
         let plan_dir = self.storage.plan_dir();
         self.storage.create_dir_all(&plan_dir)?;
 
-        let filename = format!("{}.{}.toml", plan_to_write.source, plan_to_write.valid_from.format("%Y%m%d"));
+        let filename = format!(
+            "{}.{}.toml",
+            plan_to_write.source,
+            plan_to_write.valid_from.format("%Y%m%d")
+        );
         let file_path = plan_dir.join(filename);
 
         let toml_content =
@@ -756,19 +769,34 @@ subject = "poc/{description|slugify}"
 
         // Read back the written plan (MockStorage base_dir is /faff/.faff)
         let written_plan_path = PathBuf::from("/faff/.faff/plans/test-remote.20251104.toml");
-        assert!(storage.exists(&written_plan_path), "Plan file should exist after write_plan");
+        assert!(
+            storage.exists(&written_plan_path),
+            "Plan file should exist after write_plan"
+        );
 
-        let written_content = storage.read_string(&written_plan_path)
+        let written_content = storage
+            .read_string(&written_plan_path)
             .expect("Failed to read written plan");
-        let written_plan: Plan = toml::from_str(&written_content)
-            .expect("Failed to parse written plan");
+        let written_plan: Plan =
+            toml::from_str(&written_content).expect("Failed to parse written plan");
 
         // Verify that intents were generated
-        assert_eq!(written_plan.intents.len(), 2, "Should generate 2 intents from 2 POC trackers");
+        assert_eq!(
+            written_plan.intents.len(),
+            2,
+            "Should generate 2 intents from 2 POC trackers"
+        );
 
         // Check that POC-29 intent was created
-        let poc29 = written_plan.intents.iter()
-            .find(|i| i.alias.as_ref().map(|a| a.contains("POC-29")).unwrap_or(false))
+        let poc29 = written_plan
+            .intents
+            .iter()
+            .find(|i| {
+                i.alias
+                    .as_ref()
+                    .map(|a| a.contains("POC-29"))
+                    .unwrap_or(false)
+            })
             .expect("Should find POC-29 intent");
 
         assert_eq!(poc29.alias, Some("POC-29: European Commission".to_string()));
