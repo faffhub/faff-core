@@ -30,20 +30,30 @@ impl PyIdentityManager {
     ///     overwrite: Whether to overwrite if identity already exists
     ///
     /// Returns:
-    ///     The private signing key as bytes
+    ///     Dictionary with 'signing_key' and 'verifying_key' as bytes
     #[pyo3(signature = (name, overwrite=false))]
     pub fn create_identity<'py>(
         &self,
         py: Python<'py>,
         name: &str,
         overwrite: bool,
-    ) -> PyResult<Bound<'py, PyBytes>> {
+    ) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
         let signing_key = self
             .manager
             .create_identity(name, overwrite)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        Ok(PyBytes::new(py, &signing_key.to_bytes()))
+        let mut result = HashMap::new();
+        result.insert(
+            "signing_key".to_string(),
+            PyBytes::new(py, &signing_key.to_bytes()),
+        );
+        result.insert(
+            "verifying_key".to_string(),
+            PyBytes::new(py, signing_key.verifying_key().as_bytes()),
+        );
+
+        Ok(result)
     }
 
     /// Get a specific identity by name
