@@ -272,6 +272,39 @@ impl PyPlanManager {
             .remotes(workspace.plugins())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
+
+    /// Replace a field value across all plans
+    ///
+    /// Returns tuple of (plans_updated, intents_updated)
+    pub fn replace_field_in_all_plans(
+        &self,
+        field: &str,
+        old_value: &str,
+        new_value: &str,
+    ) -> PyResult<(usize, usize)> {
+        self.manager
+            .replace_field_in_all_plans(field, old_value, new_value)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Get usage statistics for a field across all plans
+    ///
+    /// Returns dict of field value -> intent count
+    pub fn get_field_usage_stats(
+        &self,
+        field: &str,
+        py: Python<'_>,
+    ) -> PyResult<Py<PyDict>> {
+        let stats = self.manager
+            .get_field_usage_stats(field)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        let dict = PyDict::new(py);
+        for (key, value) in stats {
+            dict.set_item(key, value)?;
+        }
+        Ok(dict.into())
+    }
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

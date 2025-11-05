@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::models::Log;
@@ -241,6 +242,177 @@ impl LogManager {
         }
 
         Ok(total_updated)
+    }
+
+    /// Replace a field value across all log sessions
+    ///
+    /// Updates all sessions' embedded intent fields
+    ///
+    /// # Arguments
+    /// * `field` - The field to update (role, objective, action, subject)
+    /// * `old_value` - The value to replace
+    /// * `new_value` - The new value
+    /// * `trackers` - Tracker mappings for reformatting
+    ///
+    /// # Returns
+    /// Tuple of (logs_updated, sessions_updated)
+    pub fn replace_field_in_all_logs(
+        &self,
+        field: &str,
+        old_value: &str,
+        new_value: &str,
+        trackers: &std::collections::HashMap<String, String>,
+    ) -> Result<(usize, usize)> {
+        let log_dir = self.storage.log_dir();
+        let entries = std::fs::read_dir(&log_dir)
+            .with_context(|| format!("Failed to read log directory: {}", log_dir.display()))?;
+
+        let mut logs_updated = 0;
+        let mut sessions_updated = 0;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip non-TOML files
+            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+                continue;
+            }
+
+            // Extract date from filename (YYYY-MM-DD.toml)
+            let date_str = path.file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
+            let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+                .with_context(|| format!("Failed to parse date from filename: {}", date_str))?;
+
+            // Load log
+            let log = match self.get_log(date)? {
+                Some(log) => log,
+                None => continue,
+            };
+
+            let mut log_modified = false;
+            let mut updated_timeline = Vec::new();
+
+            // Update sessions
+            for session in &log.timeline {
+                let intent_field_value = match field {
+                    "role" => &session.intent.role,
+                    "objective" => &session.intent.objective,
+                    "action" => &session.intent.action,
+                    "subject" => &session.intent.subject,
+                    _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
+                };
+
+                if intent_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
+                    // Create updated intent
+                    let updated_intent = crate::models::intent::Intent::new(
+                        session.intent.alias.clone(),
+                        if field == "role" { Some(new_value.to_string()) } else { session.intent.role.clone() },
+                        if field == "objective" { Some(new_value.to_string()) } else { session.intent.objective.clone() },
+                        if field == "action" { Some(new_value.to_string()) } else { session.intent.action.clone() },
+                        if field == "subject" { Some(new_value.to_string()) } else { session.intent.subject.clone() },
+                        session.intent.trackers.clone(),
+                    );
+
+                    // Create updated session
+                    let updated_session = crate::models::session::Session {
+                        intent: updated_intent,
+                        start: session.start,
+                        end: session.end,
+                        note: session.note.clone(),
+                        reflection_score: session.reflection_score,
+                        reflection: session.reflection.clone(),
+                    };
+
+                    updated_timeline.push(updated_session);
+                    sessions_updated += 1;
+                    log_modified = true;
+                } else {
+                    updated_timeline.push(session.clone());
+                }
+            }
+
+            if log_modified {
+                // Create updated log
+                let updated_log = crate::models::log::Log::new(
+                    log.date,
+                    log.timezone,
+                    updated_timeline,
+                );
+                self.write_log(&updated_log, trackers)?;
+                logs_updated += 1;
+            }
+        }
+
+        Ok((logs_updated, sessions_updated))
+    }
+
+    /// Get usage statistics for a field across all logs
+    ///
+    /// Returns tuple of:
+    /// - HashMap of field value -> session count
+    /// - HashMap of field value -> set of log dates
+    pub fn get_field_usage_stats(
+        &self,
+        field: &str,
+    ) -> Result<(HashMap<String, usize>, HashMap<String, std::collections::HashSet<chrono::NaiveDate>>)> {
+        let log_dir = self.storage.log_dir();
+        let entries = std::fs::read_dir(&log_dir)
+            .with_context(|| format!("Failed to read log directory: {}", log_dir.display()))?;
+
+        let mut session_count: HashMap<String, usize> = HashMap::new();
+        let mut log_dates: HashMap<String, std::collections::HashSet<chrono::NaiveDate>> = HashMap::new();
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip non-TOML files
+            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+                continue;
+            }
+
+            // Extract date from filename
+            let date_str = path.file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
+            let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+                .with_context(|| format!("Failed to parse date from filename: {}", date_str))?;
+
+            // Load log
+            let log = match self.get_log(date)? {
+                Some(log) => log,
+                None => continue,
+            };
+
+            // Count sessions
+            for session in &log.timeline {
+                let session_field_value = match field {
+                    "role" => &session.intent.role,
+                    "objective" => &session.intent.objective,
+                    "action" => &session.intent.action,
+                    "subject" => &session.intent.subject,
+                    "tracker" => {
+                        // Trackers are a list, count each one
+                        for tracker in &session.intent.trackers {
+                            *session_count.entry(tracker.clone()).or_insert(0) += 1;
+                            log_dates.entry(tracker.clone()).or_insert_with(std::collections::HashSet::new).insert(date);
+                        }
+                        continue;
+                    }
+                    _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
+                };
+
+                if let Some(value) = session_field_value {
+                    *session_count.entry(value.clone()).or_insert(0) += 1;
+                    log_dates.entry(value.clone()).or_insert_with(std::collections::HashSet::new).insert(date);
+                }
+            }
+        }
+
+        Ok((session_count, log_dates))
     }
 }
 

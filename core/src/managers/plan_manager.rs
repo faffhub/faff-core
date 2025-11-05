@@ -536,6 +536,178 @@ impl PlanManager {
         let mut pm = plugin_manager.lock().unwrap();
         pm.plan_remotes()
     }
+
+    /// Replace a field value across all plans
+    ///
+    /// Updates both plan-level ROAST collections and intents
+    ///
+    /// # Arguments
+    /// * `field` - The field to update (role, objective, action, subject)
+    /// * `old_value` - The value to replace
+    /// * `new_value` - The new value
+    ///
+    /// # Returns
+    /// Tuple of (plans_updated, intents_updated)
+    pub fn replace_field_in_all_plans(
+        &self,
+        field: &str,
+        old_value: &str,
+        new_value: &str,
+    ) -> Result<(usize, usize)> {
+        let plan_dir = self.storage.plan_dir();
+        let entries = std::fs::read_dir(&plan_dir)
+            .with_context(|| format!("Failed to read plan directory: {}", plan_dir.display()))?;
+
+        let mut plans_updated = 0;
+        let mut intents_updated = 0;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip non-TOML files
+            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+                continue;
+            }
+
+            // Read and parse the plan
+            let content = self.storage.read_string(&path)?;
+            let mut plan: Plan = toml::from_str(&content)?;
+
+            let mut plan_modified = false;
+
+            // Update plan-level ROAST collection
+            match field {
+                "role" => {
+                    let mut roles = plan.roles.clone();
+                    if roles.iter().any(|v| v == old_value) {
+                        roles = roles.into_iter()
+                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                            .collect();
+                        plan.roles = roles;
+                        plan_modified = true;
+                    }
+                }
+                "objective" => {
+                    let mut objectives = plan.objectives.clone();
+                    if objectives.iter().any(|v| v == old_value) {
+                        objectives = objectives.into_iter()
+                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                            .collect();
+                        plan.objectives = objectives;
+                        plan_modified = true;
+                    }
+                }
+                "action" => {
+                    let mut actions = plan.actions.clone();
+                    if actions.iter().any(|v| v == old_value) {
+                        actions = actions.into_iter()
+                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                            .collect();
+                        plan.actions = actions;
+                        plan_modified = true;
+                    }
+                }
+                "subject" => {
+                    let mut subjects = plan.subjects.clone();
+                    if subjects.iter().any(|v| v == old_value) {
+                        subjects = subjects.into_iter()
+                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                            .collect();
+                        plan.subjects = subjects;
+                        plan_modified = true;
+                    }
+                }
+                _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
+            };
+
+            // Update intents
+            let mut updated_intents = Vec::new();
+            for intent in &plan.intents {
+                let intent_field_value = match field {
+                    "role" => &intent.role,
+                    "objective" => &intent.objective,
+                    "action" => &intent.action,
+                    "subject" => &intent.subject,
+                    _ => unreachable!(),
+                };
+
+                if intent_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
+                    // Create updated intent
+                    let updated_intent = Intent::new(
+                        intent.alias.clone(),
+                        if field == "role" { Some(new_value.to_string()) } else { intent.role.clone() },
+                        if field == "objective" { Some(new_value.to_string()) } else { intent.objective.clone() },
+                        if field == "action" { Some(new_value.to_string()) } else { intent.action.clone() },
+                        if field == "subject" { Some(new_value.to_string()) } else { intent.subject.clone() },
+                        intent.trackers.clone(),
+                    );
+                    updated_intents.push(updated_intent);
+                    intents_updated += 1;
+                    plan_modified = true;
+                } else {
+                    updated_intents.push(intent.clone());
+                }
+            }
+
+            if plan_modified {
+                plan.intents = updated_intents;
+                self.write_plan(&plan)?;
+                plans_updated += 1;
+            }
+        }
+
+        Ok((plans_updated, intents_updated))
+    }
+
+    /// Get usage statistics for a field across all plans
+    ///
+    /// Returns a HashMap of field value -> intent count
+    pub fn get_field_usage_stats(&self, field: &str) -> Result<HashMap<String, usize>> {
+        let plan_dir = self.storage.plan_dir();
+        let entries = std::fs::read_dir(&plan_dir)
+            .with_context(|| format!("Failed to read plan directory: {}", plan_dir.display()))?;
+
+        let mut usage_stats: HashMap<String, usize> = HashMap::new();
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip non-TOML files
+            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+                continue;
+            }
+
+            // Read and parse the plan
+            let content = self.storage.read_string(&path)?;
+            let plan: Plan = toml::from_str(&content)?;
+
+            // Count intents using this field value
+            for intent in &plan.intents {
+                let intent_field_value = match field {
+                    "role" => &intent.role,
+                    "objective" => &intent.objective,
+                    "action" => &intent.action,
+                    "subject" => &intent.subject,
+                    "tracker" => {
+                        // Trackers are a list, count each one
+                        for tracker in &intent.trackers {
+                            *usage_stats.entry(tracker.clone()).or_insert(0) += 1;
+                        }
+                        continue;
+                    }
+                    _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
+                };
+
+                if let Some(value) = intent_field_value {
+                    *usage_stats.entry(value.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+
+        Ok(usage_stats)
+    }
 }
 
 #[cfg(test)]

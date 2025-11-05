@@ -1,3 +1,4 @@
+use chrono::Datelike;
 use chrono_tz::Tz;
 use pyo3::exceptions::{PyFileNotFoundError, PyValueError};
 use pyo3::prelude::*;
@@ -264,5 +265,56 @@ impl PyLogManager {
         self.inner
             .update_intent_in_logs(intent_id, updated_intent.inner.clone(), &trackers)
             .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Replace a field value across all log sessions
+    ///
+    /// Returns tuple of (logs_updated, sessions_updated)
+    fn replace_field_in_all_logs(
+        &self,
+        field: &str,
+        old_value: &str,
+        new_value: &str,
+        trackers: std::collections::HashMap<String, String>,
+    ) -> PyResult<(usize, usize)> {
+        self.inner
+            .replace_field_in_all_logs(field, old_value, new_value, &trackers)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Get usage statistics for a field across all logs
+    ///
+    /// Returns tuple of:
+    /// - dict of field value -> session count
+    /// - dict of field value -> list of log dates
+    fn get_field_usage_stats(
+        &self,
+        field: &str,
+        py: Python<'_>,
+    ) -> PyResult<(Py<pyo3::types::PyDict>, Py<pyo3::types::PyDict>)> {
+        use pyo3::types::{PyDate, PyDict, PyList};
+
+        let (session_count, log_dates) = self.inner
+            .get_field_usage_stats(field)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        // Convert session counts to dict
+        let session_dict = PyDict::new(py);
+        for (key, value) in session_count {
+            session_dict.set_item(key, value)?;
+        }
+
+        // Convert log dates to dict of lists of dates
+        let dates_dict = PyDict::new(py);
+        for (key, dates) in log_dates {
+            let date_list = PyList::empty(py);
+            for date in dates {
+                let py_date = PyDate::new(py, date.year(), date.month() as u8, date.day() as u8)?;
+                date_list.append(py_date)?;
+            }
+            dates_dict.set_item(key, date_list)?;
+        }
+
+        Ok((session_dict.into(), dates_dict.into()))
     }
 }
