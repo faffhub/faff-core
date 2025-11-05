@@ -290,12 +290,9 @@ impl PyPlanManager {
     /// Get usage statistics for a field across all plans
     ///
     /// Returns dict of field value -> intent count
-    pub fn get_field_usage_stats(
-        &self,
-        field: &str,
-        py: Python<'_>,
-    ) -> PyResult<Py<PyDict>> {
-        let stats = self.manager
+    pub fn get_field_usage_stats(&self, field: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let stats = self
+            .manager
             .get_field_usage_stats(field)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 

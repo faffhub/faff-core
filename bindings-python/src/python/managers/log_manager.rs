@@ -294,7 +294,8 @@ impl PyLogManager {
     ) -> PyResult<(Py<pyo3::types::PyDict>, Py<pyo3::types::PyDict>)> {
         use pyo3::types::{PyDate, PyDict, PyList};
 
-        let (session_count, log_dates) = self.inner
+        let (session_count, log_dates) = self
+            .inner
             .get_field_usage_stats(field)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 

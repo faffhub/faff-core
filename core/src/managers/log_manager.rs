@@ -280,7 +280,8 @@ impl LogManager {
             }
 
             // Extract date from filename (YYYY-MM-DD.toml)
-            let date_str = path.file_stem()
+            let date_str = path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
             let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
@@ -309,10 +310,26 @@ impl LogManager {
                     // Create updated intent
                     let updated_intent = crate::models::intent::Intent::new(
                         session.intent.alias.clone(),
-                        if field == "role" { Some(new_value.to_string()) } else { session.intent.role.clone() },
-                        if field == "objective" { Some(new_value.to_string()) } else { session.intent.objective.clone() },
-                        if field == "action" { Some(new_value.to_string()) } else { session.intent.action.clone() },
-                        if field == "subject" { Some(new_value.to_string()) } else { session.intent.subject.clone() },
+                        if field == "role" {
+                            Some(new_value.to_string())
+                        } else {
+                            session.intent.role.clone()
+                        },
+                        if field == "objective" {
+                            Some(new_value.to_string())
+                        } else {
+                            session.intent.objective.clone()
+                        },
+                        if field == "action" {
+                            Some(new_value.to_string())
+                        } else {
+                            session.intent.action.clone()
+                        },
+                        if field == "subject" {
+                            Some(new_value.to_string())
+                        } else {
+                            session.intent.subject.clone()
+                        },
                         session.intent.trackers.clone(),
                     );
 
@@ -336,11 +353,8 @@ impl LogManager {
 
             if log_modified {
                 // Create updated log
-                let updated_log = crate::models::log::Log::new(
-                    log.date,
-                    log.timezone,
-                    updated_timeline,
-                );
+                let updated_log =
+                    crate::models::log::Log::new(log.date, log.timezone, updated_timeline);
                 self.write_log(&updated_log, trackers)?;
                 logs_updated += 1;
             }
@@ -357,13 +371,17 @@ impl LogManager {
     pub fn get_field_usage_stats(
         &self,
         field: &str,
-    ) -> Result<(HashMap<String, usize>, HashMap<String, std::collections::HashSet<chrono::NaiveDate>>)> {
+    ) -> Result<(
+        HashMap<String, usize>,
+        HashMap<String, std::collections::HashSet<chrono::NaiveDate>>,
+    )> {
         let log_dir = self.storage.log_dir();
         let entries = std::fs::read_dir(&log_dir)
             .with_context(|| format!("Failed to read log directory: {}", log_dir.display()))?;
 
         let mut session_count: HashMap<String, usize> = HashMap::new();
-        let mut log_dates: HashMap<String, std::collections::HashSet<chrono::NaiveDate>> = HashMap::new();
+        let mut log_dates: HashMap<String, std::collections::HashSet<chrono::NaiveDate>> =
+            HashMap::new();
 
         for entry in entries {
             let entry = entry?;
@@ -375,7 +393,8 @@ impl LogManager {
             }
 
             // Extract date from filename
-            let date_str = path.file_stem()
+            let date_str = path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
             let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
@@ -398,7 +417,10 @@ impl LogManager {
                         // Trackers are a list, count each one
                         for tracker in &session.intent.trackers {
                             *session_count.entry(tracker.clone()).or_insert(0) += 1;
-                            log_dates.entry(tracker.clone()).or_insert_with(std::collections::HashSet::new).insert(date);
+                            log_dates
+                                .entry(tracker.clone())
+                                .or_insert_with(std::collections::HashSet::new)
+                                .insert(date);
                         }
                         continue;
                     }
@@ -407,7 +429,10 @@ impl LogManager {
 
                 if let Some(value) = session_field_value {
                     *session_count.entry(value.clone()).or_insert(0) += 1;
-                    log_dates.entry(value.clone()).or_insert_with(std::collections::HashSet::new).insert(date);
+                    log_dates
+                        .entry(value.clone())
+                        .or_insert_with(std::collections::HashSet::new)
+                        .insert(date);
                 }
             }
         }

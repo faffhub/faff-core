@@ -581,8 +581,15 @@ impl PlanManager {
                 "role" => {
                     let mut roles = plan.roles.clone();
                     if roles.iter().any(|v| v == old_value) {
-                        roles = roles.into_iter()
-                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                        roles = roles
+                            .into_iter()
+                            .map(|v| {
+                                if v == old_value {
+                                    new_value.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan.roles = roles;
                         plan_modified = true;
@@ -591,8 +598,15 @@ impl PlanManager {
                 "objective" => {
                     let mut objectives = plan.objectives.clone();
                     if objectives.iter().any(|v| v == old_value) {
-                        objectives = objectives.into_iter()
-                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                        objectives = objectives
+                            .into_iter()
+                            .map(|v| {
+                                if v == old_value {
+                                    new_value.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan.objectives = objectives;
                         plan_modified = true;
@@ -601,8 +615,15 @@ impl PlanManager {
                 "action" => {
                     let mut actions = plan.actions.clone();
                     if actions.iter().any(|v| v == old_value) {
-                        actions = actions.into_iter()
-                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                        actions = actions
+                            .into_iter()
+                            .map(|v| {
+                                if v == old_value {
+                                    new_value.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan.actions = actions;
                         plan_modified = true;
@@ -611,8 +632,15 @@ impl PlanManager {
                 "subject" => {
                     let mut subjects = plan.subjects.clone();
                     if subjects.iter().any(|v| v == old_value) {
-                        subjects = subjects.into_iter()
-                            .map(|v| if v == old_value { new_value.to_string() } else { v })
+                        subjects = subjects
+                            .into_iter()
+                            .map(|v| {
+                                if v == old_value {
+                                    new_value.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan.subjects = subjects;
                         plan_modified = true;
@@ -636,10 +664,26 @@ impl PlanManager {
                     // Create updated intent
                     let updated_intent = Intent::new(
                         intent.alias.clone(),
-                        if field == "role" { Some(new_value.to_string()) } else { intent.role.clone() },
-                        if field == "objective" { Some(new_value.to_string()) } else { intent.objective.clone() },
-                        if field == "action" { Some(new_value.to_string()) } else { intent.action.clone() },
-                        if field == "subject" { Some(new_value.to_string()) } else { intent.subject.clone() },
+                        if field == "role" {
+                            Some(new_value.to_string())
+                        } else {
+                            intent.role.clone()
+                        },
+                        if field == "objective" {
+                            Some(new_value.to_string())
+                        } else {
+                            intent.objective.clone()
+                        },
+                        if field == "action" {
+                            Some(new_value.to_string())
+                        } else {
+                            intent.action.clone()
+                        },
+                        if field == "subject" {
+                            Some(new_value.to_string())
+                        } else {
+                            intent.subject.clone()
+                        },
                         intent.trackers.clone(),
                     );
                     updated_intents.push(updated_intent);
