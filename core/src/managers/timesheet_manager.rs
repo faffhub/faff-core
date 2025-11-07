@@ -16,10 +16,11 @@ impl TimesheetManager {
     }
 
     /// Write a timesheet to storage
-    pub fn write_timesheet(&self, timesheet: &Timesheet) -> anyhow::Result<()> {
+    pub async fn write_timesheet(&self, timesheet: &Timesheet) -> anyhow::Result<()> {
         let timesheet_dir = self.storage.timesheet_dir();
         self.storage
             .create_dir_all(&timesheet_dir)
+            .await
             .context("Failed to create timesheet directory")?;
 
         // Write the canonical timesheet
@@ -35,6 +36,7 @@ impl TimesheetManager {
             .context("Failed to create canonical form")?;
         self.storage
             .write_bytes(&timesheet_path, &canonical)
+            .await
             .with_context(|| {
                 format!(
                     "Failed to write timesheet for {} on {}",
@@ -49,6 +51,7 @@ impl TimesheetManager {
             .context("Failed to serialize timesheet metadata")?;
         self.storage
             .write_bytes(&meta_path, &meta_json)
+            .await
             .context("Failed to write timesheet metadata")?;
 
         Ok(())
@@ -57,7 +60,7 @@ impl TimesheetManager {
     /// Get a timesheet for a specific audience and date
     ///
     /// Returns None if the timesheet doesn't exist
-    pub fn get_timesheet(
+    pub async fn get_timesheet(
         &self,
         audience_id: &str,
         date: NaiveDate,
@@ -74,6 +77,7 @@ impl TimesheetManager {
         let timesheet_data = self
             .storage
             .read_string(&timesheet_path)
+            .await
             .with_context(|| format!("Failed to read timesheet for {} on {}", audience_id, date))?;
         let mut timesheet: Timesheet =
             serde_json::from_str(&timesheet_data).with_context(|| {
@@ -88,6 +92,7 @@ impl TimesheetManager {
             let meta_data = self
                 .storage
                 .read_string(&meta_path)
+                .await
                 .context("Failed to read timesheet metadata")?;
             let meta: TimesheetMeta =
                 serde_json::from_str(&meta_data).context("Failed to parse timesheet metadata")?;
@@ -98,7 +103,7 @@ impl TimesheetManager {
     }
 
     /// List all timesheets, optionally filtered by date
-    pub fn list_timesheets(&self, date: Option<NaiveDate>) -> anyhow::Result<Vec<Timesheet>> {
+    pub async fn list_timesheets(&self, date: Option<NaiveDate>) -> anyhow::Result<Vec<Timesheet>> {
         let timesheet_dir = self.storage.timesheet_dir();
 
         let pattern = if let Some(d) = date {
@@ -110,6 +115,7 @@ impl TimesheetManager {
         let files = self
             .storage
             .list_files(&timesheet_dir, &pattern)
+            .await
             .context("Failed to list timesheet files")?;
         let mut timesheets = Vec::new();
 
@@ -155,7 +161,7 @@ impl TimesheetManager {
                 }
             }
 
-            match self.get_timesheet(audience_id, ts_date) {
+            match self.get_timesheet(audience_id, ts_date).await {
                 Ok(Some(timesheet)) => timesheets.push(timesheet),
                 Ok(None) => {
                     eprintln!(
@@ -186,7 +192,7 @@ impl TimesheetManager {
     }
 
     /// Delete a timesheet
-    pub fn delete_timesheet(&self, audience_id: &str, date: NaiveDate) -> anyhow::Result<()> {
+    pub async fn delete_timesheet(&self, audience_id: &str, date: NaiveDate) -> anyhow::Result<()> {
         let timesheet_dir = self.storage.timesheet_dir();
         let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
         let timesheet_path = timesheet_dir.join(&timesheet_filename);
@@ -200,7 +206,7 @@ impl TimesheetManager {
         }
 
         // Delete the timesheet file
-        self.storage.delete(&timesheet_path).with_context(|| {
+        self.storage.delete(&timesheet_path).await.with_context(|| {
             format!(
                 "Failed to delete timesheet for audience '{}' on {}",
                 audience_id, date
@@ -214,6 +220,7 @@ impl TimesheetManager {
         if self.storage.exists(&meta_path) {
             self.storage
                 .delete(&meta_path)
+                .await
                 .context("Failed to delete timesheet metadata")?;
         }
 
@@ -238,7 +245,7 @@ impl TimesheetManager {
     /// - The log file cannot be read
     /// - The plugin compilation fails
     #[cfg(feature = "python")]
-    pub fn compile(
+    pub async fn compile(
         &self,
         log: &crate::models::Log,
         log_manager: &crate::managers::LogManager,
@@ -249,6 +256,7 @@ impl TimesheetManager {
         // Calculate hash of the raw log file
         let log_hash = log_manager
             .read_log_raw(log.date)
+            .await
             .map(|raw| crate::models::Log::calculate_hash(&raw))?;
 
         // Call the plugin's compile_time_sheet method
@@ -292,7 +300,7 @@ impl TimesheetManager {
     ///
     /// Note: Plugin submission failures are captured in metadata, not returned as errors
     #[cfg(feature = "python")]
-    pub fn submit(
+    pub async fn submit(
         &self,
         timesheet: &Timesheet,
         plugin_manager: &mut crate::managers::PluginManager,
@@ -304,7 +312,7 @@ impl TimesheetManager {
 
         // Get the audience plugin
         let audience = plugin_manager
-            .get_audience_by_id(audience_id)?
+            .get_audience_by_id(audience_id).await?
             .ok_or_else(|| anyhow::anyhow!("No audience found for {}", audience_id))?;
 
         // Try to call the plugin's submit_timesheet method and capture the result
@@ -344,7 +352,7 @@ impl TimesheetManager {
             }
         };
 
-        self.write_timesheet(&updated_timesheet)?;
+        self.write_timesheet(&updated_timesheet).await?;
 
         Ok(())
     }
@@ -360,14 +368,14 @@ impl TimesheetManager {
     ///
     /// # Returns
     /// Vector of stale timesheets
-    pub fn find_stale_timesheets(
+    pub async fn find_stale_timesheets(
         &self,
         log_manager: &crate::managers::LogManager,
         date: Option<chrono::NaiveDate>,
     ) -> anyhow::Result<Vec<Timesheet>> {
         use crate::models::Log;
 
-        let all_timesheets = self.list_timesheets(date)?;
+        let all_timesheets = self.list_timesheets(date).await?;
         let mut stale = Vec::new();
 
         for timesheet in all_timesheets {
@@ -377,7 +385,7 @@ impl TimesheetManager {
             }
 
             // Try to read the raw log and calculate its current hash
-            match log_manager.read_log_raw(timesheet.date) {
+            match log_manager.read_log_raw(timesheet.date).await {
                 Ok(raw_log) => {
                     let current_hash = Log::calculate_hash(&raw_log);
 
@@ -405,13 +413,13 @@ impl TimesheetManager {
     ///
     /// # Returns
     /// Vector of timesheets that have failed submissions
-    pub fn find_failed_submissions(
+    pub async fn find_failed_submissions(
         &self,
         date: Option<chrono::NaiveDate>,
     ) -> anyhow::Result<Vec<Timesheet>> {
         use crate::models::SubmissionStatus;
 
-        let all_timesheets = self.list_timesheets(date)?;
+        let all_timesheets = self.list_timesheets(date).await?;
         let failed: Vec<Timesheet> = all_timesheets
             .into_iter()
             .filter(|ts| matches!(ts.meta.submission_status, Some(SubmissionStatus::Failed)))
@@ -438,7 +446,7 @@ impl TimesheetManager {
     /// Returns an error if:
     /// - No valid signing keys are found for any of the signing IDs
     /// - The signing operation fails for any key
-    pub fn sign_timesheet(
+    pub async fn sign_timesheet(
         &self,
         timesheet: &Timesheet,
         signing_ids: &[String],
@@ -448,7 +456,7 @@ impl TimesheetManager {
         let mut signed_at_least_once = false;
 
         for signing_id in signing_ids {
-            match identity_manager.get_identity(signing_id) {
+            match identity_manager.get_identity(signing_id).await {
                 Ok(Some(signing_key)) => {
                     let key_bytes = signing_key.to_bytes();
                     signed_timesheet =
@@ -493,12 +501,12 @@ impl TimesheetManager {
     /// # Returns
     /// Vector of audience plugin instances
     #[cfg(feature = "python")]
-    pub fn audiences(
+    pub async fn audiences(
         &self,
         plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>,
     ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
         let mut pm = plugin_manager.lock().unwrap();
-        pm.audiences()
+        pm.audiences().await
     }
 }
 
@@ -509,8 +517,8 @@ mod tests {
     use crate::test_utils::mock_storage::MockStorage;
     use std::collections::HashMap;
 
-    #[test]
-    fn test_write_and_read_timesheet() {
+    #[tokio::test]
+    async fn test_write_and_read_timesheet() {
         let storage = Arc::new(MockStorage::new());
         let manager = TimesheetManager::new(storage.clone());
 
@@ -529,11 +537,12 @@ mod tests {
         );
 
         // Write timesheet
-        manager.write_timesheet(&timesheet).unwrap();
+        manager.write_timesheet(&timesheet).await.unwrap();
 
         // Read it back
         let retrieved = manager
             .get_timesheet("test_audience", date)
+            .await
             .unwrap()
             .expect("Timesheet should exist");
 
@@ -541,8 +550,8 @@ mod tests {
         assert_eq!(retrieved.meta.audience_id, "test_audience");
     }
 
-    #[test]
-    fn test_list_timesheets() {
+    #[tokio::test]
+    async fn test_list_timesheets() {
         let storage = Arc::new(MockStorage::new());
         let manager = TimesheetManager::new(storage.clone());
 
@@ -563,21 +572,21 @@ mod tests {
                 HashMap::new(),
                 meta,
             );
-            manager.write_timesheet(&timesheet).unwrap();
+            manager.write_timesheet(&timesheet).await.unwrap();
         }
 
         // List all
-        let all = manager.list_timesheets(None).unwrap();
+        let all = manager.list_timesheets(None).await.unwrap();
         assert_eq!(all.len(), 2);
 
         // List filtered by date
-        let filtered = manager.list_timesheets(Some(date1)).unwrap();
+        let filtered = manager.list_timesheets(Some(date1)).await.unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].date, date1);
     }
 
-    #[test]
-    fn test_timesheet_exists() {
+    #[tokio::test]
+    async fn test_timesheet_exists() {
         let storage = Arc::new(MockStorage::new());
         let manager = TimesheetManager::new(storage.clone());
 
@@ -596,13 +605,13 @@ mod tests {
             HashMap::new(),
             meta,
         );
-        manager.write_timesheet(&timesheet).unwrap();
+        manager.write_timesheet(&timesheet).await.unwrap();
 
         assert!(manager.timesheet_exists("test_audience", date));
     }
 
-    #[test]
-    fn test_delete_timesheet() {
+    #[tokio::test]
+    async fn test_delete_timesheet() {
         let storage = Arc::new(MockStorage::new());
         let manager = TimesheetManager::new(storage.clone());
 
@@ -619,23 +628,23 @@ mod tests {
             HashMap::new(),
             meta,
         );
-        manager.write_timesheet(&timesheet).unwrap();
+        manager.write_timesheet(&timesheet).await.unwrap();
 
         assert!(manager.timesheet_exists("test_audience", date));
 
-        manager.delete_timesheet("test_audience", date).unwrap();
+        manager.delete_timesheet("test_audience", date).await.unwrap();
 
         assert!(!manager.timesheet_exists("test_audience", date));
     }
 
-    #[test]
-    fn test_delete_nonexistent_timesheet() {
+    #[tokio::test]
+    async fn test_delete_nonexistent_timesheet() {
         let storage = Arc::new(MockStorage::new());
         let manager = TimesheetManager::new(storage);
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
 
-        let result = manager.delete_timesheet("nonexistent", date);
+        let result = manager.delete_timesheet("nonexistent", date).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }

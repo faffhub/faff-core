@@ -29,8 +29,9 @@ impl PyTimesheetManager {
 
     /// Write a timesheet to storage
     pub fn write_timesheet(&self, timesheet: &PyTimesheet) -> PyResult<()> {
-        self.manager
-            .write_timesheet(&timesheet.inner)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.write_timesheet(&timesheet.inner))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -41,9 +42,9 @@ impl PyTimesheetManager {
         date: Bound<'_, PyDate>,
     ) -> PyResult<Option<PyTimesheet>> {
         let naive_date = date_py_to_rust(date)?;
-        let timesheet = self
-            .manager
-            .get_timesheet(audience_id, naive_date)
+        let timesheet = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_timesheet(audience_id, naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(timesheet.map(|t| PyTimesheet { inner: t }))
@@ -54,9 +55,9 @@ impl PyTimesheetManager {
     pub fn list_timesheets(&self, date: Option<Bound<'_, PyDate>>) -> PyResult<Vec<PyTimesheet>> {
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
-        let timesheets = self
-            .manager
-            .list_timesheets(naive_date)
+        let timesheets = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.list_timesheets(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(timesheets
@@ -75,8 +76,9 @@ impl PyTimesheetManager {
             )
         })?;
 
-        self.manager
-            .audiences(workspace.plugins())
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.audiences(workspace.plugins()))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -91,8 +93,9 @@ impl PyTimesheetManager {
         let plugin_manager_arc = workspace.plugins();
         let mut plugin_manager = plugin_manager_arc.lock().unwrap();
 
-        plugin_manager
-            .get_audience_by_id(audience_id)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(plugin_manager.get_audience_by_id(audience_id))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -116,9 +119,9 @@ impl PyTimesheetManager {
         // Convert Bound to Py for the Rust API
         let plugin_py: Py<PyAny> = plugin.unbind();
 
-        let timesheet = self
-            .manager
-            .compile(&log.inner, log_manager, &plugin_py)
+        let timesheet = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.compile(&log.inner, log_manager, &plugin_py))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyTimesheet { inner: timesheet })
@@ -140,9 +143,9 @@ impl PyTimesheetManager {
         let log_manager = workspace.logs();
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
-        let stale = self
-            .manager
-            .find_stale_timesheets(log_manager, naive_date)
+        let stale = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.find_stale_timesheets(log_manager, naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(stale
@@ -160,9 +163,9 @@ impl PyTimesheetManager {
     ) -> PyResult<Vec<PyTimesheet>> {
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
-        let failed = self
-            .manager
-            .find_failed_submissions(naive_date)
+        let failed = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.find_failed_submissions(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(failed
@@ -200,9 +203,9 @@ impl PyTimesheetManager {
 
         let identity_manager = workspace.identities();
 
-        let signed = self
-            .manager
-            .sign_timesheet(&timesheet.inner, &signing_ids, identity_manager)
+        let signed = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.sign_timesheet(&timesheet.inner, &signing_ids, identity_manager))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyTimesheet { inner: signed })
@@ -219,8 +222,9 @@ impl PyTimesheetManager {
         let plugin_manager_arc = workspace.plugins();
         let mut plugin_manager = plugin_manager_arc.lock().unwrap();
 
-        self.manager
-            .submit(&timesheet.inner, &mut *plugin_manager)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.submit(&timesheet.inner, &mut *plugin_manager))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

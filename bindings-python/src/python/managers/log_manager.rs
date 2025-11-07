@@ -60,16 +60,18 @@ impl PyLogManager {
     /// Read raw log file contents
     fn read_log_raw(&self, date: Bound<'_, PyDate>) -> PyResult<String> {
         let naive_date = date_py_to_rust(date)?;
-        self.inner
-            .read_log_raw(naive_date)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.read_log_raw(naive_date))
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
 
     /// Write raw log file contents
     fn write_log_raw(&self, date: Bound<'_, PyDate>, contents: &str) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        self.inner
-            .write_log_raw(naive_date, contents)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.write_log_raw(naive_date, contents))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -85,9 +87,9 @@ impl PyLogManager {
 
     /// List all log dates
     fn list_log_dates<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDate>>> {
-        let dates = self
-            .inner
-            .list_logs()
+        let dates = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.list_logs())
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         dates
@@ -98,16 +100,16 @@ impl PyLogManager {
 
     /// List all logs (returns Log objects)
     fn list_logs(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::py_models::log::PyLog>> {
-        let dates = self
-            .inner
-            .list_logs()
+        let dates = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.list_logs())
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
+        let rt = tokio::runtime::Runtime::new().unwrap();
         let mut logs = Vec::new();
         for date in dates {
-            if let Some(log) = self
-                .inner
-                .get_log(date)
+            if let Some(log) = rt
+                .block_on(self.inner.get_log(date))
                 .map_err(|e| PyValueError::new_err(e.to_string()))?
             {
                 logs.push(faff_core::py_models::log::PyLog { inner: log });
@@ -120,8 +122,9 @@ impl PyLogManager {
     /// Delete a log for a given date
     fn delete_log(&self, date: Bound<'_, PyDate>) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        self.inner
-            .delete_log(naive_date)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.delete_log(naive_date))
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
 
@@ -138,9 +141,9 @@ impl PyLogManager {
         date: Bound<'_, PyDate>,
     ) -> PyResult<Option<faff_core::py_models::log::PyLog>> {
         let naive_date = date_py_to_rust(date)?;
-        let log = self
-            .inner
-            .get_log(naive_date)
+        let log = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.get_log(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(log.map(|inner| faff_core::py_models::log::PyLog { inner }))
     }
@@ -151,9 +154,9 @@ impl PyLogManager {
         date: Bound<'_, PyDate>,
     ) -> PyResult<faff_core::py_models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
-        let log = self
-            .inner
-            .get_log_or_create(naive_date)
+        let log = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.get_log_or_create(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(faff_core::py_models::log::PyLog { inner: log })
     }
@@ -164,8 +167,9 @@ impl PyLogManager {
         log: &faff_core::py_models::log::PyLog,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<()> {
-        self.inner
-            .write_log(&log.inner, &trackers)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.write_log(&log.inner, &trackers))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -189,21 +193,21 @@ impl PyLogManager {
         let current_date = workspace.today();
         let current_time = workspace.now();
 
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
         // Get trackers from plan manager
-        let trackers = workspace
-            .plans()
-            .get_trackers(current_date)
+        let trackers = rt
+            .block_on(workspace.plans().get_trackers(current_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        self.inner
-            .start_intent_now(
-                intent.inner.clone(),
-                note,
-                current_date,
-                current_time,
-                &trackers,
-            )
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        rt.block_on(self.inner.start_intent_now(
+            intent.inner.clone(),
+            note,
+            current_date,
+            current_time,
+            &trackers,
+        ))
+        .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Start a new session with the given intent at a specific time
@@ -229,21 +233,21 @@ impl PyLogManager {
         // Get the date from the start time
         let current_date = start_datetime.date_naive();
 
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
         // Get trackers from plan manager
-        let trackers = workspace
-            .plans()
-            .get_trackers(current_date)
+        let trackers = rt
+            .block_on(workspace.plans().get_trackers(current_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        self.inner
-            .start_intent_now(
-                intent.inner.clone(),
-                note,
-                current_date,
-                start_datetime,
-                &trackers,
-            )
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        rt.block_on(self.inner.start_intent_now(
+            intent.inner.clone(),
+            note,
+            current_date,
+            start_datetime,
+            &trackers,
+        ))
+        .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
@@ -260,14 +264,14 @@ impl PyLogManager {
         let current_date = workspace.today();
         let current_time = workspace.now();
 
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
         // Get trackers from plan manager
-        let trackers = workspace
-            .plans()
-            .get_trackers(current_date)
+        let trackers = rt
+            .block_on(workspace.plans().get_trackers(current_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        self.inner
-            .stop_current_session(current_date, current_time, &trackers)
+        rt.block_on(self.inner.stop_current_session(current_date, current_time, &trackers))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -279,9 +283,9 @@ impl PyLogManager {
         py: Python<'py>,
         intent_id: &str,
     ) -> PyResult<Vec<(Bound<'py, PyDate>, usize)>> {
-        let results = self
-            .inner
-            .find_logs_with_intent(intent_id)
+        let results = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.find_logs_with_intent(intent_id))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         results
@@ -302,8 +306,9 @@ impl PyLogManager {
         updated_intent: &faff_core::py_models::intent::PyIntent,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<usize> {
-        self.inner
-            .update_intent_in_logs(intent_id, updated_intent.inner.clone(), &trackers)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.update_intent_in_logs(intent_id, updated_intent.inner.clone(), &trackers))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -317,8 +322,9 @@ impl PyLogManager {
         new_value: &str,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<(usize, usize)> {
-        self.inner
-            .replace_field_in_all_logs(field, old_value, new_value, &trackers)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.replace_field_in_all_logs(field, old_value, new_value, &trackers))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -334,9 +340,9 @@ impl PyLogManager {
     ) -> PyResult<(Py<pyo3::types::PyDict>, Py<pyo3::types::PyDict>)> {
         use pyo3::types::{PyDate, PyDict, PyList};
 
-        let (session_count, log_dates) = self
-            .inner
-            .get_field_usage_stats(field)
+        let (session_count, log_dates) = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.inner.get_field_usage_stats(field))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         // Convert session counts to dict

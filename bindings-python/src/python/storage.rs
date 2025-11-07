@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,7 @@ impl PyStorage {
     }
 }
 
+#[async_trait]
 impl Storage for PyStorage {
     fn base_dir(&self) -> PathBuf {
         Python::attach(|py| {
@@ -46,7 +48,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+    async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let result = self
@@ -60,7 +62,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn read_string(&self, path: &Path) -> Result<String> {
+    async fn read_string(&self, path: &Path) -> Result<String> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let result = self
@@ -71,7 +73,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
+    async fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             let py_bytes = PyBytes::new(py, data);
@@ -82,7 +84,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn write_string(&self, path: &Path, data: &str) -> Result<()> {
+    async fn write_string(&self, path: &Path, data: &str) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
@@ -92,7 +94,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn delete(&self, path: &Path) -> Result<()> {
+    async fn delete(&self, path: &Path) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
@@ -113,7 +115,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn create_dir_all(&self, path: &Path) -> Result<()> {
+    async fn create_dir_all(&self, path: &Path) -> Result<()> {
         Python::attach(|py| {
             let path_str = path.to_str().context("Path contains invalid UTF-8")?;
             self.py_obj
@@ -123,7 +125,7 @@ impl Storage for PyStorage {
         })
     }
 
-    fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
+    async fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         Python::attach(|py| {
             let dir_str = dir
                 .to_str()
@@ -199,7 +201,9 @@ impl PyFileSystemStorage {
     #[staticmethod]
     #[pyo3(signature = (path, force=false))]
     pub fn init_at(path: String, force: bool) -> PyResult<Self> {
-        let storage = FileSystemStorage::init_at(PathBuf::from(path), force)
+        let storage = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(FileSystemStorage::init_at(PathBuf::from(path), force))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(Self {
             storage: Arc::new(storage),
@@ -248,38 +252,42 @@ impl PyFileSystemStorage {
 
     /// Read file as bytes
     pub fn read_bytes<'py>(&self, py: Python<'py>, path: String) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self
-            .storage
-            .read_bytes(&PathBuf::from(path))
+        let bytes = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.read_bytes(&PathBuf::from(path)))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(PyBytes::new(py, &bytes))
     }
 
     /// Read file as string
     pub fn read_string(&self, path: String) -> PyResult<String> {
-        self.storage
-            .read_string(&PathBuf::from(path))
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.read_string(&PathBuf::from(path)))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Write bytes to file
     pub fn write_bytes(&self, path: String, data: Vec<u8>) -> PyResult<()> {
-        self.storage
-            .write_bytes(&PathBuf::from(path), &data)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.write_bytes(&PathBuf::from(path), &data))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Write string to file
     pub fn write_string(&self, path: String, data: String) -> PyResult<()> {
-        self.storage
-            .write_string(&PathBuf::from(path), &data)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.write_string(&PathBuf::from(path), &data))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Delete a file
     pub fn delete(&self, path: String) -> PyResult<()> {
-        self.storage
-            .delete(&PathBuf::from(path))
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.delete(&PathBuf::from(path)))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -290,16 +298,17 @@ impl PyFileSystemStorage {
 
     /// Create directory and all parent directories
     pub fn create_dir_all(&self, path: String) -> PyResult<()> {
-        self.storage
-            .create_dir_all(&PathBuf::from(path))
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.create_dir_all(&PathBuf::from(path)))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     /// List files matching a pattern
     pub fn list_files(&self, dir: String, pattern: String) -> PyResult<Vec<String>> {
-        let paths = self
-            .storage
-            .list_files(&PathBuf::from(dir), &pattern)
+        let paths = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.list_files(&PathBuf::from(dir), &pattern))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(paths
             .into_iter()
@@ -388,9 +397,9 @@ impl PyStorageWrapper {
 
     /// List files matching a pattern
     pub fn list_files(&self, dir: String, pattern: String) -> PyResult<Vec<String>> {
-        let paths = self
-            .storage
-            .list_files(&PathBuf::from(dir), &pattern)
+        let paths = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.storage.list_files(&PathBuf::from(dir), &pattern))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(paths
             .into_iter()

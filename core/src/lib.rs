@@ -1,4 +1,5 @@
 pub mod date_parsing;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod file_system_storage;
 pub mod managers;
 pub mod models;

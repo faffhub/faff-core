@@ -3,6 +3,7 @@
 //! These tests verify that multiple managers work together correctly,
 //! ensuring proper coordination and data flow between components.
 
+use async_trait::async_trait;
 use chrono::NaiveDate;
 use faff_core::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
 use faff_core::models::intent::Intent;
@@ -33,12 +34,13 @@ impl IntegrationStorage {
     }
 }
 
+#[async_trait]
 impl Storage for IntegrationStorage {
     fn base_dir(&self) -> PathBuf {
         PathBuf::from("/faff/.faff")
     }
 
-    fn read_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+    async fn read_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
         let files = self.files.read().unwrap();
         files
             .get(path)
@@ -46,7 +48,7 @@ impl Storage for IntegrationStorage {
             .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
     }
 
-    fn read_string(&self, path: &Path) -> anyhow::Result<String> {
+    async fn read_string(&self, path: &Path) -> anyhow::Result<String> {
         let files = self.files.read().unwrap();
         files
             .get(path)
@@ -54,20 +56,20 @@ impl Storage for IntegrationStorage {
             .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
     }
 
-    fn write_bytes(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
+    async fn write_bytes(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
         let content = String::from_utf8(data.to_vec())?;
         let mut files = self.files.write().unwrap();
         files.insert(path.to_path_buf(), content);
         Ok(())
     }
 
-    fn write_string(&self, path: &Path, data: &str) -> anyhow::Result<()> {
+    async fn write_string(&self, path: &Path, data: &str) -> anyhow::Result<()> {
         let mut files = self.files.write().unwrap();
         files.insert(path.to_path_buf(), data.to_string());
         Ok(())
     }
 
-    fn delete(&self, path: &Path) -> anyhow::Result<()> {
+    async fn delete(&self, path: &Path) -> anyhow::Result<()> {
         let mut files = self.files.write().unwrap();
         files
             .remove(path)
@@ -80,11 +82,11 @@ impl Storage for IntegrationStorage {
         files.contains_key(path)
     }
 
-    fn create_dir_all(&self, _path: &Path) -> anyhow::Result<()> {
+    async fn create_dir_all(&self, _path: &Path) -> anyhow::Result<()> {
         Ok(())
     }
 
-    fn list_files(&self, dir: &Path, pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
+    async fn list_files(&self, dir: &Path, pattern: &str) -> anyhow::Result<Vec<PathBuf>> {
         let files = self.files.read().unwrap();
         let glob_pattern = glob::Pattern::new(pattern)?;
 
@@ -103,8 +105,8 @@ impl Storage for IntegrationStorage {
     }
 }
 
-#[test]
-fn test_plan_and_log_integration() {
+#[tokio::test]
+async fn test_plan_and_log_integration() {
     // Create shared storage
     let storage = Arc::new(IntegrationStorage::new());
 
@@ -141,12 +143,12 @@ trackers = ["PROJ-123"]
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
 
     // Load plan
-    let plans = plan_manager.get_plans(date).unwrap();
+    let plans = plan_manager.get_plans(date).await.unwrap();
     assert_eq!(plans.len(), 1);
     assert!(plans.contains_key("local"));
 
     // Get trackers from plan
-    let trackers = plan_manager.get_trackers(date).unwrap();
+    let trackers = plan_manager.get_trackers(date).await.unwrap();
     assert_eq!(trackers.len(), 2);
     assert_eq!(
         trackers.get("local:PROJ-123"),
@@ -154,7 +156,7 @@ trackers = ["PROJ-123"]
     );
 
     // Create a log using intent from plan
-    let intents = plan_manager.get_intents(date).unwrap();
+    let intents = plan_manager.get_intents(date).await.unwrap();
     assert_eq!(intents.len(), 1);
 
     let intent = &intents[0];
@@ -166,11 +168,12 @@ trackers = ["PROJ-123"]
     let log = Log::new(date, chrono_tz::UTC, vec![session]);
 
     // Write log
-    log_manager.write_log(&log, &trackers).unwrap();
+    log_manager.write_log(&log, &trackers).await.unwrap();
 
     // Read log back
     let retrieved_log = log_manager
         .get_log(date)
+        .await
         .unwrap()
         .expect("Log should exist after writing");
     assert_eq!(retrieved_log.timeline.len(), 1);
@@ -180,8 +183,8 @@ trackers = ["PROJ-123"]
     );
 }
 
-#[test]
-fn test_log_and_timesheet_integration() {
+#[tokio::test]
+async fn test_log_and_timesheet_integration() {
     let storage = Arc::new(IntegrationStorage::new());
 
     let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC);
@@ -219,7 +222,7 @@ fn test_log_and_timesheet_integration() {
     let log = Log::new(date, chrono_tz::UTC, vec![session]);
 
     let trackers = HashMap::new();
-    log_manager.write_log(&log, &trackers).unwrap();
+    log_manager.write_log(&log, &trackers).await.unwrap();
 
     // Create a timesheet from the log data
     let meta = TimesheetMeta::new("client1".to_string(), None, "test-hash".to_string());
@@ -236,11 +239,12 @@ fn test_log_and_timesheet_integration() {
     );
 
     // Write timesheet
-    timesheet_manager.write_timesheet(&timesheet).unwrap();
+    timesheet_manager.write_timesheet(&timesheet).await.unwrap();
 
     // Read it back
     let retrieved = timesheet_manager
         .get_timesheet("client1", date)
+        .await
         .unwrap()
         .expect("Timesheet should exist");
 
@@ -250,19 +254,20 @@ fn test_log_and_timesheet_integration() {
     assert_eq!(retrieved.timeline[0].note.as_ref().unwrap(), "Morning work");
 }
 
-#[test]
-fn test_identity_and_timesheet_integration() {
+#[tokio::test]
+async fn test_identity_and_timesheet_integration() {
     let storage = Arc::new(IntegrationStorage::new());
 
     let identity_manager = IdentityManager::new(storage.clone());
     let timesheet_manager = TimesheetManager::new(storage.clone());
 
     // Create an identity
-    let signing_key = identity_manager.create_identity("alice", false).unwrap();
+    let signing_key = identity_manager.create_identity("alice", false).await.unwrap();
 
     // Verify we can retrieve it
     let retrieved_key = identity_manager
         .get_identity("alice")
+        .await
         .unwrap()
         .expect("Identity should exist");
 
@@ -288,11 +293,13 @@ fn test_identity_and_timesheet_integration() {
 
     timesheet_manager
         .write_timesheet(&signed_timesheet)
+        .await
         .unwrap();
 
     // Read it back and verify signature is preserved
     let retrieved = timesheet_manager
         .get_timesheet("client1", date)
+        .await
         .unwrap()
         .expect("Timesheet should exist");
 
@@ -300,8 +307,8 @@ fn test_identity_and_timesheet_integration() {
     assert!(retrieved.signatures.contains_key("alice"));
 }
 
-#[test]
-fn test_multiple_managers_share_storage() {
+#[tokio::test]
+async fn test_multiple_managers_share_storage() {
     let storage = Arc::new(IntegrationStorage::new());
 
     // Create all managers
@@ -311,7 +318,7 @@ fn test_multiple_managers_share_storage() {
     // Write data with log manager
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
     let log = Log::new(date, chrono_tz::UTC, vec![]);
-    log_manager.write_log(&log, &HashMap::new()).unwrap();
+    log_manager.write_log(&log, &HashMap::new()).await.unwrap();
 
     // Verify log manager can see the storage was used
     assert!(log_manager.log_exists(date));
@@ -320,12 +327,12 @@ fn test_multiple_managers_share_storage() {
     assert_eq!(storage.root_dir(), PathBuf::from("/faff"));
 
     // Plan manager should be able to access plans (even if none exist yet)
-    let plans = plan_manager.get_plans(date).unwrap();
+    let plans = plan_manager.get_plans(date).await.unwrap();
     assert_eq!(plans.len(), 0); // No plans yet, but should not error
 }
 
-#[test]
-fn test_plan_caching_across_calls() {
+#[tokio::test]
+async fn test_plan_caching_across_calls() {
     let storage = Arc::new(IntegrationStorage::new());
 
     storage.add_file(
@@ -342,11 +349,11 @@ roles = ["engineer"]
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
 
     // First call - loads from storage
-    let plans1 = plan_manager.get_plans(date).unwrap();
+    let plans1 = plan_manager.get_plans(date).await.unwrap();
     assert_eq!(plans1.len(), 1);
 
     // Second call - should use cache
-    let plans2 = plan_manager.get_plans(date).unwrap();
+    let plans2 = plan_manager.get_plans(date).await.unwrap();
     assert_eq!(plans2.len(), 1);
 
     // They should be identical
@@ -364,18 +371,19 @@ roles = ["engineer"]
         HashMap::new(),
         vec![],
     );
-    plan_manager.write_plan(&new_plan).unwrap();
+    plan_manager.write_plan(&new_plan).await.unwrap();
 
     // Cache should be cleared, different date returns different results
     let plans3 = plan_manager
         .get_plans(NaiveDate::from_ymd_opt(2025, 3, 21).unwrap())
+        .await
         .unwrap();
     assert_eq!(plans3.len(), 1);
     assert_eq!(plans3.get("local").unwrap().roles, vec!["manager"]);
 }
 
-#[test]
-fn test_log_list_and_read_integration() {
+#[tokio::test]
+async fn test_log_list_and_read_integration() {
     let storage = Arc::new(IntegrationStorage::new());
     let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC);
 
@@ -389,12 +397,12 @@ fn test_log_list_and_read_integration() {
     let log3 = Log::new(date3, chrono_tz::UTC, vec![]);
 
     let trackers = HashMap::new();
-    log_manager.write_log(&log1, &trackers).unwrap();
-    log_manager.write_log(&log2, &trackers).unwrap();
-    log_manager.write_log(&log3, &trackers).unwrap();
+    log_manager.write_log(&log1, &trackers).await.unwrap();
+    log_manager.write_log(&log2, &trackers).await.unwrap();
+    log_manager.write_log(&log3, &trackers).await.unwrap();
 
     // List all logs
-    let dates = log_manager.list_logs().unwrap();
+    let dates = log_manager.list_logs().await.unwrap();
     assert_eq!(dates.len(), 3);
     assert_eq!(dates[0], date1);
     assert_eq!(dates[1], date2);
@@ -404,14 +412,15 @@ fn test_log_list_and_read_integration() {
     for date in dates {
         let log = log_manager
             .get_log(date)
+            .await
             .unwrap()
             .expect("Log should exist");
         assert_eq!(log.date, date);
     }
 }
 
-#[test]
-fn test_timesheet_list_filtering() {
+#[tokio::test]
+async fn test_timesheet_list_filtering() {
     let storage = Arc::new(IntegrationStorage::new());
     let timesheet_manager = TimesheetManager::new(storage.clone());
 
@@ -431,19 +440,19 @@ fn test_timesheet_list_filtering() {
             HashMap::new(),
             meta,
         );
-        timesheet_manager.write_timesheet(&timesheet).unwrap();
+        timesheet_manager.write_timesheet(&timesheet).await.unwrap();
     }
 
     // List all timesheets
-    let all = timesheet_manager.list_timesheets(None).unwrap();
+    let all = timesheet_manager.list_timesheets(None).await.unwrap();
     assert_eq!(all.len(), 3);
 
     // List filtered by date
-    let filtered = timesheet_manager.list_timesheets(Some(date1)).unwrap();
+    let filtered = timesheet_manager.list_timesheets(Some(date1)).await.unwrap();
     assert_eq!(filtered.len(), 2);
     assert!(filtered.iter().all(|t| t.date == date1));
 
-    let filtered2 = timesheet_manager.list_timesheets(Some(date2)).unwrap();
+    let filtered2 = timesheet_manager.list_timesheets(Some(date2)).await.unwrap();
     assert_eq!(filtered2.len(), 1);
     assert_eq!(filtered2[0].date, date2);
 }

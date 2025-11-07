@@ -31,7 +31,7 @@ impl PluginManager {
     /// Load all available plugins from the plugins directory
     ///
     /// Ensures plugins are loaded into the cache
-    pub fn load_plugins(&mut self) -> Result<()> {
+    pub async fn load_plugins(&mut self) -> Result<()> {
         // Check if already loaded
         {
             let cache = self.plugins_cache.lock().unwrap();
@@ -54,6 +54,7 @@ impl PluginManager {
         let plugin_dirs = self
             .storage
             .list_files(&plugin_dir, "*")
+            .await
             .context("Failed to list plugin directories")?;
 
         Python::attach(|py| -> PyResult<()> {
@@ -167,7 +168,7 @@ impl PluginManager {
     /// Instantiate a plugin with the given config
     ///
     /// Returns a Python object instance of the plugin
-    pub fn instantiate_plugin(
+    pub async fn instantiate_plugin(
         &mut self,
         plugin_name: &str,
         instance_name: &str,
@@ -175,7 +176,7 @@ impl PluginManager {
         defaults: HashMap<String, toml::Value>,
     ) -> Result<Py<PyAny>> {
         // Ensure plugins are loaded
-        self.load_plugins()?;
+        self.load_plugins().await?;
 
         // Verify plugin exists and get its file path
         let plugin_file_path = {
@@ -197,6 +198,7 @@ impl PluginManager {
         // Ensure state directory exists
         self.storage
             .create_dir_all(&state_path)
+            .await
             .context("Failed to create plugin state directory")?;
 
         // Get the plugin class inside Python::attach to avoid borrowing issues
@@ -287,14 +289,15 @@ impl PluginManager {
     }
 
     /// Get instantiated plan remote plugins from remotes directory
-    pub fn plan_remotes(&mut self) -> Result<Vec<Py<PyAny>>> {
-        self.load_plugins()?;
+    pub async fn plan_remotes(&mut self) -> Result<Vec<Py<PyAny>>> {
+        self.load_plugins().await?;
 
         // List all remote config files
         let remotes_dir = self.storage.remotes_dir();
         let remote_files = self
             .storage
             .list_files(&remotes_dir, "*.toml")
+            .await
             .context("Failed to list remote config files")?;
 
         let mut instances = Vec::new();
@@ -303,6 +306,7 @@ impl PluginManager {
             let remote_toml = self
                 .storage
                 .read_string(&remote_file)
+                .await
                 .with_context(|| format!("Failed to read remote file: {:?}", remote_file))?;
 
             let remote = Remote::from_toml(&remote_toml)
@@ -365,6 +369,7 @@ impl PluginManager {
 
             let instance = self
                 .instantiate_plugin(&remote.plugin, &remote.id, remote.connection, defaults)
+                .await
                 .with_context(|| {
                     format!("Failed to instantiate plan remote plugin '{}'", remote.id)
                 })?;
@@ -378,18 +383,18 @@ impl PluginManager {
     ///
     /// TODO: For now this returns all remotes. In the future we may want to
     /// filter remotes that are specifically configured for timesheet audiences.
-    pub fn audiences(&mut self) -> Result<Vec<Py<PyAny>>> {
+    pub async fn audiences(&mut self) -> Result<Vec<Py<PyAny>>> {
         // For now, audiences are the same as plan remotes
         // A plugin can implement both PlanRemote and TimesheetAudience interfaces
-        self.plan_remotes()
+        self.plan_remotes().await
     }
 
     /// Get a specific audience plugin by ID
     ///
     /// This searches through all configured audience plugins and returns the one
     /// matching the given ID, or None if not found.
-    pub fn get_audience_by_id(&mut self, audience_id: &str) -> Result<Option<Py<PyAny>>> {
-        let audiences = self.audiences()?;
+    pub async fn get_audience_by_id(&mut self, audience_id: &str) -> Result<Option<Py<PyAny>>> {
+        let audiences = self.audiences().await?;
 
         Python::attach(|py| -> PyResult<Option<Py<PyAny>>> {
             for audience in audiences {
@@ -415,6 +420,7 @@ impl PluginManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use std::path::Path;
     use std::sync::Mutex;
 
@@ -432,15 +438,16 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl Storage for MockStorage {
         fn base_dir(&self) -> PathBuf {
             self.root.join(".faff")
         }
-        fn read_string(&self, path: &Path) -> Result<String> {
-            let bytes = self.read_bytes(path)?;
+        async fn read_string(&self, path: &Path) -> Result<String> {
+            let bytes = self.read_bytes(path).await?;
             Ok(String::from_utf8(bytes)?)
         }
-        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
             self.files
                 .lock()
                 .unwrap()
@@ -448,17 +455,17 @@ mod tests {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("File not found"))
         }
-        fn write_string(&self, path: &Path, data: &str) -> Result<()> {
-            self.write_bytes(path, data.as_bytes())
+        async fn write_string(&self, path: &Path, data: &str) -> Result<()> {
+            self.write_bytes(path, data.as_bytes()).await
         }
-        fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
+        async fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
             self.files
                 .lock()
                 .unwrap()
                 .insert(path.to_path_buf(), data.to_vec());
             Ok(())
         }
-        fn delete(&self, path: &Path) -> Result<()> {
+        async fn delete(&self, path: &Path) -> Result<()> {
             let mut files = self.files.lock().unwrap();
             if files.remove(path).is_some() {
                 Ok(())
@@ -469,20 +476,20 @@ mod tests {
         fn exists(&self, path: &Path) -> bool {
             self.files.lock().unwrap().contains_key(path)
         }
-        fn create_dir_all(&self, _path: &Path) -> Result<()> {
+        async fn create_dir_all(&self, _path: &Path) -> Result<()> {
             Ok(())
         }
-        fn list_files(&self, _dir: &Path, _pattern: &str) -> Result<Vec<PathBuf>> {
+        async fn list_files(&self, _dir: &Path, _pattern: &str) -> Result<Vec<PathBuf>> {
             Ok(vec![])
         }
     }
 
-    #[test]
-    fn test_plugin_manager_creation() {
+    #[tokio::test]
+    async fn test_plugin_manager_creation() {
         let storage = Arc::new(MockStorage::new());
         let mut manager = PluginManager::new(storage);
 
         // Should load successfully even when no files exist
-        manager.load_plugins().unwrap();
+        manager.load_plugins().await.unwrap();
     }
 }

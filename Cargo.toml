@@ -33,6 +33,10 @@ glob = "0.3"
 base64 = "0.22"
 rand = "0.8"
 
+# Async support
+async-trait = "0.1"
+tokio = { version = "1.42", features = ["fs", "rt", "rt-multi-thread"] }
+
 # Python bindings
 pyo3 = "0.26"
 pythonize = "0.26"

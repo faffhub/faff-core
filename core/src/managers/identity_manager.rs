@@ -32,7 +32,7 @@ impl IdentityManager {
     /// Keys are stored as base64-encoded strings:
     /// - Private key: ~/.faff/identities/id_{name}
     /// - Public key: ~/.faff/identities/id_{name}.pub
-    pub fn create_identity(&self, name: &str, overwrite: bool) -> Result<SigningKey> {
+    pub async fn create_identity(&self, name: &str, overwrite: bool) -> Result<SigningKey> {
         let private_path = self.get_key_path(name);
         let public_path = self.get_pub_path(name);
 
@@ -44,6 +44,7 @@ impl IdentityManager {
         let identity_dir = self.storage.identity_dir();
         self.storage
             .create_dir_all(&identity_dir)
+            .await
             .context("Failed to create identity directory")?;
 
         // Generate new keypair
@@ -66,9 +67,11 @@ impl IdentityManager {
         // Write keys to files
         self.storage
             .write_string(&private_path, &b64_private)
+            .await
             .with_context(|| format!("Failed to write private key for identity '{}'", name))?;
         self.storage
             .write_string(&public_path, &b64_public)
+            .await
             .with_context(|| format!("Failed to write public key for identity '{}'", name))?;
 
         // Note: File permissions (chmod 0o600) should be handled by the Storage implementation
@@ -85,7 +88,7 @@ impl IdentityManager {
     /// Delete an identity
     ///
     /// Removes both the private and public key files
-    pub fn delete_identity(&self, name: &str) -> Result<()> {
+    pub async fn delete_identity(&self, name: &str) -> Result<()> {
         let private_path = self.get_key_path(name);
         let public_path = self.get_pub_path(name);
 
@@ -96,12 +99,14 @@ impl IdentityManager {
         // Delete private key
         self.storage
             .delete(&private_path)
+            .await
             .with_context(|| format!("Failed to delete private key for identity '{}'", name))?;
 
         // Delete public key if it exists
         if self.storage.exists(&public_path) {
             self.storage
                 .delete(&public_path)
+                .await
                 .with_context(|| format!("Failed to delete public key for identity '{}'", name))?;
         }
 
@@ -109,15 +114,15 @@ impl IdentityManager {
     }
 
     /// Get a specific identity by name
-    pub fn get_identity(&self, name: &str) -> Result<Option<SigningKey>> {
-        let identities = self.list_identities()?;
+    pub async fn get_identity(&self, name: &str) -> Result<Option<SigningKey>> {
+        let identities = self.list_identities().await?;
         Ok(identities.get(name).cloned())
     }
 
     /// List all identities
     ///
     /// Returns a HashMap where keys are identity names and values are SigningKeys
-    pub fn list_identities(&self) -> Result<HashMap<String, SigningKey>> {
+    pub async fn list_identities(&self) -> Result<HashMap<String, SigningKey>> {
         let identity_dir = self.storage.identity_dir();
         let mut identities = HashMap::new();
 
@@ -125,6 +130,7 @@ impl IdentityManager {
         let files = self
             .storage
             .list_files(&identity_dir, "id_*")
+            .await
             .context("Failed to list identity files")?;
 
         for file in files {
@@ -149,6 +155,7 @@ impl IdentityManager {
             let b64_private = self
                 .storage
                 .read_string(&file)
+                .await
                 .with_context(|| format!("Failed to read identity file '{}'", name))?;
 
             let key_bytes = base64::Engine::decode(
@@ -181,12 +188,12 @@ mod tests {
     use super::*;
     use crate::test_utils::mock_storage::MockStorage;
 
-    #[test]
-    fn test_create_identity() {
+    #[tokio::test]
+    async fn test_create_identity() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
-        let key = manager.create_identity("test", false).unwrap();
+        let key = manager.create_identity("test", false).await.unwrap();
 
         // Verify private key file exists
         let private_path = PathBuf::from("/faff/.faff/keys/id_test");
@@ -197,89 +204,89 @@ mod tests {
         assert!(storage.exists(&public_path));
 
         // Verify the key can be read back
-        let loaded_key = manager.get_identity("test").unwrap().unwrap();
+        let loaded_key = manager.get_identity("test").await.unwrap().unwrap();
         assert_eq!(key.to_bytes(), loaded_key.to_bytes());
     }
 
-    #[test]
-    fn test_create_identity_no_overwrite() {
+    #[tokio::test]
+    async fn test_create_identity_no_overwrite() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
-        manager.create_identity("test", false).unwrap();
+        manager.create_identity("test", false).await.unwrap();
 
         // Try to create again without overwrite flag
-        let result = manager.create_identity("test", false);
+        let result = manager.create_identity("test", false).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
 
-    #[test]
-    fn test_create_identity_with_overwrite() {
+    #[tokio::test]
+    async fn test_create_identity_with_overwrite() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
-        let key1 = manager.create_identity("test", false).unwrap();
-        let key2 = manager.create_identity("test", true).unwrap();
+        let key1 = manager.create_identity("test", false).await.unwrap();
+        let key2 = manager.create_identity("test", true).await.unwrap();
 
         // Keys should be different
         assert_ne!(key1.to_bytes(), key2.to_bytes());
     }
 
-    #[test]
-    fn test_get_identity() {
+    #[tokio::test]
+    async fn test_get_identity() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
-        let key = manager.create_identity("alice", false).unwrap();
+        let key = manager.create_identity("alice", false).await.unwrap();
 
-        let loaded_key = manager.get_identity("alice").unwrap().unwrap();
+        let loaded_key = manager.get_identity("alice").await.unwrap().unwrap();
         assert_eq!(key.to_bytes(), loaded_key.to_bytes());
 
         // Non-existent identity
-        let result = manager.get_identity("bob").unwrap();
+        let result = manager.get_identity("bob").await.unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_list_identities() {
+    #[tokio::test]
+    async fn test_list_identities() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
-        let key1 = manager.create_identity("alice", false).unwrap();
-        let key2 = manager.create_identity("bob", false).unwrap();
+        let key1 = manager.create_identity("alice", false).await.unwrap();
+        let key2 = manager.create_identity("bob", false).await.unwrap();
 
-        let identities = manager.list_identities().unwrap();
+        let identities = manager.list_identities().await.unwrap();
         assert_eq!(identities.len(), 2);
         assert_eq!(identities["alice"].to_bytes(), key1.to_bytes());
         assert_eq!(identities["bob"].to_bytes(), key2.to_bytes());
     }
 
-    #[test]
-    fn test_identity_exists() {
+    #[tokio::test]
+    async fn test_identity_exists() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
         assert!(!manager.identity_exists("test"));
 
-        manager.create_identity("test", false).unwrap();
+        manager.create_identity("test", false).await.unwrap();
 
         assert!(manager.identity_exists("test"));
     }
 
-    #[test]
-    fn test_delete_identity() {
+    #[tokio::test]
+    async fn test_delete_identity() {
         let storage = Arc::new(MockStorage::new());
         let manager = IdentityManager::new(storage.clone());
 
-        manager.create_identity("test", false).unwrap();
+        manager.create_identity("test", false).await.unwrap();
         assert!(manager.identity_exists("test"));
 
-        manager.delete_identity("test").unwrap();
+        manager.delete_identity("test").await.unwrap();
         assert!(!manager.identity_exists("test"));
 
         // Try to delete non-existent identity
-        let result = manager.delete_identity("nonexistent");
+        let result = manager.delete_identity("nonexistent").await;
         assert!(result.is_err());
     }
 }

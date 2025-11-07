@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use crate::file_system_storage::FileSystemStorage;
 #[cfg(feature = "python")]
 use crate::managers::PluginManager;
@@ -26,16 +27,19 @@ impl Workspace {
     /// Create a new Workspace with the default FileSystemStorage
     ///
     /// This searches for a .faff directory starting from the current working directory.
-    pub fn new() -> anyhow::Result<Self> {
+    ///
+    /// Note: Only available on non-WASM targets.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn new() -> anyhow::Result<Self> {
         let storage = Arc::new(FileSystemStorage::new()?);
-        Self::with_storage(storage)
+        Self::with_storage(storage).await
     }
 
     /// Create a new Workspace with a custom storage implementation
-    pub fn with_storage(storage: Arc<dyn Storage>) -> anyhow::Result<Self> {
+    pub async fn with_storage(storage: Arc<dyn Storage>) -> anyhow::Result<Self> {
         // Load config from storage
         let config_path = storage.config_file();
-        let config_str = storage.read_string(&config_path)?;
+        let config_str = storage.read_string(&config_path).await?;
         let config = Config::from_toml(&config_str)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 
@@ -117,7 +121,7 @@ mod tests {
     use crate::test_utils::mock_storage::MockStorage;
     use std::path::PathBuf;
 
-    fn create_test_workspace() -> Workspace {
+    async fn create_test_workspace() -> Workspace {
         let storage = Arc::new(MockStorage::new());
 
         // Add a config file to storage at the correct path
@@ -126,18 +130,18 @@ mod tests {
             r#"timezone = "America/New_York""#.to_string(),
         );
 
-        Workspace::with_storage(storage).unwrap()
+        Workspace::with_storage(storage).await.unwrap()
     }
 
-    #[test]
-    fn test_workspace_creation() {
-        let ws = create_test_workspace();
+    #[tokio::test]
+    async fn test_workspace_creation() {
+        let ws = create_test_workspace().await;
         assert_eq!(ws.timezone().name(), "America/New_York");
     }
 
-    #[test]
-    fn test_workspace_now_and_today() {
-        let ws = create_test_workspace();
+    #[tokio::test]
+    async fn test_workspace_now_and_today() {
+        let ws = create_test_workspace().await;
 
         let now = ws.now();
         let today = ws.today();
@@ -147,25 +151,25 @@ mod tests {
         assert_eq!(now.date_naive(), today);
     }
 
-    #[test]
-    fn test_workspace_config_access() {
-        let ws = create_test_workspace();
+    #[tokio::test]
+    async fn test_workspace_config_access() {
+        let ws = create_test_workspace().await;
         let config = ws.config();
 
         assert_eq!(config.timezone.name(), "America/New_York");
     }
 
-    #[test]
-    fn test_workspace_storage_access() {
-        let ws = create_test_workspace();
+    #[tokio::test]
+    async fn test_workspace_storage_access() {
+        let ws = create_test_workspace().await;
         let storage = ws.storage();
 
         assert_eq!(storage.root_dir(), PathBuf::from("/faff"));
     }
 
-    #[test]
-    fn test_workspace_manager_access() {
-        let ws = create_test_workspace();
+    #[tokio::test]
+    async fn test_workspace_manager_access() {
+        let ws = create_test_workspace().await;
 
         // Verify all managers are accessible
         let _plans = ws.plans();
@@ -179,54 +183,54 @@ mod tests {
         assert!(true);
     }
 
-    #[test]
-    fn test_workspace_with_utc_timezone() {
+    #[tokio::test]
+    async fn test_workspace_with_utc_timezone() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/config.toml"),
             r#"timezone = "UTC""#.to_string(),
         );
 
-        let ws = Workspace::with_storage(storage).unwrap();
+        let ws = Workspace::with_storage(storage).await.unwrap();
         assert_eq!(ws.timezone().name(), "UTC");
     }
 
-    #[test]
-    fn test_workspace_with_london_timezone() {
+    #[tokio::test]
+    async fn test_workspace_with_london_timezone() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/config.toml"),
             r#"timezone = "Europe/London""#.to_string(),
         );
 
-        let ws = Workspace::with_storage(storage).unwrap();
+        let ws = Workspace::with_storage(storage).await.unwrap();
         assert_eq!(ws.timezone().name(), "Europe/London");
     }
 
-    #[test]
-    fn test_workspace_fails_without_config() {
+    #[tokio::test]
+    async fn test_workspace_fails_without_config() {
         let storage = Arc::new(MockStorage::new());
         // Don't add a config file
 
-        let result = Workspace::with_storage(storage);
+        let result = Workspace::with_storage(storage).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_workspace_fails_with_invalid_config() {
+    #[tokio::test]
+    async fn test_workspace_fails_with_invalid_config() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/config.toml"),
             r#"invalid toml content {"#.to_string(),
         );
 
-        let result = Workspace::with_storage(storage);
+        let result = Workspace::with_storage(storage).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_workspace_managers_share_storage() {
-        let ws = create_test_workspace();
+    #[tokio::test]
+    async fn test_workspace_managers_share_storage() {
+        let ws = create_test_workspace().await;
 
         // All managers should share the same storage instance
         let plans = ws.plans();
@@ -236,7 +240,7 @@ mod tests {
         assert_eq!(ws.storage().root_dir(), PathBuf::from("/faff"));
 
         // Managers should be functional
-        assert!(plans.get_plans(ws.today()).is_ok());
+        assert!(plans.get_plans(ws.today()).await.is_ok());
         assert!(logs.log_exists(ws.today()) == false);
     }
 }

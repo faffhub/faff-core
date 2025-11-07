@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, TimeZone};
+use chrono::{DateTime, NaiveDate, TimeZone};
 use chrono_english::{parse_date_string, Dialect};
 use chrono_tz::Tz;
 use thiserror::Error;
@@ -81,10 +81,83 @@ pub fn parse_natural_date(
     Ok(parsed.date_naive())
 }
 
+/// Parse a natural language datetime string, restricted to a specific date
+///
+/// This function is useful for parsing times on a specific day (e.g., "09:30" for today).
+/// It ensures the parsed datetime falls on the expected date, preventing accidental
+/// backdating or future dating.
+///
+/// Supports:
+/// - Time formats: "09:30", "14:30", "3pm", "midnight"
+/// - Relative times: "2 hours ago", "30 minutes ago"
+/// - Special keywords: "now"
+///
+/// # Arguments
+/// * `datetime_str` - The datetime string to parse (None returns now)
+/// * `expected_date` - The date the parsed datetime must fall on
+/// * `now` - Reference datetime for relative parsing (already timezone-aware)
+///
+/// # Returns
+/// * `Ok(DateTime<Tz>)` - The parsed datetime in the same timezone as `now`
+/// * `Err(DateParseError)` - If parsing fails or the result is not on the expected date
+///
+/// # Examples
+/// ```
+/// use chrono::{NaiveDate, TimeZone, Timelike};
+/// use chrono_tz::Europe::London;
+/// use faff_core::date_parsing::parse_natural_datetime;
+///
+/// let today = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+/// let now = London.from_local_datetime(&today.and_hms_opt(11, 30, 0).unwrap()).unwrap();
+///
+/// // Parse a time on today
+/// let dt = parse_natural_datetime(Some("09:30"), today, now).unwrap();
+/// assert_eq!(dt.hour(), 9);
+/// assert_eq!(dt.minute(), 30);
+/// assert_eq!(dt.date_naive(), today);
+///
+/// // "2 hours ago" from 11:30 = 09:30 (still today)
+/// let dt = parse_natural_datetime(Some("2 hours ago"), today, now).unwrap();
+/// assert_eq!(dt.hour(), 9);
+/// assert_eq!(dt.minute(), 30);
+/// ```
+pub fn parse_natural_datetime(
+    datetime_str: Option<&str>,
+    expected_date: NaiveDate,
+    now: DateTime<Tz>,
+) -> Result<DateTime<Tz>, DateParseError> {
+    // Handle None or empty string as "now"
+    let datetime_str = match datetime_str {
+        None => return Ok(now),
+        Some(s) if s.trim().is_empty() => return Ok(now),
+        Some(s) => s,
+    };
+
+    // Handle "now" explicitly
+    if datetime_str.trim().to_lowercase() == "now" {
+        return Ok(now);
+    }
+
+    // Parse with chrono-english using current time as reference
+    let parsed = parse_date_string(datetime_str, now, Dialect::Uk)
+        .map_err(|e| DateParseError::ChronoEnglish(e))?;
+
+    // Validate that the parsed datetime is on the expected date
+    let parsed_date = parsed.date_naive();
+    if parsed_date != expected_date {
+        return Err(DateParseError::InvalidFormat(format!(
+            "Parsed time '{}' resulted in date {} but expected {}. The --since flag only accepts times on today's date.",
+            datetime_str, parsed_date, expected_date
+        )));
+    }
+
+    Ok(parsed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, Timelike};
     use chrono_tz::Europe::London;
 
     fn test_date() -> NaiveDate {
@@ -175,5 +248,99 @@ mod tests {
 
         let result = parse_natural_date(Some("2025-13-01"), test_date(), London);
         assert!(result.is_err());
+    }
+
+    // Tests for parse_natural_datetime
+    fn test_datetime() -> DateTime<Tz> {
+        // Wednesday, Jan 15, 2025 at 11:30:00
+        London
+            .from_local_datetime(&test_date().and_hms_opt(11, 30, 0).unwrap())
+            .unwrap()
+    }
+
+    #[test]
+    fn test_datetime_none_returns_now() {
+        let now = test_datetime();
+        let result = parse_natural_datetime(None, test_date(), now).unwrap();
+        assert_eq!(result, now);
+    }
+
+    #[test]
+    fn test_datetime_empty_string_returns_now() {
+        let now = test_datetime();
+        let result = parse_natural_datetime(Some(""), test_date(), now).unwrap();
+        assert_eq!(result, now);
+    }
+
+    #[test]
+    fn test_datetime_now_keyword() {
+        let now = test_datetime();
+        let result = parse_natural_datetime(Some("now"), test_date(), now).unwrap();
+        assert_eq!(result, now);
+
+        let result = parse_natural_datetime(Some("NOW"), test_date(), now).unwrap();
+        assert_eq!(result, now);
+    }
+
+    #[test]
+    fn test_datetime_time_format() {
+        let now = test_datetime();
+
+        // "09:30" should parse to 9:30am today
+        let result = parse_natural_datetime(Some("09:30"), test_date(), now).unwrap();
+        assert_eq!(result.hour(), 9);
+        assert_eq!(result.minute(), 30);
+        assert_eq!(result.date_naive(), test_date());
+
+        // "14:30" should parse to 2:30pm today
+        let result = parse_natural_datetime(Some("14:30"), test_date(), now).unwrap();
+        assert_eq!(result.hour(), 14);
+        assert_eq!(result.minute(), 30);
+        assert_eq!(result.date_naive(), test_date());
+    }
+
+    #[test]
+    fn test_datetime_relative_time_same_day() {
+        let now = test_datetime(); // 11:30
+
+        // "2 hours ago" from 11:30 should give 09:30 (still today)
+        let result = parse_natural_datetime(Some("2 hours ago"), test_date(), now).unwrap();
+        assert_eq!(result.hour(), 9);
+        assert_eq!(result.minute(), 30);
+        assert_eq!(result.date_naive(), test_date());
+
+        // "30 minutes ago" from 11:30 should give 11:00 (still today)
+        let result = parse_natural_datetime(Some("30 minutes ago"), test_date(), now).unwrap();
+        assert_eq!(result.hour(), 11);
+        assert_eq!(result.minute(), 0);
+        assert_eq!(result.date_naive(), test_date());
+    }
+
+    #[test]
+    fn test_datetime_rejects_different_date() {
+        let now = test_datetime();
+
+        // "yesterday 3pm" should be rejected (different date)
+        let result = parse_natural_datetime(Some("yesterday 3pm"), test_date(), now);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("only accepts times on today"));
+
+        // "tomorrow" should be rejected (different date)
+        let result = parse_natural_datetime(Some("tomorrow"), test_date(), now);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("only accepts times on today"));
+    }
+
+    #[test]
+    fn test_datetime_rejects_relative_crossing_midnight() {
+        let now = test_datetime(); // 11:30am on Jan 15
+
+        // "20 hours ago" would be 3:30pm on Jan 14 - should be rejected
+        let result = parse_natural_datetime(Some("20 hours ago"), test_date(), now);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("only accepts times on today's date"));
     }
 }

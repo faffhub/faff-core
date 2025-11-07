@@ -6,6 +6,7 @@
 #[cfg(test)]
 pub mod mock_storage {
     use anyhow::Result;
+    use async_trait::async_trait;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
     use std::sync::RwLock;
@@ -55,12 +56,13 @@ pub mod mock_storage {
         }
     }
 
+    #[async_trait]
     impl Storage for MockStorage {
         fn base_dir(&self) -> PathBuf {
             self.base_dir.clone()
         }
 
-        fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
             let files = self.files.read().unwrap();
             files
                 .get(path)
@@ -68,7 +70,7 @@ pub mod mock_storage {
                 .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
         }
 
-        fn read_string(&self, path: &Path) -> Result<String> {
+        async fn read_string(&self, path: &Path) -> Result<String> {
             let files = self.files.read().unwrap();
             files
                 .get(path)
@@ -76,20 +78,20 @@ pub mod mock_storage {
                 .ok_or_else(|| anyhow::anyhow!("File not found: {:?}", path))
         }
 
-        fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
+        async fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
             let content = String::from_utf8(data.to_vec())?;
             let mut files = self.files.write().unwrap();
             files.insert(path.to_path_buf(), content);
             Ok(())
         }
 
-        fn write_string(&self, path: &Path, data: &str) -> Result<()> {
+        async fn write_string(&self, path: &Path, data: &str) -> Result<()> {
             let mut files = self.files.write().unwrap();
             files.insert(path.to_path_buf(), data.to_string());
             Ok(())
         }
 
-        fn delete(&self, path: &Path) -> Result<()> {
+        async fn delete(&self, path: &Path) -> Result<()> {
             let mut files = self.files.write().unwrap();
             if files.remove(path).is_some() {
                 Ok(())
@@ -103,12 +105,12 @@ pub mod mock_storage {
             files.contains_key(path)
         }
 
-        fn create_dir_all(&self, _path: &Path) -> Result<()> {
+        async fn create_dir_all(&self, _path: &Path) -> Result<()> {
             // No-op for in-memory storage
             Ok(())
         }
 
-        fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
+        async fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
             let files = self.files.read().unwrap();
 
             // Use glob::Pattern for proper glob matching
@@ -134,21 +136,21 @@ pub mod mock_storage {
     mod tests {
         use super::*;
 
-        #[test]
-        fn test_mock_storage_read_write() {
+        #[tokio::test]
+        async fn test_mock_storage_read_write() {
             let storage = MockStorage::new();
             let path = PathBuf::from("/test/file.txt");
             let content = "Hello, world!";
 
-            storage.write_string(&path, content).unwrap();
+            storage.write_string(&path, content).await.unwrap();
             assert!(storage.exists(&path));
 
-            let retrieved = storage.read_string(&path).unwrap();
+            let retrieved = storage.read_string(&path).await.unwrap();
             assert_eq!(retrieved, content);
         }
 
-        #[test]
-        fn test_mock_storage_list_files() {
+        #[tokio::test]
+        async fn test_mock_storage_list_files() {
             let storage = MockStorage::new();
             let dir = PathBuf::from("/test");
 
@@ -156,33 +158,33 @@ pub mod mock_storage {
             storage.add_file(dir.join("file2.txt"), "content2".to_string());
             storage.add_file(dir.join("file3.log"), "content3".to_string());
 
-            let txt_files = storage.list_files(&dir, "*.txt").unwrap();
+            let txt_files = storage.list_files(&dir, "*.txt").await.unwrap();
             assert_eq!(txt_files.len(), 2);
 
-            let all_files = storage.list_files(&dir, "*").unwrap();
+            let all_files = storage.list_files(&dir, "*").await.unwrap();
             assert_eq!(all_files.len(), 3);
         }
 
-        #[test]
-        fn test_mock_storage_clear() {
+        #[tokio::test]
+        async fn test_mock_storage_clear() {
             let storage = MockStorage::new();
             let path = PathBuf::from("/test/file.txt");
 
-            storage.write_string(&path, "content").unwrap();
+            storage.write_string(&path, "content").await.unwrap();
             assert!(storage.exists(&path));
 
             storage.clear();
             assert!(!storage.exists(&path));
         }
 
-        #[test]
-        fn test_mock_storage_bytes() {
+        #[tokio::test]
+        async fn test_mock_storage_bytes() {
             let storage = MockStorage::new();
             let path = PathBuf::from("/test/data.txt");
             let data = b"Hello, world!";
 
-            storage.write_bytes(&path, data).unwrap();
-            let retrieved = storage.read_bytes(&path).unwrap();
+            storage.write_bytes(&path, data).await.unwrap();
+            let retrieved = storage.read_bytes(&path).await.unwrap();
 
             assert_eq!(retrieved, data);
             assert!(storage.exists(&path));

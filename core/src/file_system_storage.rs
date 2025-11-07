@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
+use tokio::fs as async_fs;
 
 use crate::storage::Storage;
 
@@ -51,7 +53,7 @@ impl FileSystemStorage {
     /// Returns an error if:
     /// - .faff already exists at target (unless force=true)
     /// - Parent directory contains a .faff (unless force=true)
-    pub fn init_at(path: PathBuf, force: bool) -> Result<Self> {
+    pub async fn init_at(path: PathBuf, force: bool) -> Result<Self> {
         let faff_dir = path.join(".faff");
 
         // Check if .faff already exists at target
@@ -78,7 +80,7 @@ impl FileSystemStorage {
 
         // Create the storage and initialize it
         let storage = Self::at_path(path);
-        storage.init()?;
+        storage.init().await?;
         Ok(storage)
     }
 
@@ -108,6 +110,7 @@ impl FileSystemStorage {
     }
 }
 
+#[async_trait]
 impl Storage for FileSystemStorage {
     fn base_dir(&self) -> PathBuf {
         self.faff_dir.clone()
@@ -120,37 +123,45 @@ impl Storage for FileSystemStorage {
 
     // Gets log_dir(), plan_dir(), etc. from trait defaults
 
-    fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
-        std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))
-    }
-
-    fn read_string(&self, path: &Path) -> Result<String> {
-        std::fs::read_to_string(path)
+    async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        async_fs::read(path)
+            .await
             .with_context(|| format!("Failed to read file: {}", path.display()))
     }
 
-    fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
+    async fn read_string(&self, path: &Path) -> Result<String> {
+        async_fs::read_to_string(path)
+            .await
+            .with_context(|| format!("Failed to read file: {}", path.display()))
+    }
+
+    async fn write_bytes(&self, path: &Path, data: &[u8]) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
+            async_fs::create_dir_all(parent)
+                .await
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
-        std::fs::write(path, data)
+        async_fs::write(path, data)
+            .await
             .with_context(|| format!("Failed to write file: {}", path.display()))
     }
 
-    fn write_string(&self, path: &Path, data: &str) -> Result<()> {
+    async fn write_string(&self, path: &Path, data: &str) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
+            async_fs::create_dir_all(parent)
+                .await
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
         }
-        std::fs::write(path, data)
+        async_fs::write(path, data)
+            .await
             .with_context(|| format!("Failed to write file: {}", path.display()))
     }
 
-    fn delete(&self, path: &Path) -> Result<()> {
-        std::fs::remove_file(path)
+    async fn delete(&self, path: &Path) -> Result<()> {
+        async_fs::remove_file(path)
+            .await
             .with_context(|| format!("Failed to delete file: {}", path.display()))
     }
 
@@ -158,12 +169,13 @@ impl Storage for FileSystemStorage {
         path.exists()
     }
 
-    fn create_dir_all(&self, path: &Path) -> Result<()> {
-        std::fs::create_dir_all(path)
+    async fn create_dir_all(&self, path: &Path) -> Result<()> {
+        async_fs::create_dir_all(path)
+            .await
             .with_context(|| format!("Failed to create directory: {}", path.display()))
     }
 
-    fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
+    async fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         if !dir.exists() {
             return Ok(vec![]);
         }
@@ -231,8 +243,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_read_write_string() {
+    #[tokio::test]
+    async fn test_read_write_string() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -240,14 +252,14 @@ mod tests {
         let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
 
         let test_file = storage.log_dir().join("test.txt");
-        storage.write_string(&test_file, "hello world").unwrap();
+        storage.write_string(&test_file, "hello world").await.unwrap();
 
-        let contents = storage.read_string(&test_file).unwrap();
+        let contents = storage.read_string(&test_file).await.unwrap();
         assert_eq!(contents, "hello world");
     }
 
-    #[test]
-    fn test_read_write_bytes() {
+    #[tokio::test]
+    async fn test_read_write_bytes() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -257,14 +269,14 @@ mod tests {
         let test_file = storage.log_dir().join("test.bin");
         let data = vec![0u8, 1, 2, 3, 4, 5];
 
-        storage.write_bytes(&test_file, &data).unwrap();
-        let retrieved = storage.read_bytes(&test_file).unwrap();
+        storage.write_bytes(&test_file, &data).await.unwrap();
+        let retrieved = storage.read_bytes(&test_file).await.unwrap();
 
         assert_eq!(retrieved, data);
     }
 
-    #[test]
-    fn test_exists() {
+    #[tokio::test]
+    async fn test_exists() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -274,12 +286,12 @@ mod tests {
         let test_file = storage.log_dir().join("test.txt");
         assert!(!storage.exists(&test_file));
 
-        storage.write_string(&test_file, "content").unwrap();
+        storage.write_string(&test_file, "content").await.unwrap();
         assert!(storage.exists(&test_file));
     }
 
-    #[test]
-    fn test_create_dir_all() {
+    #[tokio::test]
+    async fn test_create_dir_all() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -289,12 +301,12 @@ mod tests {
         let nested_dir = storage.log_dir().join("nested").join("deep").join("dir");
         assert!(!nested_dir.exists());
 
-        storage.create_dir_all(&nested_dir).unwrap();
+        storage.create_dir_all(&nested_dir).await.unwrap();
         assert!(nested_dir.exists());
     }
 
-    #[test]
-    fn test_list_files() {
+    #[tokio::test]
+    async fn test_list_files() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -303,27 +315,30 @@ mod tests {
 
         // Create some test files
         let log_dir = storage.log_dir();
-        storage.create_dir_all(&log_dir).unwrap();
+        storage.create_dir_all(&log_dir).await.unwrap();
 
         storage
             .write_string(&log_dir.join("2025-03-15.toml"), "log1")
+            .await
             .unwrap();
         storage
             .write_string(&log_dir.join("2025-03-16.toml"), "log2")
+            .await
             .unwrap();
         storage
             .write_string(&log_dir.join("readme.txt"), "readme")
+            .await
             .unwrap();
 
-        let toml_files = storage.list_files(&log_dir, "*.toml").unwrap();
+        let toml_files = storage.list_files(&log_dir, "*.toml").await.unwrap();
         assert_eq!(toml_files.len(), 2);
 
-        let all_files = storage.list_files(&log_dir, "*").unwrap();
+        let all_files = storage.list_files(&log_dir, "*").await.unwrap();
         assert_eq!(all_files.len(), 3);
     }
 
-    #[test]
-    fn test_list_files_empty_directory() {
+    #[tokio::test]
+    async fn test_list_files_empty_directory() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -331,14 +346,14 @@ mod tests {
         let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
 
         let log_dir = storage.log_dir();
-        storage.create_dir_all(&log_dir).unwrap();
+        storage.create_dir_all(&log_dir).await.unwrap();
 
-        let files = storage.list_files(&log_dir, "*.toml").unwrap();
+        let files = storage.list_files(&log_dir, "*.toml").await.unwrap();
         assert_eq!(files.len(), 0);
     }
 
-    #[test]
-    fn test_list_files_nonexistent_directory() {
+    #[tokio::test]
+    async fn test_list_files_nonexistent_directory() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -346,12 +361,12 @@ mod tests {
         let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
 
         let nonexistent = temp.path().join("does_not_exist");
-        let files = storage.list_files(&nonexistent, "*.toml").unwrap();
+        let files = storage.list_files(&nonexistent, "*.toml").await.unwrap();
         assert_eq!(files.len(), 0);
     }
 
-    #[test]
-    fn test_write_creates_parent_directories() {
+    #[tokio::test]
+    async fn test_write_creates_parent_directories() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -365,13 +380,13 @@ mod tests {
             .join("file.txt");
         assert!(!nested_file.parent().unwrap().exists());
 
-        storage.write_string(&nested_file, "content").unwrap();
+        storage.write_string(&nested_file, "content").await.unwrap();
         assert!(nested_file.exists());
-        assert_eq!(storage.read_string(&nested_file).unwrap(), "content");
+        assert_eq!(storage.read_string(&nested_file).await.unwrap(), "content");
     }
 
-    #[test]
-    fn test_read_nonexistent_file() {
+    #[tokio::test]
+    async fn test_read_nonexistent_file() {
         let temp = TempDir::new().unwrap();
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
@@ -379,7 +394,7 @@ mod tests {
         let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
 
         let nonexistent = storage.log_dir().join("nonexistent.txt");
-        let result = storage.read_string(&nonexistent);
+        let result = storage.read_string(&nonexistent).await;
 
         assert!(result.is_err());
     }

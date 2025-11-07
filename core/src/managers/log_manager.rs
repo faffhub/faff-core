@@ -35,18 +35,20 @@ impl LogManager {
     }
 
     /// Read the raw log file contents
-    pub fn read_log_raw(&self, date: NaiveDate) -> Result<String> {
+    pub async fn read_log_raw(&self, date: NaiveDate) -> Result<String> {
         let log_path = self.storage.log_file_path(date);
         self.storage
             .read_string(&log_path)
+            .await
             .context(format!("Failed to read log file for {}", date))
     }
 
     /// Write raw log file contents
-    pub fn write_log_raw(&self, date: NaiveDate, contents: &str) -> Result<()> {
+    pub async fn write_log_raw(&self, date: NaiveDate, contents: &str) -> Result<()> {
         let log_path = self.storage.log_file_path(date);
         self.storage
             .write_string(&log_path, contents)
+            .await
             .context(format!("Failed to write log for {}", date))
     }
 
@@ -58,13 +60,14 @@ impl LogManager {
     /// Get a log for a given date
     ///
     /// Returns None if the log file doesn't exist
-    pub fn get_log(&self, date: NaiveDate) -> Result<Option<Log>> {
+    pub async fn get_log(&self, date: NaiveDate) -> Result<Option<Log>> {
         let log_path = self.storage.log_file_path(date);
 
         if self.storage.exists(&log_path) {
             let toml_str = self
                 .storage
                 .read_string(&log_path)
+                .await
                 .with_context(|| format!("Failed to read log file for {}", date))?;
 
             let log = Log::from_log_file(&toml_str)
@@ -79,8 +82,8 @@ impl LogManager {
     /// Get a log for a given date, creating an empty one if it doesn't exist
     ///
     /// This is a convenience method for callers who always want a log to work with
-    pub fn get_log_or_create(&self, date: NaiveDate) -> Result<Log> {
-        if let Some(log) = self.get_log(date)? {
+    pub async fn get_log_or_create(&self, date: NaiveDate) -> Result<Log> {
+        if let Some(log) = self.get_log(date).await? {
             Ok(log)
         } else {
             Ok(Log::new(date, self.timezone, vec![]))
@@ -90,7 +93,7 @@ impl LogManager {
     /// Write a log to storage
     ///
     /// trackers: map of tracker IDs to human-readable names for comments
-    pub fn write_log(
+    pub async fn write_log(
         &self,
         log: &Log,
         trackers: &std::collections::HashMap<String, String>,
@@ -100,15 +103,17 @@ impl LogManager {
 
         self.storage
             .write_string(&log_path, &log_contents)
+            .await
             .context(format!("Failed to write log for {}", log.date))
     }
 
     /// List all log dates in storage
-    pub fn list_logs(&self) -> Result<Vec<NaiveDate>> {
+    pub async fn list_logs(&self) -> Result<Vec<NaiveDate>> {
         let log_dir = self.storage.log_dir();
         let files = self
             .storage
             .list_files(&log_dir, "*.toml")
+            .await
             .context("Failed to list log files")?;
 
         let mut dates = Vec::new();
@@ -126,7 +131,7 @@ impl LogManager {
     }
 
     /// Delete a log for a given date
-    pub fn delete_log(&self, date: NaiveDate) -> Result<()> {
+    pub async fn delete_log(&self, date: NaiveDate) -> Result<()> {
         let log_path = self.storage.log_file_path(date);
 
         if !self.storage.exists(&log_path) {
@@ -135,11 +140,12 @@ impl LogManager {
 
         self.storage
             .delete(&log_path)
+            .await
             .with_context(|| format!("Failed to delete log for {}", date))
     }
 
     /// Start a new session with the given intent at the current time
-    pub fn start_intent_now(
+    pub async fn start_intent_now(
         &self,
         intent: crate::models::Intent,
         note: Option<String>,
@@ -148,7 +154,7 @@ impl LogManager {
         trackers: &std::collections::HashMap<String, String>,
     ) -> Result<()> {
         // Get today's log or create empty one
-        let log = self.get_log_or_create(current_date)?;
+        let log = self.get_log_or_create(current_date).await?;
 
         // Validate trackers if any are specified
         if !intent.trackers.is_empty() {
@@ -169,7 +175,7 @@ impl LogManager {
 
         // Append to log and write
         let updated_log = log.append_session(session)?;
-        self.write_log(&updated_log, trackers)?;
+        self.write_log(&updated_log, trackers).await?;
 
         Ok(())
     }
@@ -177,17 +183,17 @@ impl LogManager {
     /// Stop the currently active session
     ///
     /// Returns Ok(()) if a session was stopped, or an error if no active session exists
-    pub fn stop_current_session(
+    pub async fn stop_current_session(
         &self,
         current_date: NaiveDate,
         current_time: chrono::DateTime<Tz>,
         trackers: &std::collections::HashMap<String, String>,
     ) -> Result<()> {
-        let log = self.get_log_or_create(current_date)?;
+        let log = self.get_log_or_create(current_date).await?;
 
         if log.active_session().is_some() {
             let updated_log = log.stop_active_session(current_time)?;
-            self.write_log(&updated_log, trackers)?;
+            self.write_log(&updated_log, trackers).await?;
             Ok(())
         } else {
             anyhow::bail!("No active session to stop")
@@ -197,12 +203,12 @@ impl LogManager {
     /// Find all logs that contain sessions using the given intent
     ///
     /// Returns a list of (date, session_count) tuples
-    pub fn find_logs_with_intent(&self, intent_id: &str) -> Result<Vec<(NaiveDate, usize)>> {
-        let all_dates = self.list_logs()?;
+    pub async fn find_logs_with_intent(&self, intent_id: &str) -> Result<Vec<(NaiveDate, usize)>> {
+        let all_dates = self.list_logs().await?;
         let mut logs_with_intent = Vec::new();
 
         for date in all_dates {
-            if let Ok(Some(log)) = self.get_log(date) {
+            if let Ok(Some(log)) = self.get_log(date).await {
                 let count = log
                     .timeline
                     .iter()
@@ -221,21 +227,21 @@ impl LogManager {
     /// Update an intent across all log files
     ///
     /// Returns the total number of sessions updated
-    pub fn update_intent_in_logs(
+    pub async fn update_intent_in_logs(
         &self,
         intent_id: &str,
         updated_intent: crate::models::Intent,
         trackers: &std::collections::HashMap<String, String>,
     ) -> Result<usize> {
-        let logs_with_intent = self.find_logs_with_intent(intent_id)?;
+        let logs_with_intent = self.find_logs_with_intent(intent_id).await?;
         let mut total_updated = 0;
 
         for (date, _) in logs_with_intent {
-            if let Ok(Some(log)) = self.get_log(date) {
+            if let Ok(Some(log)) = self.get_log(date).await {
                 let (updated_log, count) = log.update_intent(intent_id, updated_intent.clone());
 
                 if count > 0 {
-                    self.write_log(&updated_log, trackers)?;
+                    self.write_log(&updated_log, trackers).await?;
                     total_updated += count;
                 }
             }
@@ -256,39 +262,21 @@ impl LogManager {
     ///
     /// # Returns
     /// Tuple of (logs_updated, sessions_updated)
-    pub fn replace_field_in_all_logs(
+    pub async fn replace_field_in_all_logs(
         &self,
         field: &str,
         old_value: &str,
         new_value: &str,
         trackers: &std::collections::HashMap<String, String>,
     ) -> Result<(usize, usize)> {
-        let log_dir = self.storage.log_dir();
-        let entries = std::fs::read_dir(&log_dir)
-            .with_context(|| format!("Failed to read log directory: {}", log_dir.display()))?;
+        let all_dates = self.list_logs().await?;
 
         let mut logs_updated = 0;
         let mut sessions_updated = 0;
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-
-            // Skip non-TOML files
-            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
-                continue;
-            }
-
-            // Extract date from filename (YYYY-MM-DD.toml)
-            let date_str = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
-            let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-                .with_context(|| format!("Failed to parse date from filename: {}", date_str))?;
-
+        for date in all_dates {
             // Load log
-            let log = match self.get_log(date)? {
+            let log = match self.get_log(date).await? {
                 Some(log) => log,
                 None => continue,
             };
@@ -355,7 +343,7 @@ impl LogManager {
                 // Create updated log
                 let updated_log =
                     crate::models::log::Log::new(log.date, log.timezone, updated_timeline);
-                self.write_log(&updated_log, trackers)?;
+                self.write_log(&updated_log, trackers).await?;
                 logs_updated += 1;
             }
         }
@@ -368,40 +356,22 @@ impl LogManager {
     /// Returns tuple of:
     /// - HashMap of field value -> session count
     /// - HashMap of field value -> set of log dates
-    pub fn get_field_usage_stats(
+    pub async fn get_field_usage_stats(
         &self,
         field: &str,
     ) -> Result<(
         HashMap<String, usize>,
         HashMap<String, std::collections::HashSet<chrono::NaiveDate>>,
     )> {
-        let log_dir = self.storage.log_dir();
-        let entries = std::fs::read_dir(&log_dir)
-            .with_context(|| format!("Failed to read log directory: {}", log_dir.display()))?;
+        let all_dates = self.list_logs().await?;
 
         let mut session_count: HashMap<String, usize> = HashMap::new();
         let mut log_dates: HashMap<String, std::collections::HashSet<chrono::NaiveDate>> =
             HashMap::new();
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-
-            // Skip non-TOML files
-            if path.extension().and_then(|s| s.to_str()) != Some("toml") {
-                continue;
-            }
-
-            // Extract date from filename
-            let date_str = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow::anyhow!("Invalid log filename"))?;
-            let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-                .with_context(|| format!("Failed to parse date from filename: {}", date_str))?;
-
+        for date in all_dates {
             // Load log
-            let log = match self.get_log(date)? {
+            let log = match self.get_log(date).await? {
                 Some(log) => log,
                 None => continue,
             };
@@ -446,8 +416,8 @@ mod tests {
     use super::*;
     use crate::test_utils::mock_storage::MockStorage;
 
-    #[test]
-    fn test_log_exists() {
+    #[tokio::test]
+    async fn test_log_exists() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage.clone(), chrono_tz::UTC);
 
@@ -457,43 +427,44 @@ mod tests {
         // Write a log
         manager
             .write_log_raw(date, "date = \"2025-03-15\"\n")
+            .await
             .unwrap();
         assert!(manager.log_exists(date));
     }
 
-    #[test]
-    fn test_write_and_read_raw() {
+    #[tokio::test]
+    async fn test_write_and_read_raw() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let content = "date = \"2025-03-15\"\ntimezone = \"UTC\"\n";
 
-        manager.write_log_raw(date, content).unwrap();
-        let retrieved = manager.read_log_raw(date).unwrap();
+        manager.write_log_raw(date, content).await.unwrap();
+        let retrieved = manager.read_log_raw(date).await.unwrap();
 
         assert_eq!(retrieved, content);
     }
 
-    #[test]
-    fn test_list_logs() {
+    #[tokio::test]
+    async fn test_list_logs() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
         let date1 = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let date2 = NaiveDate::from_ymd_opt(2025, 3, 16).unwrap();
 
-        manager.write_log_raw(date1, "test").unwrap();
-        manager.write_log_raw(date2, "test").unwrap();
+        manager.write_log_raw(date1, "test").await.unwrap();
+        manager.write_log_raw(date2, "test").await.unwrap();
 
-        let dates = manager.list_logs().unwrap();
+        let dates = manager.list_logs().await.unwrap();
         assert_eq!(dates.len(), 2);
         assert_eq!(dates[0], date1);
         assert_eq!(dates[1], date2);
     }
 
-    #[test]
-    fn test_get_log_parses_toml() {
+    #[tokio::test]
+    async fn test_get_log_parses_toml() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
@@ -515,8 +486,8 @@ end = "10:30"
 note = "Morning session"
 "#;
 
-        manager.write_log_raw(date, toml_content).unwrap();
-        let log = manager.get_log(date).unwrap().unwrap();
+        manager.write_log_raw(date, toml_content).await.unwrap();
+        let log = manager.get_log(date).await.unwrap().unwrap();
 
         assert_eq!(log.date, date);
         assert_eq!(log.timezone, chrono_tz::UTC);
@@ -528,24 +499,24 @@ note = "Morning session"
         assert_eq!(session.note.as_ref().unwrap(), "Morning session");
     }
 
-    #[test]
-    fn test_get_log_returns_none_when_missing() {
+    #[tokio::test]
+    async fn test_get_log_returns_none_when_missing() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let log = manager.get_log(date).unwrap();
+        let log = manager.get_log(date).await.unwrap();
 
         assert!(log.is_none());
     }
 
-    #[test]
-    fn test_get_log_or_create() {
+    #[tokio::test]
+    async fn test_get_log_or_create() {
         let storage = Arc::new(MockStorage::new());
         let manager = LogManager::new(storage, chrono_tz::UTC);
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let log = manager.get_log_or_create(date).unwrap();
+        let log = manager.get_log_or_create(date).await.unwrap();
 
         assert_eq!(log.date, date);
         assert_eq!(log.timeline.len(), 0);

@@ -52,9 +52,9 @@ impl PyPlanManager {
     /// Returns: dict[str, Plan] - mapping of source names to Plans
     pub fn get_plans(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let plans = self
-            .manager
-            .get_plans(naive_date)
+        let plans = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_plans(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let dict = PyDict::new(py);
@@ -71,9 +71,9 @@ impl PyPlanManager {
     /// Returns: list[Intent]
     pub fn get_intents(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let intents = self
-            .manager
-            .get_intents(naive_date)
+        let intents = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_intents(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -90,9 +90,9 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_roles(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let roles = self
-            .manager
-            .get_roles(naive_date)
+        let roles = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_roles(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -108,9 +108,9 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_objectives(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let objectives = self
-            .manager
-            .get_objectives(naive_date)
+        let objectives = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_objectives(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -126,9 +126,9 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_actions(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let actions = self
-            .manager
-            .get_actions(naive_date)
+        let actions = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_actions(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -144,9 +144,9 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_subjects(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let subjects = self
-            .manager
-            .get_subjects(naive_date)
+        let subjects = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_subjects(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
@@ -162,9 +162,9 @@ impl PyPlanManager {
     /// Returns: dict[str, str] - mapping of tracker IDs to names
     pub fn get_trackers(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let trackers = self
-            .manager
-            .get_trackers(naive_date)
+        let trackers = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_trackers(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let bound = pythonize::pythonize(py, &trackers)
@@ -181,9 +181,9 @@ impl PyPlanManager {
         date: Bound<'_, PyDate>,
     ) -> PyResult<Option<PyPlan>> {
         let naive_date = date_py_to_rust(date)?;
-        let plan = self
-            .manager
-            .get_plan_by_tracker_id(tracker_id, naive_date)
+        let plan = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_plan_by_tracker_id(tracker_id, naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(plan.map(|inner| PyPlan { inner }))
@@ -194,9 +194,9 @@ impl PyPlanManager {
     /// Returns: Plan or None
     pub fn get_local_plan(&self, date: Bound<'_, PyDate>) -> PyResult<Option<PyPlan>> {
         let naive_date = date_py_to_rust(date)?;
-        let plan = self
-            .manager
-            .get_local_plan(naive_date)
+        let plan = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_local_plan(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(plan.map(|inner| PyPlan { inner }))
@@ -207,9 +207,9 @@ impl PyPlanManager {
     /// Returns: Plan
     pub fn get_local_plan_or_create(&self, date: Bound<'_, PyDate>) -> PyResult<PyPlan> {
         let naive_date = date_py_to_rust(date)?;
-        let plan = self
-            .manager
-            .get_local_plan_or_create(naive_date)
+        let plan = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_local_plan_or_create(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyPlan { inner: plan })
@@ -217,8 +217,9 @@ impl PyPlanManager {
 
     /// Write a plan to storage
     pub fn write_plan(&self, plan: &PyPlan) -> PyResult<()> {
-        self.manager
-            .write_plan(&plan.inner)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.write_plan(&plan.inner))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -226,9 +227,9 @@ impl PyPlanManager {
     ///
     /// Returns: tuple (source, Intent, plan_file_path) or None if not found
     pub fn find_intent_by_id(&self, py: Python, intent_id: &str) -> PyResult<Option<Py<PyAny>>> {
-        let result = self
-            .manager
-            .find_intent_by_id(intent_id)
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.find_intent_by_id(intent_id))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         match result {
@@ -250,9 +251,9 @@ impl PyPlanManager {
         intent_id: &str,
         updated_intent: &PyIntent,
     ) -> PyResult<Option<PyPlan>> {
-        let result = self
-            .manager
-            .update_intent_by_id(intent_id, updated_intent.inner.clone())
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.update_intent_by_id(intent_id, updated_intent.inner.clone()))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(result.map(|inner| PyPlan { inner }))
@@ -268,8 +269,9 @@ impl PyPlanManager {
             )
         })?;
 
-        self.manager
-            .remotes(workspace.plugins())
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.remotes(workspace.plugins()))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -282,8 +284,9 @@ impl PyPlanManager {
         old_value: &str,
         new_value: &str,
     ) -> PyResult<(usize, usize)> {
-        self.manager
-            .replace_field_in_all_plans(field, old_value, new_value)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.replace_field_in_all_plans(field, old_value, new_value))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -291,9 +294,9 @@ impl PyPlanManager {
     ///
     /// Returns dict of field value -> intent count
     pub fn get_field_usage_stats(&self, field: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let stats = self
-            .manager
-            .get_field_usage_stats(field)
+        let stats = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.get_field_usage_stats(field))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let dict = PyDict::new(py);

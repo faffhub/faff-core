@@ -33,10 +33,14 @@ impl PyWorkspace {
         let inner = match storage {
             Some(storage_obj) => {
                 let py_storage = PyStorage::new(storage_obj);
-                RustWorkspace::with_storage(Arc::new(py_storage))
+                tokio::runtime::Runtime::new()
+                    .unwrap()
+                    .block_on(RustWorkspace::with_storage(Arc::new(py_storage)))
                     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
             }
-            None => RustWorkspace::new()
+            None => tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(RustWorkspace::new())
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
         };
 
@@ -123,6 +127,39 @@ impl PyWorkspace {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         faff_core::type_mapping::date_rust_to_py(py, &parsed)
+    }
+
+    /// Parse a natural language datetime string, restricted to today's date
+    ///
+    /// This is useful for parsing times on today (e.g., "09:30" for this morning).
+    /// It ensures the parsed datetime falls on today's date, preventing accidental
+    /// backdating or future dating.
+    ///
+    /// Supports:
+    /// - Time formats: "09:30", "14:30", "3pm", "midnight"
+    /// - Relative times: "2 hours ago", "30 minutes ago"
+    /// - Special keywords: "now"
+    ///
+    /// Args:
+    ///     datetime_str: The datetime string to parse (None returns now)
+    ///
+    /// Returns:
+    ///     A Python datetime object
+    ///
+    /// Raises:
+    ///     ValueError: If the parsed datetime is not on today's date
+    fn parse_natural_datetime<'py>(
+        &self,
+        py: Python<'py>,
+        datetime_str: Option<&str>,
+    ) -> PyResult<Bound<'py, PyDateTime>> {
+        let today = self.inner.today();
+        let now = self.inner.now();
+
+        let parsed = faff_core::date_parsing::parse_natural_datetime(datetime_str, today, now)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
+        faff_core::type_mapping::datetime_rust_to_py(py, &parsed)
     }
 
     /// Get the PlanManager

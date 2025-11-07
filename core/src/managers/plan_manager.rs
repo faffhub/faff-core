@@ -35,14 +35,14 @@ impl PlanManager {
     /// A plan is valid if:
     /// - valid_from <= target_date
     /// - and (valid_until >= target_date or valid_until is None)
-    pub fn get_plans(&self, date: NaiveDate) -> Result<HashMap<String, Plan>> {
-        self.load_plans_for_date(date)
+    pub async fn get_plans(&self, date: NaiveDate) -> Result<HashMap<String, Plan>> {
+        self.load_plans_for_date(date).await
     }
 
     /// Load plans from storage for a given date
-    fn load_plans_for_date(&self, date: NaiveDate) -> Result<HashMap<String, Plan>> {
+    async fn load_plans_for_date(&self, date: NaiveDate) -> Result<HashMap<String, Plan>> {
         let plan_dir = self.storage.plan_dir();
-        let plan_files = self.find_plan_files_for_date(&plan_dir, date)?;
+        let plan_files = self.find_plan_files_for_date(&plan_dir, date).await?;
 
         let mut plans: HashMap<String, Plan> = HashMap::new();
 
@@ -50,6 +50,7 @@ impl PlanManager {
             let content = self
                 .storage
                 .read_string(&file_path)
+                .await
                 .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
 
             let plan: Plan = toml::from_str(&content)
@@ -82,7 +83,7 @@ impl PlanManager {
     ///
     /// Plan files follow the pattern: `<source>.<YYYYMMDD>.toml`
     /// For each source, we find the most recent file where file_date <= target_date
-    fn find_plan_files_for_date(
+    async fn find_plan_files_for_date(
         &self,
         plan_dir: &PathBuf,
         date: NaiveDate,
@@ -90,6 +91,7 @@ impl PlanManager {
         let files = self
             .storage
             .list_files(plan_dir, "*.toml")
+            .await
             .context("Failed to list plan files")?;
 
         // Map of source -> (most recent date, file path)
@@ -128,8 +130,8 @@ impl PlanManager {
     }
 
     /// Get all intents from plans valid for a given date
-    pub fn get_intents(&self, date: NaiveDate) -> Result<Vec<Intent>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_intents(&self, date: NaiveDate) -> Result<Vec<Intent>> {
+        let plans = self.get_plans(date).await?;
         let mut intents = std::collections::HashSet::new();
 
         for plan in plans.values() {
@@ -145,8 +147,8 @@ impl PlanManager {
     ///
     /// Returns roles prefixed with their source (e.g., "element:engineer")
     /// plus any roles from intents
-    pub fn get_roles(&self, date: NaiveDate) -> Result<Vec<String>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_roles(&self, date: NaiveDate) -> Result<Vec<String>> {
+        let plans = self.get_plans(date).await?;
         let mut roles = Vec::new();
 
         for plan in plans.values() {
@@ -171,8 +173,8 @@ impl PlanManager {
     }
 
     /// Get all objectives from plans valid for a given date
-    pub fn get_objectives(&self, date: NaiveDate) -> Result<Vec<String>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_objectives(&self, date: NaiveDate) -> Result<Vec<String>> {
+        let plans = self.get_plans(date).await?;
         let mut objectives = Vec::new();
 
         for plan in plans.values() {
@@ -197,8 +199,8 @@ impl PlanManager {
     }
 
     /// Get all actions from plans valid for a given date
-    pub fn get_actions(&self, date: NaiveDate) -> Result<Vec<String>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_actions(&self, date: NaiveDate) -> Result<Vec<String>> {
+        let plans = self.get_plans(date).await?;
         let mut actions = Vec::new();
 
         for plan in plans.values() {
@@ -223,8 +225,8 @@ impl PlanManager {
     }
 
     /// Get all subjects from plans valid for a given date
-    pub fn get_subjects(&self, date: NaiveDate) -> Result<Vec<String>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_subjects(&self, date: NaiveDate) -> Result<Vec<String>> {
+        let plans = self.get_plans(date).await?;
         let mut subjects = Vec::new();
 
         for plan in plans.values() {
@@ -252,8 +254,8 @@ impl PlanManager {
     ///
     /// Returns a map of tracker IDs (prefixed with source) to human-readable names
     /// Example: "element:12345" -> "Fix critical bug"
-    pub fn get_trackers(&self, date: NaiveDate) -> Result<HashMap<String, String>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_trackers(&self, date: NaiveDate) -> Result<HashMap<String, String>> {
+        let plans = self.get_plans(date).await?;
         let mut trackers = HashMap::new();
 
         for plan in plans.values() {
@@ -269,12 +271,12 @@ impl PlanManager {
     /// Get the plan containing a specific tracker ID
     ///
     /// Returns None if the tracker is not found in any plan for the given date
-    pub fn get_plan_by_tracker_id(
+    pub async fn get_plan_by_tracker_id(
         &self,
         tracker_id: &str,
         date: NaiveDate,
     ) -> Result<Option<Plan>> {
-        let plans = self.get_plans(date)?;
+        let plans = self.get_plans(date).await?;
 
         for plan in plans.values() {
             if plan.trackers.contains_key(tracker_id) {
@@ -288,16 +290,16 @@ impl PlanManager {
     /// Get the local plan for a given date
     ///
     /// Returns None if the local plan doesn't exist
-    pub fn get_local_plan(&self, date: NaiveDate) -> Result<Option<Plan>> {
-        let plans = self.get_plans(date)?;
+    pub async fn get_local_plan(&self, date: NaiveDate) -> Result<Option<Plan>> {
+        let plans = self.get_plans(date).await?;
         Ok(plans.get(Self::LOCAL_PLAN_SOURCE).cloned())
     }
 
     /// Get the local plan for a given date, creating an empty one if it doesn't exist
     ///
     /// This is a convenience method for callers who always want a plan to work with
-    pub fn get_local_plan_or_create(&self, date: NaiveDate) -> Result<Plan> {
-        if let Some(plan) = self.get_local_plan(date)? {
+    pub async fn get_local_plan_or_create(&self, date: NaiveDate) -> Result<Plan> {
+        if let Some(plan) = self.get_local_plan(date).await? {
             Ok(plan)
         } else {
             Ok(Plan::new(
@@ -321,7 +323,7 @@ impl PlanManager {
     ///
     /// Note: Remote files must be named `{source}.toml` where source matches the plan source
     /// (which is the slugified remote id).
-    pub fn write_plan(&self, plan: &Plan) -> Result<()> {
+    pub async fn write_plan(&self, plan: &Plan) -> Result<()> {
         use crate::models::remote::Remote;
 
         // Try to load remote configuration for this plan's source
@@ -331,7 +333,7 @@ impl PlanManager {
             .join(format!("{}.toml", plan.source));
         let plan_to_write = if self.storage.exists(&remote_file) {
             // Load remote and apply vocabulary mappings if configured
-            let remote_toml = self.storage.read_string(&remote_file).with_context(|| {
+            let remote_toml = self.storage.read_string(&remote_file).await.with_context(|| {
                 format!("Failed to read remote config: {}", remote_file.display())
             })?;
 
@@ -357,7 +359,7 @@ impl PlanManager {
         };
 
         let plan_dir = self.storage.plan_dir();
-        self.storage.create_dir_all(&plan_dir)?;
+        self.storage.create_dir_all(&plan_dir).await?;
 
         let filename = format!(
             "{}.{}.toml",
@@ -371,6 +373,7 @@ impl PlanManager {
 
         self.storage
             .write_string(&file_path, &toml_content)
+            .await
             .context("Failed to write plan file")?;
 
         Ok(())
@@ -379,11 +382,12 @@ impl PlanManager {
     /// List all plan files
     ///
     /// Returns a vector of (source, valid_from_date) tuples
-    pub fn list_plans(&self) -> Result<Vec<(String, NaiveDate)>> {
+    pub async fn list_plans(&self) -> Result<Vec<(String, NaiveDate)>> {
         let plan_dir = self.storage.plan_dir();
         let files = self
             .storage
             .list_files(&plan_dir, "*.toml")
+            .await
             .context("Failed to list plan files")?;
 
         let mut plan_info = Vec::new();
@@ -417,7 +421,7 @@ impl PlanManager {
     }
 
     /// Delete a plan
-    pub fn delete_plan(&self, source: &str, date: NaiveDate) -> Result<()> {
+    pub async fn delete_plan(&self, source: &str, date: NaiveDate) -> Result<()> {
         let plan_dir = self.storage.plan_dir();
         let filename = format!("{}.{}.toml", source, date.format("%Y%m%d"));
         let file_path = plan_dir.join(filename);
@@ -430,7 +434,7 @@ impl PlanManager {
             );
         }
 
-        self.storage.delete(&file_path).with_context(|| {
+        self.storage.delete(&file_path).await.with_context(|| {
             format!(
                 "Failed to delete plan for source '{}' and date {}",
                 source, date
@@ -449,17 +453,19 @@ impl PlanManager {
     /// - Ok(Some((source, intent, plan_file_path))) if found
     /// - Ok(None) if not found
     /// - Err if there's an error reading files
-    pub fn find_intent_by_id(&self, intent_id: &str) -> Result<Option<(String, Intent, PathBuf)>> {
+    pub async fn find_intent_by_id(&self, intent_id: &str) -> Result<Option<(String, Intent, PathBuf)>> {
         let plan_dir = self.storage.plan_dir();
         let plan_files = self
             .storage
             .list_files(&plan_dir, "*.toml")
+            .await
             .context("Failed to list plan files")?;
 
         for file_path in plan_files {
             let content = self
                 .storage
                 .read_string(&file_path)
+                .await
                 .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
 
             let plan: Plan = match toml::from_str(&content) {
@@ -487,19 +493,20 @@ impl PlanManager {
     /// - Ok(Some(plan)) if the intent was found and updated
     /// - Ok(None) if the intent was not found
     /// - Err if there's an error reading/writing files or updating the intent
-    pub fn update_intent_by_id(
+    pub async fn update_intent_by_id(
         &self,
         intent_id: &str,
         updated_intent: Intent,
     ) -> Result<Option<Plan>> {
         // First find the intent
-        let found = self.find_intent_by_id(intent_id)?;
+        let found = self.find_intent_by_id(intent_id).await?;
 
         if let Some((_source, _original_intent, file_path)) = found {
             // Load the plan
             let content = self
                 .storage
                 .read_string(&file_path)
+                .await
                 .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
 
             let plan: Plan = toml::from_str(&content)
@@ -509,7 +516,7 @@ impl PlanManager {
             let updated_plan = plan.update_intent(intent_id, updated_intent)?;
 
             // Write it back
-            self.write_plan(&updated_plan)?;
+            self.write_plan(&updated_plan).await?;
 
             Ok(Some(updated_plan))
         } else {
@@ -529,12 +536,12 @@ impl PlanManager {
     /// # Returns
     /// Vector of plan remote plugin instances
     #[cfg(feature = "python")]
-    pub fn remotes(
+    pub async fn remotes(
         &self,
         plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>,
     ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
         let mut pm = plugin_manager.lock().unwrap();
-        pm.plan_remotes()
+        pm.plan_remotes().await
     }
 
     /// Replace a field value across all plans
@@ -548,7 +555,7 @@ impl PlanManager {
     ///
     /// # Returns
     /// Tuple of (plans_updated, intents_updated)
-    pub fn replace_field_in_all_plans(
+    pub async fn replace_field_in_all_plans(
         &self,
         field: &str,
         old_value: &str,
@@ -571,7 +578,7 @@ impl PlanManager {
             }
 
             // Read and parse the plan
-            let content = self.storage.read_string(&path)?;
+            let content = self.storage.read_string(&path).await?;
             let mut plan: Plan = toml::from_str(&content)?;
 
             let mut plan_modified = false;
@@ -696,7 +703,7 @@ impl PlanManager {
 
             if plan_modified {
                 plan.intents = updated_intents;
-                self.write_plan(&plan)?;
+                self.write_plan(&plan).await?;
                 plans_updated += 1;
             }
         }
@@ -707,7 +714,7 @@ impl PlanManager {
     /// Get usage statistics for a field across all plans
     ///
     /// Returns a HashMap of field value -> intent count
-    pub fn get_field_usage_stats(&self, field: &str) -> Result<HashMap<String, usize>> {
+    pub async fn get_field_usage_stats(&self, field: &str) -> Result<HashMap<String, usize>> {
         let plan_dir = self.storage.plan_dir();
         let entries = std::fs::read_dir(&plan_dir)
             .with_context(|| format!("Failed to read plan directory: {}", plan_dir.display()))?;
@@ -724,7 +731,7 @@ impl PlanManager {
             }
 
             // Read and parse the plan
-            let content = self.storage.read_string(&path)?;
+            let content = self.storage.read_string(&path).await?;
             let plan: Plan = toml::from_str(&content)?;
 
             // Count intents using this field value
@@ -781,8 +788,8 @@ objective = "{}:development"
         )
     }
 
-    #[test]
-    fn test_load_single_plan() {
+    #[tokio::test]
+    async fn test_load_single_plan() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -792,13 +799,13 @@ objective = "{}:development"
         let manager = PlanManager::new(storage);
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let plans = manager.get_plans(date).unwrap();
+        let plans = manager.get_plans(date).await.unwrap();
         assert_eq!(plans.len(), 1);
         assert!(plans.contains_key("local"));
     }
 
-    #[test]
-    fn test_get_trackers() {
+    #[tokio::test]
+    async fn test_get_trackers() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -808,12 +815,12 @@ objective = "{}:development"
         let manager = PlanManager::new(storage);
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let trackers = manager.get_trackers(date).unwrap();
+        let trackers = manager.get_trackers(date).await.unwrap();
         assert_eq!(trackers.get("local:123"), Some(&"Task 123".to_string()));
     }
 
-    #[test]
-    fn test_cache_works() {
+    #[tokio::test]
+    async fn test_cache_works() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -824,37 +831,37 @@ objective = "{}:development"
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
         // First call - loads from storage
-        let plans1 = manager.get_plans(date).unwrap();
+        let plans1 = manager.get_plans(date).await.unwrap();
         // Second call - should use cache
-        let plans2 = manager.get_plans(date).unwrap();
+        let plans2 = manager.get_plans(date).await.unwrap();
 
         assert_eq!(plans1.len(), plans2.len());
     }
 
-    #[test]
-    fn test_get_local_plan_returns_none_when_missing() {
+    #[tokio::test]
+    async fn test_get_local_plan_returns_none_when_missing() {
         let storage = Arc::new(MockStorage::new());
         let manager = PlanManager::new(storage);
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let plan = manager.get_local_plan(date).unwrap();
+        let plan = manager.get_local_plan(date).await.unwrap();
         assert!(plan.is_none());
     }
 
-    #[test]
-    fn test_get_local_plan_or_create() {
+    #[tokio::test]
+    async fn test_get_local_plan_or_create() {
         let storage = Arc::new(MockStorage::new());
         let manager = PlanManager::new(storage);
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let plan = manager.get_local_plan_or_create(date).unwrap();
+        let plan = manager.get_local_plan_or_create(date).await.unwrap();
         assert_eq!(plan.source, "local");
         assert_eq!(plan.valid_from, date);
         assert_eq!(plan.intents.len(), 0);
     }
 
-    #[test]
-    fn test_get_plan_by_tracker_id_returns_none() {
+    #[tokio::test]
+    async fn test_get_plan_by_tracker_id_returns_none() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -864,12 +871,12 @@ objective = "{}:development"
         let manager = PlanManager::new(storage);
         let date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 
-        let plan = manager.get_plan_by_tracker_id("999", date).unwrap();
+        let plan = manager.get_plan_by_tracker_id("999", date).await.unwrap();
         assert!(plan.is_none());
     }
 
-    #[test]
-    fn test_list_plans() {
+    #[tokio::test]
+    async fn test_list_plans() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -881,7 +888,7 @@ objective = "{}:development"
         );
 
         let manager = PlanManager::new(storage);
-        let plans = manager.list_plans().unwrap();
+        let plans = manager.list_plans().await.unwrap();
 
         assert_eq!(plans.len(), 2);
         assert_eq!(plans[0].0, "local");
@@ -890,8 +897,8 @@ objective = "{}:development"
         assert_eq!(plans[1].1, NaiveDate::from_ymd_opt(2025, 1, 15).unwrap());
     }
 
-    #[test]
-    fn test_plan_exists() {
+    #[tokio::test]
+    async fn test_plan_exists() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -905,8 +912,8 @@ objective = "{}:development"
         assert!(!manager.plan_exists("remote", date));
     }
 
-    #[test]
-    fn test_delete_plan() {
+    #[tokio::test]
+    async fn test_delete_plan() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
             PathBuf::from("/faff/.faff/plans/local.20250101.toml"),
@@ -918,24 +925,24 @@ objective = "{}:development"
 
         assert!(manager.plan_exists("local", date));
 
-        manager.delete_plan("local", date).unwrap();
+        manager.delete_plan("local", date).await.unwrap();
 
         assert!(!manager.plan_exists("local", date));
     }
 
-    #[test]
-    fn test_delete_nonexistent_plan() {
+    #[tokio::test]
+    async fn test_delete_nonexistent_plan() {
         let storage = Arc::new(MockStorage::new());
         let manager = PlanManager::new(storage);
         let date = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
 
-        let result = manager.delete_plan("nonexistent", date);
+        let result = manager.delete_plan("nonexistent", date).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
 
-    #[test]
-    fn test_write_plan_applies_vocabulary_mappings() {
+    #[tokio::test]
+    async fn test_write_plan_applies_vocabulary_mappings() {
         let storage = Arc::new(MockStorage::new());
 
         // Create a remote configuration with vocabulary mapping
@@ -981,7 +988,7 @@ subject = "poc/{description|slugify}"
         );
 
         // Write the plan (should apply vocabulary mappings)
-        manager.write_plan(&plan).expect("Failed to write plan");
+        manager.write_plan(&plan).await.expect("Failed to write plan");
 
         // Read back the written plan (MockStorage base_dir is /faff/.faff)
         let written_plan_path = PathBuf::from("/faff/.faff/plans/test-remote.20251104.toml");
@@ -992,6 +999,7 @@ subject = "poc/{description|slugify}"
 
         let written_content = storage
             .read_string(&written_plan_path)
+            .await
             .expect("Failed to read written plan");
         let written_plan: Plan =
             toml::from_str(&written_content).expect("Failed to parse written plan");

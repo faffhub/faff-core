@@ -38,8 +38,9 @@ impl PyPluginManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // Ensure plugins are loaded
-        manager
-            .load_plugins()
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(manager.load_plugins())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // Access the cache to get the plugins
@@ -88,8 +89,9 @@ impl PyPluginManager {
                 pyo3::exceptions::PyValueError::new_err(format!("Invalid defaults: {}", e))
             })?;
 
-        manager
-            .instantiate_plugin(plugin_name, instance_name, config_map, defaults_map)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(manager.instantiate_plugin(plugin_name, instance_name, config_map, defaults_map))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -103,8 +105,9 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        manager
-            .plan_remotes()
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(manager.plan_remotes())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -118,8 +121,9 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        manager
-            .audiences()
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(manager.audiences())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -140,8 +144,9 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        manager
-            .get_audience_by_id(audience_id)
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(manager.get_audience_by_id(audience_id))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
