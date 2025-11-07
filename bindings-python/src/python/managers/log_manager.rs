@@ -2,12 +2,12 @@ use chrono::Datelike;
 use chrono_tz::Tz;
 use pyo3::exceptions::{PyFileNotFoundError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyDate;
+use pyo3::types::{PyDate, PyDateTime};
 use std::sync::Arc;
 
 use crate::python::storage::PyStorage;
 use faff_core::managers::LogManager as RustLogManager;
-use faff_core::type_mapping::{date_py_to_rust, date_rust_to_py};
+use faff_core::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
 use faff_core::workspace::Workspace as RustWorkspace;
 
 #[pyclass(name = "LogManager")]
@@ -201,6 +201,46 @@ impl PyLogManager {
                 note,
                 current_date,
                 current_time,
+                &trackers,
+            )
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Start a new session with the given intent at a specific time
+    ///
+    /// Takes a Python datetime object for the start time
+    #[pyo3(signature = (intent, start_time, note=None))]
+    fn start_intent_at(
+        &self,
+        py: Python<'_>,
+        intent: &faff_core::py_models::intent::PyIntent,
+        start_time: Bound<'_, PyDateTime>,
+        note: Option<String>,
+    ) -> PyResult<()> {
+        let workspace = self.workspace.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "LogManager has no workspace reference. This should not happen.",
+            )
+        })?;
+
+        // Convert Python datetime to Rust DateTime<Tz>
+        let start_datetime = datetime_py_to_rust(start_time)?;
+
+        // Get the date from the start time
+        let current_date = start_datetime.date_naive();
+
+        // Get trackers from plan manager
+        let trackers = workspace
+            .plans()
+            .get_trackers(current_date)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        self.inner
+            .start_intent_now(
+                intent.inner.clone(),
+                note,
+                current_date,
+                start_datetime,
                 &trackers,
             )
             .map_err(|e| PyValueError::new_err(e.to_string()))

@@ -449,6 +449,17 @@ class LogManager:
         """
         ...
 
+    def start_intent_at(self, intent: models.Intent, start_time: datetime.datetime, note: Optional[str] = None) -> None:
+        """
+        Start a new session with the given intent at a specific time.
+
+        Args:
+            intent: The intent to start
+            start_time: When to start the session
+            note: Optional note for the session
+        """
+        ...
+
     def stop_current_session(self) -> None:
         """
         Stop the currently active session.
