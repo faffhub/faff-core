@@ -16,6 +16,9 @@ faff-core = { path = "../core" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 
+# Async support
+async-trait = { workspace = true }
+
 # Serialization (for JS interop)
 serde = { workspace = true }
 serde_json = { workspace = true }

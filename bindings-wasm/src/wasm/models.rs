@@ -12,7 +12,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct Intent {
-    inner: RustIntent,
+    pub(crate) inner: RustIntent,
 }
 
 #[wasm_bindgen]

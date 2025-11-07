@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Faff WASM Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #569cd6; }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #1177bb; }
+        #output {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            padding: 15px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            min-height: 200px;
+        }
+        .success { color: #4ec9b0; }
+        .error { color: #f48771; }
+        .info { color: #569cd6; }
+    </style>
+</head>
+<body>
+    <h1>Faff WASM Bindings Test</h1>
+
+    <p>This page tests the Faff WASM bindings with an in-memory storage adapter.</p>
+
+    <div>
+        <button onclick="runTests()">Run Tests</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script type="module">
+        import init, { Workspace, Log } from './pkg/faff_core_wasm.js';
+
+        // Simple in-memory storage adapter for testing
+        class MemoryStorage {
+            constructor() {
+                this.files = new Map();
+                this.baseDirPath = '/.faff';
+                this.log('MemoryStorage initialized');
+            }
+
+            baseDir() {
+                return this.baseDirPath;
+            }
+
+            async readBytes(path) {
+                this.log(`readBytes: ${path}`);
+                if (!this.files.has(path)) {
+                    throw new Error(`File not found: ${path}`);
+                }
+                const content = this.files.get(path);
+                return new Uint8Array(new TextEncoder().encode(content));
+            }
+
+            async readString(path) {
+                this.log(`readString: ${path}`);
+                if (!this.files.has(path)) {
+                    throw new Error(`File not found: ${path}`);
+                }
+                return this.files.get(path);
+            }
+
+            async writeBytes(path, data) {
+                this.log(`writeBytes: ${path} (${data.length} bytes)`);
+                const content = new TextDecoder().decode(data);
+                this.files.set(path, content);
+            }
+
+            async writeString(path, data) {
+                this.log(`writeString: ${path}`);
+                this.files.set(path, data);
+            }
+
+            async delete(path) {
+                this.log(`delete: ${path}`);
+                this.files.delete(path);
+            }
+
+            exists(path) {
+                const result = this.files.has(path);
+                this.log(`exists: ${path} = ${result}`);
+                return result;
+            }
+
+            async createDirAll(path) {
+                this.log(`createDirAll: ${path}`);
+                // No-op for in-memory storage
+            }
+
+            async listFiles(dir, pattern) {
+                this.log(`listFiles: ${dir} pattern=${pattern}`);
+                const files = [];
+                const regex = new RegExp(pattern.replace(/\*/g, '.*'));
+                for (const path of this.files.keys()) {
+                    if (path.startsWith(dir + '/')) {
+                        const filename = path.substring(dir.length + 1);
+                        if (!filename.includes('/') && regex.test(filename)) {
+                            files.push(path);
+                        }
+                    }
+                }
+                return files;
+            }
+
+            log(msg) {
+                console.log(`[Storage] ${msg}`);
+            }
+        }
+
+        function log(msg, type = 'info') {
+            const output = document.getElementById('output');
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = msg + '\n';
+            output.appendChild(span);
+            console.log(msg);
+        }
+
+        window.clearOutput = function() {
+            document.getElementById('output').innerHTML = '';
+        };
+
+        window.runTests = async function() {
+            clearOutput();
+            log('=== Starting Faff WASM Tests ===', 'info');
+
+            try {
+                // Initialize WASM
+                log('Initializing WASM module...', 'info');
+                await init();
+                log('✓ WASM module initialized', 'success');
+
+                // Create storage with a config file
+                log('\nCreating memory storage...', 'info');
+                const storage = new MemoryStorage();
+
+                // Add a basic config file
+                const config = `timezone = "UTC"`;
+                storage.files.set('/.faff/config.toml', config);
+                log('✓ Added config.toml', 'success');
+
+                // Create workspace
+                log('\nCreating workspace...', 'info');
+                const workspace = await new Workspace(storage);
+                log('✓ Workspace created', 'success');
+
+                // Test timezone
+                const tz = workspace.timezone();
+                log(`\nWorkspace timezone: ${tz}`, 'info');
+
+                // Test today
+                const today = workspace.today();
+                log(`Today's date: ${today}`, 'info');
+
+                // Test now
+                const now = workspace.now();
+                log(`Current time: ${now}`, 'info');
+
+                // Test logExists (should be false)
+                const exists = workspace.logExists(today);
+                log(`\nLog exists for today: ${exists}`, 'info');
+
+                // Test getLog (should return null)
+                log('\nGetting log for today...', 'info');
+                const log_result = await workspace.getLog(today);
+                log(`Log result: ${log_result === null ? 'null (as expected)' : log_result}`, 'success');
+
+                // Test listLogs (should be empty)
+                log('\nListing all logs...', 'info');
+                const logs = await workspace.listLogs();
+                log(`Found ${logs.length} logs`, 'success');
+
+                // Test creating and writing a log
+                log('\n--- Testing Log Creation and Writing ---', 'info');
+                log('Creating new empty log for today...', 'info');
+                const newLog = new Log(today, 'UTC');
+                log(`✓ Log created for ${newLog.date}`, 'success');
+                log(`  Timezone: ${newLog.timezone}`, 'info');
+                log(`  Sessions: ${newLog.timeline.length}`, 'info');
+
+                // Write the log
+                log('\nWriting log to storage...', 'info');
+                await workspace.writeLog(newLog);
+                log('✓ Log written successfully', 'success');
+
+                // Verify log now exists
+                const existsAfterWrite = workspace.logExists(today);
+                log(`\nLog exists after write: ${existsAfterWrite}`, existsAfterWrite ? 'success' : 'error');
+
+                // Read it back
+                log('\nReading log back from storage...', 'info');
+                const retrievedLog = await workspace.getLog(today);
+                if (retrievedLog) {
+                    log('✓ Log retrieved successfully', 'success');
+                    log(`  Date: ${retrievedLog.date}`, 'info');
+                    log(`  Timezone: ${retrievedLog.timezone}`, 'info');
+                    log(`  Sessions: ${retrievedLog.timeline.length}`, 'info');
+                    log(`  Is closed: ${retrievedLog.isClosed()}`, 'info');
+                } else {
+                    log('✗ Failed to retrieve log', 'error');
+                }
+
+                // List logs again (should have 1)
+                log('\nListing logs after write...', 'info');
+                const logsAfterWrite = await workspace.listLogs();
+                log(`Found ${logsAfterWrite.length} log(s)`, 'success');
+
+                log('\n=== All Tests Passed! ===', 'success');
+
+            } catch (error) {
+                log(`\n✗ Error: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+                console.error(error);
+            }
+        };
+
+        // Auto-run tests on load
+        log('Page loaded. Click "Run Tests" to start.', 'info');
+    </script>
+</body>
+</html>
