@@ -138,6 +138,22 @@ impl Session {
             .map(|d| d.num_milliseconds() as f64)
     }
 
+    /// Get elapsed time in milliseconds for active sessions (no end time).
+    /// Returns duration since start to now.
+    /// Returns null if session has an end time (use duration() instead).
+    #[wasm_bindgen(js_name = elapsed)]
+    pub fn elapsed(&self) -> Option<f64> {
+        if self.inner.end.is_some() {
+            // Session is closed, use duration() instead
+            return None;
+        }
+
+        // Calculate time elapsed from start to now
+        let now = chrono::Utc::now();
+        let elapsed = now.signed_duration_since(self.inner.start);
+        Some(elapsed.num_milliseconds() as f64)
+    }
+
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
         serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))

@@ -3,6 +3,7 @@ mod wasm;
 use wasm_bindgen::prelude::*;
 
 // Re-export the main types
+pub use wasm::managers::*;
 pub use wasm::models::*;
 pub use wasm::workspace::*;
 

@@ -1,4 +1,4 @@
-use super::models::Log;
+use super::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
 use super::storage::{JsStorage, JsStorageAdapter};
 use chrono::Datelike;
 use faff_core::workspace::Workspace as RustWorkspace;
@@ -8,11 +8,19 @@ use wasm_bindgen_futures::future_to_promise;
 
 /// Workspace provides coordinated access to faff functionality in WASM.
 ///
-/// This wraps the actual faff_core::Workspace and exposes its functionality
-/// through JavaScript Promises.
+/// The Workspace owns managers for different aspects of the system:
+/// - logs: LogManager for daily work logs
+/// - plans: PlanManager for vocabulary and intents
+/// - timesheets: TimesheetManager for compiled, signed records
+/// - identities: IdentityManager for cryptographic signing keys
 #[wasm_bindgen]
 pub struct Workspace {
     inner: Arc<RustWorkspace>,
+    // Cache the manager wrappers
+    logs: LogManager,
+    plans: PlanManager,
+    timesheets: TimesheetManager,
+    identities: IdentityManager,
 }
 
 #[wasm_bindgen]
@@ -31,8 +39,28 @@ impl Workspace {
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to create workspace: {}", e)))?;
 
+            // Wrap in Arc so we can share it with managers
+            let inner_arc = Arc::new(workspace);
+
+            // Create manager wrappers from the Rust managers
+            let logs = LogManager::from_rust(inner_arc.logs().clone(), inner_arc.clone());
+            let plans = PlanManager::from_rust(
+                Arc::new(inner_arc.plans().clone()),
+                inner_arc.clone(),
+            );
+            let timesheets = TimesheetManager::from_rust(
+                Arc::new(inner_arc.timesheets().clone()),
+                inner_arc.clone(),
+            );
+            let identities =
+                IdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
+
             let wasm_workspace = Workspace {
-                inner: Arc::new(workspace),
+                inner: inner_arc,
+                logs,
+                plans,
+                timesheets,
+                identities,
             };
 
             Ok(JsValue::from(wasm_workspace))
@@ -59,143 +87,41 @@ impl Workspace {
         self.inner.timezone().name().to_string()
     }
 
-    /// Check if a log exists for the given date.
+    /// Get the LogManager.
     ///
-    /// date: JS Date object
-    /// Returns: boolean
-    #[wasm_bindgen(js_name = logExists)]
-    pub fn log_exists(&self, date: js_sys::Date) -> bool {
-        if let Ok(naive_date) = js_date_to_naive_date(&date) {
-            self.inner.logs().log_exists(naive_date)
-        } else {
-            false
-        }
+    /// Returns: LogManager
+    #[wasm_bindgen(getter)]
+    pub fn logs(&self) -> LogManager {
+        // We need to clone because wasm-bindgen requires returning by value
+        // The LogManager itself contains Arc internally, so this is cheap
+        LogManager::from_rust(self.inner.logs().clone(), self.inner.clone())
     }
 
-    /// Get a log for the specified date.
+    /// Get the PlanManager.
     ///
-    /// date: JS Date object
-    /// Returns Promise<Log | null>.
-    #[wasm_bindgen(js_name = getLog)]
-    pub fn get_log(&self, date: js_sys::Date) -> js_sys::Promise {
-        let logs = self.inner.logs().clone();
-
-        future_to_promise(async move {
-            let naive_date = js_date_to_naive_date(&date)?;
-
-            let log = logs.get_log(naive_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get log: {}", e)))?;
-
-            match log {
-                Some(inner) => {
-                    let log = Log { inner };
-                    Ok(JsValue::from(log))
-                }
-                None => Ok(JsValue::null()),
-            }
-        })
+    /// Returns: PlanManager
+    #[wasm_bindgen(getter)]
+    pub fn plans(&self) -> PlanManager {
+        PlanManager::from_rust(Arc::new(self.inner.plans().clone()), self.inner.clone())
     }
 
-    /// List all log dates.
+    /// Get the TimesheetManager.
     ///
-    /// Returns Promise<Date[]>.
-    #[wasm_bindgen(js_name = listLogs)]
-    pub fn list_logs(&self) -> js_sys::Promise {
-        let logs = self.inner.logs().clone();
-
-        future_to_promise(async move {
-            let dates = logs.list_logs()
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to list logs: {}", e)))?;
-
-            let array = js_sys::Array::new();
-            for date in dates {
-                array.push(&naive_date_to_js_date(&date));
-            }
-
-            Ok(JsValue::from(array))
-        })
+    /// Returns: TimesheetManager
+    #[wasm_bindgen(getter)]
+    pub fn timesheets(&self) -> TimesheetManager {
+        TimesheetManager::from_rust(
+            Arc::new(self.inner.timesheets().clone()),
+            self.inner.clone(),
+        )
     }
 
-    /// Get plans for a specific date.
+    /// Get the IdentityManager.
     ///
-    /// date: JS Date object
-    /// Returns Promise<object> with plan data.
-    #[wasm_bindgen(js_name = getPlans)]
-    pub fn get_plans(&self, date: js_sys::Date) -> js_sys::Promise {
-        let plans = self.inner.plans().clone();
-
-        future_to_promise(async move {
-            let naive_date = js_date_to_naive_date(&date)?;
-
-            let plan_map = plans.get_plans(naive_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get plans: {}", e)))?;
-
-            // Convert to JS object
-            let obj = js_sys::Object::new();
-            js_sys::Reflect::set(
-                &obj,
-                &JsValue::from_str("count"),
-                &JsValue::from_f64(plan_map.len() as f64),
-            )?;
-
-            Ok(JsValue::from(obj))
-        })
-    }
-
-    /// Get trackers for a specific date.
-    ///
-    /// date: JS Date object
-    /// Returns Promise<object> with tracker data.
-    #[wasm_bindgen(js_name = getTrackers)]
-    pub fn get_trackers(&self, date: js_sys::Date) -> js_sys::Promise {
-        let plans = self.inner.plans().clone();
-
-        future_to_promise(async move {
-            let naive_date = js_date_to_naive_date(&date)?;
-
-            let trackers = plans.get_trackers(naive_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get trackers: {}", e)))?;
-
-            // Convert to JS object with tracker count
-            let obj = js_sys::Object::new();
-            js_sys::Reflect::set(
-                &obj,
-                &JsValue::from_str("count"),
-                &JsValue::from_f64(trackers.len() as f64),
-            )?;
-
-            Ok(JsValue::from(obj))
-        })
-    }
-
-    /// Write a log to storage.
-    ///
-    /// log: Log object
-    /// Returns Promise<void>.
-    #[wasm_bindgen(js_name = writeLog)]
-    pub fn write_log(&self, log: &Log) -> js_sys::Promise {
-        let logs = self.inner.logs().clone();
-        let plans = self.inner.plans().clone();
-        let log_inner = log.inner.clone();
-
-        future_to_promise(async move {
-            let date = log_inner.date;
-
-            // Get trackers for this date
-            let trackers = plans.get_trackers(date)
-                .await
-                .unwrap_or_default();
-
-            logs.write_log(&log_inner, &trackers)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to write log: {}", e)))?;
-
-            Ok(JsValue::undefined())
-        })
+    /// Returns: IdentityManager
+    #[wasm_bindgen(getter)]
+    pub fn identities(&self) -> IdentityManager {
+        IdentityManager::from_rust(Arc::new(self.inner.identities().clone()))
     }
 }
 
