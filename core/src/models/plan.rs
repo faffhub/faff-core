@@ -258,7 +258,7 @@ mod tests {
         let new_plan = plan.add_intent(intent.clone());
 
         assert_eq!(new_plan.intents.len(), 1);
-        // The added intent should have the same ROAST values but a generated ID
+        // The added intent should have the same ASTRO values but a generated ID
         assert_eq!(new_plan.intents[0].alias, intent.alias);
         assert_eq!(new_plan.intents[0].role, intent.role);
         assert_eq!(new_plan.intents[0].objective, intent.objective);
@@ -316,7 +316,7 @@ mod tests {
 
         assert_eq!(new_plan.intents.len(), 2);
         assert!(new_plan.intents.contains(&intent1));
-        // Check that second intent exists with correct ROAST values
+        // Check that second intent exists with correct ASTRO values
         let added_intent2 = new_plan
             .intents
             .iter()

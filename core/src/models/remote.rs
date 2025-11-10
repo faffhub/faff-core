@@ -25,8 +25,8 @@ pub struct Remote {
     #[serde(default)]
     pub connection: HashMap<String, toml::Value>,
 
-    /// Static ROAST vocabulary for this remote
-    /// Used when the remote doesn't provide its own ROAST objects
+    /// Static ASTRO vocabulary for this remote
+    /// Used when the remote doesn't provide its own ASTRO objects
     #[serde(default)]
     pub vocabulary: RemoteVocabulary,
 
@@ -320,9 +320,9 @@ pub struct MappingResult {
     pub subject: Option<String>,
 }
 
-/// Static ROAST vocabulary for a remote
+/// Static ASTRO vocabulary for a remote
 ///
-/// These are source-scoped ROAST objects that don't come from the remote API
+/// These are source-scoped ASTRO objects that don't come from the remote API
 /// but should be associated with this remote's source ID.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct RemoteVocabulary {

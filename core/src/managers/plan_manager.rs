@@ -546,7 +546,7 @@ impl PlanManager {
 
     /// Replace a field value across all plans
     ///
-    /// Updates both plan-level ROAST collections and intents
+    /// Updates both plan-level ASTRO collections and intents
     ///
     /// # Arguments
     /// * `field` - The field to update (role, objective, action, subject)
@@ -583,7 +583,7 @@ impl PlanManager {
 
             let mut plan_modified = false;
 
-            // Update plan-level ROAST collection
+            // Update plan-level ASTRO collection
             match field {
                 "role" => {
                     let mut roles = plan.roles.clone();
