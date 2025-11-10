@@ -18,7 +18,10 @@ pub struct TimesheetManager {
 
 impl TimesheetManager {
     /// Create from Rust manager with workspace reference
-    pub(crate) fn from_rust(manager: Arc<RustTimesheetManager>, workspace: Arc<RustWorkspace>) -> Self {
+    pub(crate) fn from_rust(
+        manager: Arc<RustTimesheetManager>,
+        workspace: Arc<RustWorkspace>,
+    ) -> Self {
         Self {
             inner: manager,
             workspace: Some(workspace),
@@ -138,7 +141,9 @@ impl TimesheetManager {
             let stale = inner
                 .find_stale_timesheets(log_manager, naive_date)
                 .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to find stale timesheets: {}", e)))?;
+                .map_err(|e| {
+                    JsValue::from_str(&format!("Failed to find stale timesheets: {}", e))
+                })?;
 
             let array = js_sys::Array::new();
             for timesheet in stale {
@@ -163,7 +168,9 @@ impl TimesheetManager {
             let failed = inner
                 .find_failed_submissions(naive_date)
                 .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to find failed submissions: {}", e)))?;
+                .map_err(|e| {
+                    JsValue::from_str(&format!("Failed to find failed submissions: {}", e))
+                })?;
 
             let array = js_sys::Array::new();
             for timesheet in failed {
@@ -182,7 +189,11 @@ impl TimesheetManager {
     /// signing_ids: array of identity IDs to use for signing
     /// Returns Promise<Timesheet> - the signed timesheet.
     #[wasm_bindgen(js_name = signTimesheet)]
-    pub fn sign_timesheet(&self, timesheet: &Timesheet, signing_ids: Vec<String>) -> js_sys::Promise {
+    pub fn sign_timesheet(
+        &self,
+        timesheet: &Timesheet,
+        signing_ids: Vec<String>,
+    ) -> js_sys::Promise {
         let workspace = match &self.workspace {
             Some(ws) => ws.clone(),
             None => {

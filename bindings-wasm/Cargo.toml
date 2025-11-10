@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "WASM bindings for Faffage - a semantic time tracking system"
+repository = "https://github.com/faffhub/faff-core/"
+homepage = "https://faffage.com"
+keywords = ["timetracking", "wasm", "productivity"]
 
 [lib]
 crate-type = ["cdylib"]

@@ -252,7 +252,10 @@ mod tests {
         let storage = FileSystemStorage::from_path(temp.path().to_path_buf()).unwrap();
 
         let test_file = storage.log_dir().join("test.txt");
-        storage.write_string(&test_file, "hello world").await.unwrap();
+        storage
+            .write_string(&test_file, "hello world")
+            .await
+            .unwrap();
 
         let contents = storage.read_string(&test_file).await.unwrap();
         assert_eq!(contents, "hello world");

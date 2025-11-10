@@ -253,7 +253,10 @@ impl PyPlanManager {
     ) -> PyResult<Option<PyPlan>> {
         let result = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.update_intent_by_id(intent_id, updated_intent.inner.clone()))
+            .block_on(
+                self.manager
+                    .update_intent_by_id(intent_id, updated_intent.inner.clone()),
+            )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(result.map(|inner| PyPlan { inner }))
@@ -286,7 +289,10 @@ impl PyPlanManager {
     ) -> PyResult<(usize, usize)> {
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.replace_field_in_all_plans(field, old_value, new_value))
+            .block_on(
+                self.manager
+                    .replace_field_in_all_plans(field, old_value, new_value),
+            )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 

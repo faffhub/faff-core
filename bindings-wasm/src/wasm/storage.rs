@@ -20,11 +20,17 @@ extern "C" {
 
     /// Read file as bytes. Returns Promise<Uint8Array>.
     #[wasm_bindgen(structural, method, js_name = readBytes, catch)]
-    pub fn read_bytes_promise(this: &JsStorageAdapter, path: &str) -> Result<js_sys::Promise, JsValue>;
+    pub fn read_bytes_promise(
+        this: &JsStorageAdapter,
+        path: &str,
+    ) -> Result<js_sys::Promise, JsValue>;
 
     /// Read file as string. Returns Promise<string>.
     #[wasm_bindgen(structural, method, js_name = readString, catch)]
-    pub fn read_string_promise(this: &JsStorageAdapter, path: &str) -> Result<js_sys::Promise, JsValue>;
+    pub fn read_string_promise(
+        this: &JsStorageAdapter,
+        path: &str,
+    ) -> Result<js_sys::Promise, JsValue>;
 
     /// Write bytes to file. Returns Promise<void>.
     #[wasm_bindgen(structural, method, js_name = writeBytes, catch)]
@@ -52,7 +58,10 @@ extern "C" {
 
     /// Create directory and all parent directories. Returns Promise<void>.
     #[wasm_bindgen(structural, method, js_name = createDirAll, catch)]
-    pub fn create_dir_all_promise(this: &JsStorageAdapter, path: &str) -> Result<js_sys::Promise, JsValue>;
+    pub fn create_dir_all_promise(
+        this: &JsStorageAdapter,
+        path: &str,
+    ) -> Result<js_sys::Promise, JsValue>;
 
     /// List files matching pattern. Returns Promise<string[]>.
     #[wasm_bindgen(structural, method, js_name = listFiles, catch)]
@@ -86,7 +95,9 @@ impl Storage for JsStorage {
     async fn read_bytes(&self, path: &Path) -> Result<Vec<u8>> {
         let path_str = path.to_str().context("Path contains invalid UTF-8")?;
 
-        let promise = self.adapter.read_bytes_promise(path_str)
+        let promise = self
+            .adapter
+            .read_bytes_promise(path_str)
             .map_err(|e| anyhow::anyhow!("Failed to call readBytes: {:?}", e))?;
 
         let result = JsFuture::from(promise)
@@ -100,7 +111,9 @@ impl Storage for JsStorage {
     async fn read_string(&self, path: &Path) -> Result<String> {
         let path_str = path.to_str().context("Path contains invalid UTF-8")?;
 
-        let promise = self.adapter.read_string_promise(path_str)
+        let promise = self
+            .adapter
+            .read_string_promise(path_str)
             .map_err(|e| anyhow::anyhow!("Failed to call readString: {:?}", e))?;
 
         let result = JsFuture::from(promise)
@@ -116,7 +129,9 @@ impl Storage for JsStorage {
         let path_str = path.to_str().context("Path contains invalid UTF-8")?;
 
         let array = Uint8Array::from(data);
-        let promise = self.adapter.write_bytes_promise(path_str, &array)
+        let promise = self
+            .adapter
+            .write_bytes_promise(path_str, &array)
             .map_err(|e| anyhow::anyhow!("Failed to call writeBytes: {:?}", e))?;
 
         JsFuture::from(promise)
@@ -129,7 +144,9 @@ impl Storage for JsStorage {
     async fn write_string(&self, path: &Path, data: &str) -> Result<()> {
         let path_str = path.to_str().context("Path contains invalid UTF-8")?;
 
-        let promise = self.adapter.write_string_promise(path_str, data)
+        let promise = self
+            .adapter
+            .write_string_promise(path_str, data)
             .map_err(|e| anyhow::anyhow!("Failed to call writeString: {:?}", e))?;
 
         JsFuture::from(promise)
@@ -142,7 +159,9 @@ impl Storage for JsStorage {
     async fn delete(&self, path: &Path) -> Result<()> {
         let path_str = path.to_str().context("Path contains invalid UTF-8")?;
 
-        let promise = self.adapter.delete_promise(path_str)
+        let promise = self
+            .adapter
+            .delete_promise(path_str)
             .map_err(|e| anyhow::anyhow!("Failed to call delete: {:?}", e))?;
 
         JsFuture::from(promise)
@@ -160,7 +179,9 @@ impl Storage for JsStorage {
     async fn create_dir_all(&self, path: &Path) -> Result<()> {
         let path_str = path.to_str().context("Path contains invalid UTF-8")?;
 
-        let promise = self.adapter.create_dir_all_promise(path_str)
+        let promise = self
+            .adapter
+            .create_dir_all_promise(path_str)
             .map_err(|e| anyhow::anyhow!("Failed to call createDirAll: {:?}", e))?;
 
         JsFuture::from(promise)
@@ -173,7 +194,9 @@ impl Storage for JsStorage {
     async fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         let dir_str = dir.to_str().context("Path contains invalid UTF-8")?;
 
-        let promise = self.adapter.list_files_promise(dir_str, pattern)
+        let promise = self
+            .adapter
+            .list_files_promise(dir_str, pattern)
             .map_err(|e| anyhow::anyhow!("Failed to call listFiles: {:?}", e))?;
 
         let result = JsFuture::from(promise)
@@ -192,4 +215,3 @@ impl Storage for JsStorage {
         Ok(files)
     }
 }
-

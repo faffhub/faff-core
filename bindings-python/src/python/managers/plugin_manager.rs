@@ -91,7 +91,12 @@ impl PyPluginManager {
 
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(manager.instantiate_plugin(plugin_name, instance_name, config_map, defaults_map))
+            .block_on(manager.instantiate_plugin(
+                plugin_name,
+                instance_name,
+                config_map,
+                defaults_map,
+            ))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 

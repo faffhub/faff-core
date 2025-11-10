@@ -271,8 +271,11 @@ impl PyLogManager {
             .block_on(workspace.plans().get_trackers(current_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        rt.block_on(self.inner.stop_current_session(current_date, current_time, &trackers))
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        rt.block_on(
+            self.inner
+                .stop_current_session(current_date, current_time, &trackers),
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Find all logs that contain sessions using the given intent
@@ -308,7 +311,11 @@ impl PyLogManager {
     ) -> PyResult<usize> {
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.inner.update_intent_in_logs(intent_id, updated_intent.inner.clone(), &trackers))
+            .block_on(self.inner.update_intent_in_logs(
+                intent_id,
+                updated_intent.inner.clone(),
+                &trackers,
+            ))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -324,7 +331,10 @@ impl PyLogManager {
     ) -> PyResult<(usize, usize)> {
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.inner.replace_field_in_all_logs(field, old_value, new_value, &trackers))
+            .block_on(
+                self.inner
+                    .replace_field_in_all_logs(field, old_value, new_value, &trackers),
+            )
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 

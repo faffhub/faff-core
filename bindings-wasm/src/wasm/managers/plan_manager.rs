@@ -63,7 +63,10 @@ impl PlanManager {
             // Convert to JS Map
             let map = js_sys::Map::new();
             for (source, plan) in plans {
-                map.set(&JsValue::from_str(&source), &JsValue::from(Plan { inner: plan }));
+                map.set(
+                    &JsValue::from_str(&source),
+                    &JsValue::from(Plan { inner: plan }),
+                );
             }
 
             Ok(JsValue::from(map))
@@ -326,7 +329,11 @@ impl PlanManager {
             match result {
                 Some((source, intent, path)) => {
                     let obj = js_sys::Object::new();
-                    js_sys::Reflect::set(&obj, &JsValue::from_str("source"), &JsValue::from_str(&source))?;
+                    js_sys::Reflect::set(
+                        &obj,
+                        &JsValue::from_str("source"),
+                        &JsValue::from_str(&source),
+                    )?;
                     js_sys::Reflect::set(
                         &obj,
                         &JsValue::from_str("intent"),

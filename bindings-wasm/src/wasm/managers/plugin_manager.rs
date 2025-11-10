@@ -18,7 +18,7 @@ impl PluginManager {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<PluginManager, JsValue> {
         Err(JsValue::from_str(
-            "PluginManager is not supported in WASM environments. Plugins require Python runtime."
+            "PluginManager is not supported in WASM environments. Plugins require Python runtime.",
         ))
     }
 }

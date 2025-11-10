@@ -262,7 +262,10 @@ async fn test_identity_and_timesheet_integration() {
     let timesheet_manager = TimesheetManager::new(storage.clone());
 
     // Create an identity
-    let signing_key = identity_manager.create_identity("alice", false).await.unwrap();
+    let signing_key = identity_manager
+        .create_identity("alice", false)
+        .await
+        .unwrap();
 
     // Verify we can retrieve it
     let retrieved_key = identity_manager
@@ -448,11 +451,17 @@ async fn test_timesheet_list_filtering() {
     assert_eq!(all.len(), 3);
 
     // List filtered by date
-    let filtered = timesheet_manager.list_timesheets(Some(date1)).await.unwrap();
+    let filtered = timesheet_manager
+        .list_timesheets(Some(date1))
+        .await
+        .unwrap();
     assert_eq!(filtered.len(), 2);
     assert!(filtered.iter().all(|t| t.date == date1));
 
-    let filtered2 = timesheet_manager.list_timesheets(Some(date2)).await.unwrap();
+    let filtered2 = timesheet_manager
+        .list_timesheets(Some(date2))
+        .await
+        .unwrap();
     assert_eq!(filtered2.len(), 1);
     assert_eq!(filtered2[0].date, date2);
 }

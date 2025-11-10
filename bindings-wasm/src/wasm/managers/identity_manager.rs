@@ -57,21 +57,13 @@ impl IdentityManager {
             // Convert signing key to Uint8Array
             let signing_bytes = signing_key.to_bytes();
             let signing_array = js_sys::Uint8Array::from(&signing_bytes[..]);
-            js_sys::Reflect::set(
-                &obj,
-                &JsValue::from_str("signingKey"),
-                &signing_array,
-            )?;
+            js_sys::Reflect::set(&obj, &JsValue::from_str("signingKey"), &signing_array)?;
 
             // Convert verifying key to Uint8Array
             let verifying_key = signing_key.verifying_key();
             let verifying_bytes = verifying_key.as_bytes();
             let verifying_array = js_sys::Uint8Array::from(&verifying_bytes[..]);
-            js_sys::Reflect::set(
-                &obj,
-                &JsValue::from_str("verifyingKey"),
-                &verifying_array,
-            )?;
+            js_sys::Reflect::set(&obj, &JsValue::from_str("verifyingKey"), &verifying_array)?;
 
             Ok(JsValue::from(obj))
         })

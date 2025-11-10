@@ -206,12 +206,15 @@ impl TimesheetManager {
         }
 
         // Delete the timesheet file
-        self.storage.delete(&timesheet_path).await.with_context(|| {
-            format!(
-                "Failed to delete timesheet for audience '{}' on {}",
-                audience_id, date
-            )
-        })?;
+        self.storage
+            .delete(&timesheet_path)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to delete timesheet for audience '{}' on {}",
+                    audience_id, date
+                )
+            })?;
 
         // Delete the metadata file if it exists
         let meta_filename = format!("{}.meta", timesheet_filename);
@@ -312,7 +315,8 @@ impl TimesheetManager {
 
         // Get the audience plugin
         let audience = plugin_manager
-            .get_audience_by_id(audience_id).await?
+            .get_audience_by_id(audience_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("No audience found for {}", audience_id))?;
 
         // Try to call the plugin's submit_timesheet method and capture the result
@@ -632,7 +636,10 @@ mod tests {
 
         assert!(manager.timesheet_exists("test_audience", date));
 
-        manager.delete_timesheet("test_audience", date).await.unwrap();
+        manager
+            .delete_timesheet("test_audience", date)
+            .await
+            .unwrap();
 
         assert!(!manager.timesheet_exists("test_audience", date));
     }

@@ -44,16 +44,13 @@ impl Workspace {
 
             // Create manager wrappers from the Rust managers
             let logs = LogManager::from_rust(inner_arc.logs().clone(), inner_arc.clone());
-            let plans = PlanManager::from_rust(
-                Arc::new(inner_arc.plans().clone()),
-                inner_arc.clone(),
-            );
+            let plans =
+                PlanManager::from_rust(Arc::new(inner_arc.plans().clone()), inner_arc.clone());
             let timesheets = TimesheetManager::from_rust(
                 Arc::new(inner_arc.timesheets().clone()),
                 inner_arc.clone(),
             );
-            let identities =
-                IdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
+            let identities = IdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
 
             let wasm_workspace = Workspace {
                 inner: inner_arc,

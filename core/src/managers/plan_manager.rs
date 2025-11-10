@@ -333,9 +333,13 @@ impl PlanManager {
             .join(format!("{}.toml", plan.source));
         let plan_to_write = if self.storage.exists(&remote_file) {
             // Load remote and apply vocabulary mappings if configured
-            let remote_toml = self.storage.read_string(&remote_file).await.with_context(|| {
-                format!("Failed to read remote config: {}", remote_file.display())
-            })?;
+            let remote_toml = self
+                .storage
+                .read_string(&remote_file)
+                .await
+                .with_context(|| {
+                    format!("Failed to read remote config: {}", remote_file.display())
+                })?;
 
             let remote = Remote::from_toml(&remote_toml).with_context(|| {
                 format!("Failed to parse remote config: {}", remote_file.display())
@@ -453,7 +457,10 @@ impl PlanManager {
     /// - Ok(Some((source, intent, plan_file_path))) if found
     /// - Ok(None) if not found
     /// - Err if there's an error reading files
-    pub async fn find_intent_by_id(&self, intent_id: &str) -> Result<Option<(String, Intent, PathBuf)>> {
+    pub async fn find_intent_by_id(
+        &self,
+        intent_id: &str,
+    ) -> Result<Option<(String, Intent, PathBuf)>> {
         let plan_dir = self.storage.plan_dir();
         let plan_files = self
             .storage
@@ -988,7 +995,10 @@ subject = "poc/{description|slugify}"
         );
 
         // Write the plan (should apply vocabulary mappings)
-        manager.write_plan(&plan).await.expect("Failed to write plan");
+        manager
+            .write_plan(&plan)
+            .await
+            .expect("Failed to write plan");
 
         // Read back the written plan (MockStorage base_dir is /faff/.faff)
         let written_plan_path = PathBuf::from("/faff/.faff/plans/test-remote.20251104.toml");
