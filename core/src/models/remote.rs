@@ -89,6 +89,11 @@ pub struct VocabularyMapping {
     /// Supports filters: "customer/{customer|slugify}"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
+
+    /// Templates for trackers (optional for Intent)
+    /// Example: ["{source_id}"]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trackers: Option<Vec<String>>,
 }
 
 impl VocabularyMapping {
@@ -107,6 +112,7 @@ impl VocabularyMapping {
             objective: None,
             action: None,
             subject: None,
+            trackers: None,
         }
     }
 
@@ -169,6 +175,7 @@ impl VocabularyMapping {
                 objective: None,
                 action: None,
                 subject: None,
+                trackers: None,
             };
 
             // Apply templates to each field
@@ -212,6 +219,18 @@ impl VocabularyMapping {
                     source_id,
                 )?);
             }
+            if let Some(tracker_templates) = &self.trackers {
+                let mut processed_trackers = Vec::new();
+                for template in tracker_templates {
+                    processed_trackers.push(Self::apply_template(
+                        template,
+                        &captures,
+                        source_value,
+                        source_id,
+                    )?);
+                }
+                result.trackers = Some(processed_trackers);
+            }
 
             Ok(Some(result))
         } else {
@@ -225,8 +244,8 @@ impl VocabularyMapping {
     /// - {name} - substitute named capture
     /// - {name|filter} - substitute and apply filter
     /// - {name|filter1|filter2} - chain multiple filters
-    /// - {_original} - the original source value
-    /// - {_source} - the source/remote ID
+    /// - {original} - the original source value
+    /// - {source_id} - the source/remote ID
     fn apply_template(
         template: &str,
         captures: &Captures,
@@ -252,8 +271,8 @@ impl VocabularyMapping {
 
             // Get the value to substitute
             let value = match var_name {
-                "_original" => original_value.to_string(),
-                "_source" => source_id.to_string(),
+                "original" => original_value.to_string(),
+                "source_id" => source_id.to_string(),
                 name => captures
                     .name(name)
                     .map(|m| m.as_str().to_string())
@@ -318,6 +337,9 @@ pub struct MappingResult {
 
     /// Generated subject
     pub subject: Option<String>,
+
+    /// Generated trackers
+    pub trackers: Option<Vec<String>>,
 }
 
 /// Static ASTRO vocabulary for a remote
@@ -374,9 +396,13 @@ impl Remote {
     /// - Returns an augmented plan with additional vocabulary
     ///
     /// The original plan vocabulary is preserved; mappings only add new items.
+    ///
+    /// If `previous_plan` is provided, intent IDs will be preserved for intents
+    /// that have matching ASTRO properties, maintaining continuity across updates.
     pub fn apply_vocabulary_mappings(
         &self,
         plan: &crate::models::plan::Plan,
+        previous_plan: Option<&crate::models::plan::Plan>,
     ) -> anyhow::Result<crate::models::plan::Plan> {
         use crate::models::intent::Intent;
 
@@ -442,14 +468,42 @@ impl Remote {
                                 anyhow::anyhow!("Intent mapping must produce an alias")
                             })?;
 
-                            let intent = Intent::new(
-                                Some(alias),
-                                result.role,
-                                result.objective,
-                                result.action,
-                                result.subject,
-                                vec![], // No trackers for mapped intents
-                            );
+                            let trackers = result.trackers.unwrap_or_default();
+
+                            // Check if there's a matching intent in the previous plan to reuse its ID
+                            let existing_id = previous_plan.and_then(|prev| {
+                                prev.intents.iter().find(|existing| {
+                                    existing.alias.as_deref() == Some(&alias)
+                                        && existing.role == result.role
+                                        && existing.objective == result.objective
+                                        && existing.action == result.action
+                                        && existing.subject == result.subject
+                                        && existing.trackers == trackers
+                                }).map(|i| i.intent_id.clone())
+                            });
+
+                            let intent = if let Some(id) = existing_id {
+                                // Reuse existing ID to maintain continuity
+                                Intent::new_with_id(
+                                    Some(id),
+                                    Some(alias),
+                                    result.role,
+                                    result.objective,
+                                    result.action,
+                                    result.subject,
+                                    trackers,
+                                )
+                            } else {
+                                // Create new intent (ID will be generated by add_intent)
+                                Intent::new(
+                                    Some(alias),
+                                    result.role,
+                                    result.objective,
+                                    result.action,
+                                    result.subject,
+                                    trackers,
+                                )
+                            };
 
                             // Add to plan (using add_intent to handle ID generation and deduplication)
                             augmented_plan = augmented_plan.add_intent(intent);
@@ -658,7 +712,7 @@ mod tests {
             vec![],
         );
 
-        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+        let augmented = remote.apply_vocabulary_mappings(&plan, None).unwrap();
 
         // Check that an intent was generated
         assert_eq!(augmented.intents.len(), 1);
@@ -706,7 +760,7 @@ mod tests {
             vec![],
         );
 
-        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+        let augmented = remote.apply_vocabulary_mappings(&plan, None).unwrap();
 
         // Check that a subject was generated
         assert_eq!(augmented.subjects.len(), 1);
@@ -747,7 +801,7 @@ mod tests {
             vec![],
         );
 
-        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+        let augmented = remote.apply_vocabulary_mappings(&plan, None).unwrap();
 
         // No intents should be generated since pattern doesn't match
         assert_eq!(augmented.intents.len(), 0);
@@ -799,7 +853,7 @@ mod tests {
             vec![],
         );
 
-        let augmented = remote.apply_vocabulary_mappings(&plan).unwrap();
+        let augmented = remote.apply_vocabulary_mappings(&plan, None).unwrap();
 
         // Should generate 3 intents from the 3 POC trackers
         assert_eq!(augmented.intents.len(), 3);
@@ -867,5 +921,58 @@ mod tests {
             .as_ref()
             .map(|a| a.contains("BIZ-"))
             .unwrap_or(false)));
+    }
+
+    #[test]
+    fn test_vocabulary_mapping_tracker_field() {
+        use crate::models::plan::Plan;
+        use chrono::NaiveDate;
+
+        let mut remote = Remote::new("element", "myhours");
+
+        // Create a mapping that includes the tracker field
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Intent,
+            r"^Support - (?P<customer>.+)$",
+        );
+        mapping.alias = Some("Support {customer}".to_string());
+        mapping.role = Some("customer-success-manager".to_string());
+        mapping.objective = Some("retain-customer".to_string());
+        mapping.action = Some("support".to_string());
+        mapping.subject = Some("customer/{customer|slugify}".to_string());
+        mapping.trackers = Some(vec!["{source_id}".to_string()]);
+
+        remote.vocabulary_mappings.push(mapping);
+
+        // Create a plan with a matching tracker
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("element:12345".to_string(), "Support - Acme Corp".to_string());
+
+        let plan = Plan::new(
+            "element".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 12).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+            vec![],
+        );
+
+        let augmented = remote.apply_vocabulary_mappings(&plan, None).unwrap();
+
+        // Check that an intent was generated with the tracker
+        assert_eq!(augmented.intents.len(), 1);
+        let intent = &augmented.intents[0];
+        assert_eq!(intent.alias, Some("Support Acme Corp".to_string()));
+        assert_eq!(intent.role, Some("customer-success-manager".to_string()));
+        assert_eq!(intent.objective, Some("retain-customer".to_string()));
+        assert_eq!(intent.action, Some("support".to_string()));
+        assert_eq!(intent.subject, Some("customer/acme-corp".to_string()));
+
+        // Verify the tracker ID is included
+        assert_eq!(intent.trackers, vec!["element:12345"]);
     }
 }

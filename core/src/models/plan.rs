@@ -62,17 +62,30 @@ impl Plan {
 
     /// Add an intent to the plan, deduplicating if it already exists
     ///
-    /// If the intent doesn't have an ID, generates one using the plan's source prefix.
+    /// If the intent doesn't have an ID, checks for an existing intent with matching ASTRO
+    /// properties and reuses its ID to maintain continuity. Only generates a new ID if no
+    /// matching intent exists.
     pub fn add_intent(&self, mut intent: Intent) -> Plan {
-        // Ensure intent has an ID (with source prefix)
-        if intent.intent_id.is_empty() {
+        let mut new_intents = self.intents.clone();
+
+        // Check if there's an existing intent with matching ASTRO properties (ignoring ID)
+        if let Some(existing) = new_intents.iter().find(|existing| {
+            existing.alias == intent.alias
+                && existing.role == intent.role
+                && existing.objective == intent.objective
+                && existing.action == intent.action
+                && existing.subject == intent.subject
+                && existing.trackers == intent.trackers
+        }) {
+            // Reuse the existing intent's ID to maintain continuity
+            intent.intent_id = existing.intent_id.clone();
+        } else if intent.intent_id.is_empty() {
+            // Generate a new ID only if no matching intent exists
             intent.intent_id = Intent::generate_intent_id(&self.source, self.valid_from);
         }
 
-        let mut new_intents = self.intents.clone();
-
-        // Only add if not already present (deduplication)
-        if !new_intents.contains(&intent) {
+        // Only add if not already present (by ID now)
+        if !new_intents.iter().any(|i| i.intent_id == intent.intent_id) {
             new_intents.push(intent);
         }
 
