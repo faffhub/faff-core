@@ -115,6 +115,28 @@ impl TimesheetManager {
         })
     }
 
+    /// Delete a timesheet for a specific audience and date.
+    ///
+    /// audience_id: string audience ID
+    /// date: JS Date object
+    /// Returns Promise<void>.
+    #[wasm_bindgen(js_name = deleteTimesheet)]
+    pub fn delete_timesheet(&self, audience_id: &str, date: js_sys::Date) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        let audience_id = audience_id.to_string();
+
+        future_to_promise(async move {
+            let naive_date = js_date_to_naive_date(&date)?;
+
+            inner
+                .delete_timesheet(&audience_id, naive_date)
+                .await
+                .map_err(|e| JsValue::from_str(&format!("Failed to delete timesheet: {}", e)))?;
+
+            Ok(JsValue::undefined())
+        })
+    }
+
     /// Find timesheets that are stale (log has changed since compilation).
     ///
     /// Requires workspace reference.

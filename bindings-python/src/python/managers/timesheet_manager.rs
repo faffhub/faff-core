@@ -66,6 +66,19 @@ impl PyTimesheetManager {
             .collect())
     }
 
+    /// Delete a timesheet for a specific audience and date
+    pub fn delete_timesheet(
+        &self,
+        audience_id: &str,
+        date: Bound<'_, PyDate>,
+    ) -> PyResult<()> {
+        let naive_date = date_py_to_rust(date)?;
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(self.manager.delete_timesheet(audience_id, naive_date))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
     /// Get all audience plugin instances
     ///
     /// This delegates to the Rust TimesheetManager's audiences() method.
