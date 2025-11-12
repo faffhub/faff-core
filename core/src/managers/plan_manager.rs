@@ -347,18 +347,21 @@ impl PlanManager {
 
             if !remote.vocabulary_mappings.is_empty() {
                 // Try to load existing plan for this date to maintain intent ID continuity
-                let existing_plan = self.get_plans(plan.valid_from)
+                let existing_plan = self
+                    .get_plans(plan.valid_from)
                     .await
                     .ok()
                     .and_then(|plans| plans.get(&plan.source).cloned());
 
                 // Apply vocabulary mappings and use the augmented plan
-                remote.apply_vocabulary_mappings(plan, existing_plan.as_ref()).with_context(|| {
-                    format!(
-                        "Failed to apply vocabulary mappings for remote '{}'",
-                        remote.id
-                    )
-                })?
+                remote
+                    .apply_vocabulary_mappings(plan, existing_plan.as_ref())
+                    .with_context(|| {
+                        format!(
+                            "Failed to apply vocabulary mappings for remote '{}'",
+                            remote.id
+                        )
+                    })?
             } else {
                 // No mappings, use original plan
                 plan.clone()

@@ -472,14 +472,17 @@ impl Remote {
 
                             // Check if there's a matching intent in the previous plan to reuse its ID
                             let existing_id = previous_plan.and_then(|prev| {
-                                prev.intents.iter().find(|existing| {
-                                    existing.alias.as_deref() == Some(&alias)
-                                        && existing.role == result.role
-                                        && existing.objective == result.objective
-                                        && existing.action == result.action
-                                        && existing.subject == result.subject
-                                        && existing.trackers == trackers
-                                }).map(|i| i.intent_id.clone())
+                                prev.intents
+                                    .iter()
+                                    .find(|existing| {
+                                        existing.alias.as_deref() == Some(&alias)
+                                            && existing.role == result.role
+                                            && existing.objective == result.objective
+                                            && existing.action == result.action
+                                            && existing.subject == result.subject
+                                            && existing.trackers == trackers
+                                    })
+                                    .map(|i| i.intent_id.clone())
                             });
 
                             let intent = if let Some(id) = existing_id {
@@ -947,7 +950,10 @@ mod tests {
 
         // Create a plan with a matching tracker
         let mut trackers = std::collections::HashMap::new();
-        trackers.insert("element:12345".to_string(), "Support - Acme Corp".to_string());
+        trackers.insert(
+            "element:12345".to_string(),
+            "Support - Acme Corp".to_string(),
+        );
 
         let plan = Plan::new(
             "element".to_string(),

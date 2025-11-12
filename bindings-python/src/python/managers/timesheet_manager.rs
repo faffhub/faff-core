@@ -67,11 +67,7 @@ impl PyTimesheetManager {
     }
 
     /// Delete a timesheet for a specific audience and date
-    pub fn delete_timesheet(
-        &self,
-        audience_id: &str,
-        date: Bound<'_, PyDate>,
-    ) -> PyResult<()> {
+    pub fn delete_timesheet(&self, audience_id: &str, date: Bound<'_, PyDate>) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
         tokio::runtime::Runtime::new()
             .unwrap()
