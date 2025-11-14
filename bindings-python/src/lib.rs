@@ -10,7 +10,7 @@ fn hello_world() -> PyResult<String> {
 
 #[pyfunction]
 fn version() -> PyResult<String> {
-    Ok(::faff_core::version::version())
+    Ok(::faff_core::utils::version::version())
 }
 
 #[pymodule]

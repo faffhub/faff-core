@@ -31,10 +31,10 @@ pub fn datetime_py_to_rust<'py>(py_dt: Bound<'py, PyDateTime>) -> PyResult<DateT
     // Convert tz_name to chrono_tz::Tz
     let tz: Tz = tz_name
         .parse()
-        .map_err(|_| PyValueError::new_err(format!("Unrecognized timezone '{}'", tz_name)))?;
+        .map_err(|_| PyValueError::new_err(format!("Unrecognized timezone '{tz_name}'")))?;
 
     // Build datetime in Rust
-    tz.with_ymd_and_hms(year.into(), month, day, hour, minute, second)
+    tz.with_ymd_and_hms(year, month, day, hour, minute, second)
         .single()
         .ok_or_else(|| PyValueError::new_err("Ambiguous or invalid datetime"))?
         .with_nanosecond(micro * 1000)

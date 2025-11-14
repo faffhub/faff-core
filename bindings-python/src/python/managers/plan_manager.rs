@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use crate::python::storage::PyStorage;
 use faff_core::managers::plan_manager::PlanManager as RustPlanManager;
-use faff_core::py_models::intent::PyIntent;
-use faff_core::py_models::plan::PyPlan;
-use faff_core::type_mapping::date_py_to_rust;
+use faff_core::plugins::models::intent::PyIntent;
+use faff_core::plugins::models::plan::PyPlan;
+use faff_core::utils::type_mapping::date_py_to_rust;
 use faff_core::workspace::Workspace as RustWorkspace;
 
 /// Python wrapper for PlanManager

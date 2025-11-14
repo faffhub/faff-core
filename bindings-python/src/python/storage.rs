@@ -5,7 +5,7 @@ use pyo3::types::PyBytes;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use faff_core::file_system_storage::FileSystemStorage;
+use faff_core::storage::FileSystemStorage;
 use faff_core::storage::Storage;
 
 /// Python-to-Rust storage adapter: Wraps a Python storage object for use in Rust.

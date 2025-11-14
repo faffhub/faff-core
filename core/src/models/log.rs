@@ -139,7 +139,7 @@ impl Log {
                 }
             };
 
-            total = total + duration;
+            total += duration;
         }
 
         Ok(total)
@@ -199,7 +199,7 @@ impl Log {
 
         // Date format hint (derived value, becomes comment)
         let date_format = Self::get_datetime_format(self.date, self.timezone);
-        lines.push(format!("--date_format = \"{}\"", date_format));
+        lines.push(format!("--date_format = \"{date_format}\""));
 
         // Timeline entries
         if self.timeline.is_empty() {
@@ -236,21 +236,21 @@ impl Log {
 
         // Alias
         if let Some(alias) = &session.intent.alias {
-            lines.push(format!("alias = \"{}\"", alias));
+            lines.push(format!("alias = \"{alias}\""));
         }
 
         // Optional intent fields
         if let Some(role) = &session.intent.role {
-            lines.push(format!("role = \"{}\"", role));
+            lines.push(format!("role = \"{role}\""));
         }
         if let Some(objective) = &session.intent.objective {
-            lines.push(format!("objective = \"{}\"", objective));
+            lines.push(format!("objective = \"{objective}\""));
         }
         if let Some(action) = &session.intent.action {
-            lines.push(format!("action = \"{}\"", action));
+            lines.push(format!("action = \"{action}\""));
         }
         if let Some(subject) = &session.intent.subject {
-            lines.push(format!("subject = \"{}\"", subject));
+            lines.push(format!("subject = \"{subject}\""));
         }
 
         // Trackers
@@ -259,17 +259,17 @@ impl Log {
             if tracker_list.len() == 1 {
                 let tracker = &tracker_list[0];
                 if let Some(name) = trackers.get(tracker) {
-                    lines.push(format!("trackers = \"{}\" # {}", tracker, name));
+                    lines.push(format!("trackers = \"{tracker}\" # {name}"));
                 } else {
-                    lines.push(format!("trackers = \"{}\"", tracker));
+                    lines.push(format!("trackers = \"{tracker}\""));
                 }
             } else {
                 lines.push("trackers = [".to_string());
                 for tracker in tracker_list {
                     if let Some(name) = trackers.get(tracker) {
-                        lines.push(format!("   \"{}\", # {}", tracker, name));
+                        lines.push(format!("   \"{tracker}\", # {name}"));
                     } else {
-                        lines.push(format!("   \"{}\",", tracker));
+                        lines.push(format!("   \"{tracker}\","));
                     }
                 }
                 lines.push("]".to_string());
@@ -278,33 +278,33 @@ impl Log {
 
         // Start time
         let start_str = Self::format_datetime_for_log(&session.start, date_format);
-        lines.push(format!("start = \"{}\"", start_str));
+        lines.push(format!("start = \"{start_str}\""));
 
         // End time and duration
         if let Some(end) = session.end {
             let end_str = Self::format_datetime_for_log(&end, date_format);
-            lines.push(format!("end = \"{}\"", end_str));
+            lines.push(format!("end = \"{end_str}\""));
 
             // Duration (derived value, becomes comment)
             let duration = end - session.start;
             let duration_str = Self::format_duration(duration);
-            lines.push(format!("--duration = \"{}\"", duration_str));
+            lines.push(format!("--duration = \"{duration_str}\""));
         }
 
         // Note (only include if non-empty)
         if let Some(note) = &session.note {
             if !note.is_empty() {
-                lines.push(format!("note = \"{}\"", note));
+                lines.push(format!("note = \"{note}\""));
             }
         }
 
         // Reflection fields (only include if present)
         if let Some(score) = session.reflection_score {
-            lines.push(format!("reflection_score = {}", score));
+            lines.push(format!("reflection_score = {score}"));
         }
         if let Some(reflection) = &session.reflection {
             if !reflection.is_empty() {
-                lines.push(format!("reflection = \"{}\"", reflection));
+                lines.push(format!("reflection = \"{reflection}\""));
             }
         }
     }
@@ -333,25 +333,24 @@ impl Log {
             if minutes > 0 {
                 if seconds > 0 {
                     format!(
-                        "{} {}, {} {} and {} {}",
-                        hours, hour_str, minutes, minute_str, seconds, second_str
+                        "{hours} {hour_str}, {minutes} {minute_str} and {seconds} {second_str}"
                     )
                 } else {
-                    format!("{} {} and {} {}", hours, hour_str, minutes, minute_str)
+                    format!("{hours} {hour_str} and {minutes} {minute_str}")
                 }
             } else if seconds > 0 {
-                format!("{} {} and {} {}", hours, hour_str, seconds, second_str)
+                format!("{hours} {hour_str} and {seconds} {second_str}")
             } else {
-                format!("{} {}", hours, hour_str)
+                format!("{hours} {hour_str}")
             }
         } else if minutes > 0 {
             if seconds > 0 {
-                format!("{} {} and {} {}", minutes, minute_str, seconds, second_str)
+                format!("{minutes} {minute_str} and {seconds} {second_str}")
             } else {
-                format!("{} {}", minutes, minute_str)
+                format!("{minutes} {minute_str}")
             }
         } else {
-            format!("{} {}", seconds, second_str)
+            format!("{seconds} {second_str}")
         }
     }
 
@@ -402,7 +401,7 @@ impl Log {
                     let key = parts[0].trim();
                     let value = parts[1].trim();
                     let padding = " ".repeat(max_key_length - key.len());
-                    aligned_lines.push(format!("{}{} = {}", key, padding, value));
+                    aligned_lines.push(format!("{key}{padding} = {value}"));
                 } else {
                     aligned_lines.push(line.to_string());
                 }

@@ -8,11 +8,11 @@ use crate::models::{
     valuetype::ValueType, SubmittableTimesheet as RustSubmittableTimesheet,
     Timesheet as RustTimesheet, TimesheetMeta as RustTimesheetMeta,
 };
-use crate::py_models::session::PySession;
+use crate::plugins::models::session::PySession;
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 
-use crate::type_mapping;
+use crate::utils::type_mapping;
 
 /// The Python-visible TimesheetMeta class
 #[pyclass(name = "TimesheetMeta")]
@@ -89,8 +89,7 @@ impl PyTimesheetMeta {
                 data.insert(key, ValueType::String(v.extract()?));
             } else {
                 return Err(PyValueError::new_err(format!(
-                    "Unsupported type for key '{}'",
-                    key
+                    "Unsupported type for key '{key}'"
                 )));
             }
         }
@@ -158,7 +157,7 @@ impl PyTimesheet {
         let tz_str: String = timezone.call_method0("__str__")?.extract()?;
         let timezone: Tz = tz_str
             .parse()
-            .map_err(|_| PyValueError::new_err(format!("Invalid timezone: {}", tz_str)))?;
+            .map_err(|_| PyValueError::new_err(format!("Invalid timezone: {tz_str}")))?;
 
         let timeline = timeline
             .unwrap_or_default()
@@ -269,7 +268,7 @@ impl PyTimesheet {
             .ok_or_else(|| PyValueError::new_err("Missing 'date' field"))?
             .extract()?;
         let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-            .map_err(|e| PyValueError::new_err(format!("Invalid date format: {}", e)))?;
+            .map_err(|e| PyValueError::new_err(format!("Invalid date format: {e}")))?;
 
         // Extract compiled
         let compiled_str: String = dict
@@ -277,7 +276,7 @@ impl PyTimesheet {
             .ok_or_else(|| PyValueError::new_err("Missing 'compiled' field"))?
             .extract()?;
         let compiled = chrono::DateTime::parse_from_rfc3339(&compiled_str)
-            .map_err(|e| PyValueError::new_err(format!("Invalid compiled datetime: {}", e)))?
+            .map_err(|e| PyValueError::new_err(format!("Invalid compiled datetime: {e}")))?
             .with_timezone(&chrono_tz::UTC);
 
         // Extract timezone
@@ -287,7 +286,7 @@ impl PyTimesheet {
             .extract()?;
         let timezone: Tz = timezone_str
             .parse()
-            .map_err(|_| PyValueError::new_err(format!("Invalid timezone: {}", timezone_str)))?;
+            .map_err(|_| PyValueError::new_err(format!("Invalid timezone: {timezone_str}")))?;
 
         // Extract timeline
         let mut timeline = Vec::new();
@@ -295,7 +294,7 @@ impl PyTimesheet {
             if let Ok(list) = timeline_item.downcast::<pyo3::types::PyList>() {
                 for item in list.iter() {
                     let item_dict: &Bound<'_, PyDict> = item.downcast()?;
-                    let session = crate::py_models::session::session_from_dict_internal(
+                    let session = crate::plugins::models::session::session_from_dict_internal(
                         item_dict, date, timezone,
                     )?;
                     timeline.push(session.inner);

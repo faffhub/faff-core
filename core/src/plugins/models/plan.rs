@@ -5,7 +5,7 @@ use pyo3::types::{PyDate, PyDict, PyList, PyType};
 use std::collections::HashMap;
 
 use crate::models::plan::Plan as RustPlan;
-use crate::py_models::intent::PyIntent;
+use crate::plugins::models::intent::PyIntent;
 
 #[pyclass(name = "Plan")]
 #[derive(Clone)]
@@ -184,7 +184,7 @@ impl PyPlan {
                 for item in intents_list.iter() {
                     let intent_dict = item.downcast::<PyDict>()?;
                     let py_intent =
-                        crate::py_models::intent::intent_from_dict_internal(intent_dict)?;
+                        crate::plugins::models::intent::intent_from_dict_internal(intent_dict)?;
                     rust_intents.push(py_intent.inner);
                 }
                 rust_intents

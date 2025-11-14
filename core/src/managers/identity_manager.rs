@@ -19,12 +19,12 @@ impl IdentityManager {
 
     /// Get the path for a private key file
     fn get_key_path(&self, name: &str) -> PathBuf {
-        self.storage.identity_dir().join(format!("id_{}", name))
+        self.storage.identity_dir().join(format!("id_{name}"))
     }
 
     /// Get the path for a public key file
     fn get_pub_path(&self, name: &str) -> PathBuf {
-        self.storage.identity_dir().join(format!("id_{}.pub", name))
+        self.storage.identity_dir().join(format!("id_{name}.pub"))
     }
 
     /// Create a new Ed25519 identity keypair
@@ -68,11 +68,11 @@ impl IdentityManager {
         self.storage
             .write_string(&private_path, &b64_private)
             .await
-            .with_context(|| format!("Failed to write private key for identity '{}'", name))?;
+            .with_context(|| format!("Failed to write private key for identity '{name}'"))?;
         self.storage
             .write_string(&public_path, &b64_public)
             .await
-            .with_context(|| format!("Failed to write public key for identity '{}'", name))?;
+            .with_context(|| format!("Failed to write public key for identity '{name}'"))?;
 
         // Note: File permissions (chmod 0o600) should be handled by the Storage implementation
         // if it's a real filesystem. For testing with mock storage, this is skipped.
@@ -100,14 +100,14 @@ impl IdentityManager {
         self.storage
             .delete(&private_path)
             .await
-            .with_context(|| format!("Failed to delete private key for identity '{}'", name))?;
+            .with_context(|| format!("Failed to delete private key for identity '{name}'"))?;
 
         // Delete public key if it exists
         if self.storage.exists(&public_path) {
             self.storage
                 .delete(&public_path)
                 .await
-                .with_context(|| format!("Failed to delete public key for identity '{}'", name))?;
+                .with_context(|| format!("Failed to delete public key for identity '{name}'"))?;
         }
 
         Ok(())
@@ -143,7 +143,7 @@ impl IdentityManager {
             let filename = file
                 .file_name()
                 .and_then(|s| s.to_str())
-                .with_context(|| format!("Invalid filename in identity directory: {:?}", file))?;
+                .with_context(|| format!("Invalid filename in identity directory: {file:?}"))?;
 
             if !filename.starts_with("id_") {
                 continue;
@@ -156,13 +156,13 @@ impl IdentityManager {
                 .storage
                 .read_string(&file)
                 .await
-                .with_context(|| format!("Failed to read identity file '{}'", name))?;
+                .with_context(|| format!("Failed to read identity file '{name}'"))?;
 
             let key_bytes = base64::Engine::decode(
                 &base64::engine::general_purpose::STANDARD,
                 b64_private.trim(),
             )
-            .with_context(|| format!("Failed to decode base64 key for identity '{}'", name))?;
+            .with_context(|| format!("Failed to decode base64 key for identity '{name}'"))?;
 
             if key_bytes.len() != 32 {
                 anyhow::bail!(
@@ -186,7 +186,7 @@ impl IdentityManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::mock_storage::MockStorage;
+    use crate::utils::test_utils::mock_storage::MockStorage;
 
     #[tokio::test]
     async fn test_create_identity() {

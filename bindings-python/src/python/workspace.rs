@@ -3,7 +3,7 @@ use crate::python::managers::{
     plugin_manager::PyPluginManager, timesheet_manager::PyTimesheetManager,
 };
 use crate::python::storage::{PyStorage, PyStorageWrapper};
-use faff_core::type_mapping::{date_rust_to_py, datetime_rust_to_py};
+use faff_core::utils::type_mapping::{date_rust_to_py, datetime_rust_to_py};
 use faff_core::workspace::Workspace as RustWorkspace;
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDateTime};
@@ -91,8 +91,8 @@ impl PyWorkspace {
     }
 
     /// Get the config
-    fn config(&self) -> faff_core::py_models::config::PyConfig {
-        faff_core::py_models::config::PyConfig {
+    fn config(&self) -> faff_core::plugins::models::config::PyConfig {
+        faff_core::plugins::models::config::PyConfig {
             inner: self.inner.config().clone(),
         }
     }
@@ -123,10 +123,10 @@ impl PyWorkspace {
         let today = self.inner.today();
         let timezone = self.inner.timezone();
 
-        let parsed = faff_core::date_parsing::parse_natural_date(date_str, today, timezone)
+        let parsed = faff_core::utils::date_parsing::parse_natural_date(date_str, today, timezone)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-        faff_core::type_mapping::date_rust_to_py(py, &parsed)
+        faff_core::utils::type_mapping::date_rust_to_py(py, &parsed)
     }
 
     /// Parse a natural language datetime string, restricted to today's date
@@ -156,10 +156,10 @@ impl PyWorkspace {
         let today = self.inner.today();
         let now = self.inner.now();
 
-        let parsed = faff_core::date_parsing::parse_natural_datetime(datetime_str, today, now)
+        let parsed = faff_core::utils::date_parsing::parse_natural_datetime(datetime_str, today, now)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-        faff_core::type_mapping::datetime_rust_to_py(py, &parsed)
+        faff_core::utils::type_mapping::datetime_rust_to_py(py, &parsed)
     }
 
     /// Get the PlanManager

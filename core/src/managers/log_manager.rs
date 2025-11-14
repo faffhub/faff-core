@@ -40,7 +40,7 @@ impl LogManager {
         self.storage
             .read_string(&log_path)
             .await
-            .context(format!("Failed to read log file for {}", date))
+            .context(format!("Failed to read log file for {date}"))
     }
 
     /// Write raw log file contents
@@ -49,7 +49,7 @@ impl LogManager {
         self.storage
             .write_string(&log_path, contents)
             .await
-            .context(format!("Failed to write log for {}", date))
+            .context(format!("Failed to write log for {date}"))
     }
 
     /// Get timezone for creating empty logs
@@ -68,10 +68,10 @@ impl LogManager {
                 .storage
                 .read_string(&log_path)
                 .await
-                .with_context(|| format!("Failed to read log file for {}", date))?;
+                .with_context(|| format!("Failed to read log file for {date}"))?;
 
             let log = Log::from_log_file(&toml_str)
-                .with_context(|| format!("Failed to parse log file for {}", date))?;
+                .with_context(|| format!("Failed to parse log file for {date}"))?;
 
             Ok(Some(log))
         } else {
@@ -141,7 +141,7 @@ impl LogManager {
         self.storage
             .delete(&log_path)
             .await
-            .with_context(|| format!("Failed to delete log for {}", date))
+            .with_context(|| format!("Failed to delete log for {date}"))
     }
 
     /// Start a new session with the given intent at the current time
@@ -389,7 +389,7 @@ impl LogManager {
                             *session_count.entry(tracker.clone()).or_insert(0) += 1;
                             log_dates
                                 .entry(tracker.clone())
-                                .or_insert_with(std::collections::HashSet::new)
+                                .or_default()
                                 .insert(date);
                         }
                         continue;
@@ -401,7 +401,7 @@ impl LogManager {
                     *session_count.entry(value.clone()).or_insert(0) += 1;
                     log_dates
                         .entry(value.clone())
-                        .or_insert_with(std::collections::HashSet::new)
+                        .or_default()
                         .insert(date);
                 }
             }
@@ -414,7 +414,7 @@ impl LogManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::mock_storage::MockStorage;
+    use crate::utils::test_utils::mock_storage::MockStorage;
 
     #[tokio::test]
     async fn test_log_exists() {

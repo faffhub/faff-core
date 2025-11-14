@@ -45,7 +45,7 @@ impl TimesheetManager {
             })?;
 
         // Write the metadata separately
-        let meta_filename = format!("{}.meta", timesheet_filename);
+        let meta_filename = format!("{timesheet_filename}.meta");
         let meta_path = timesheet_dir.join(&meta_filename);
         let meta_json = serde_json::to_vec(&timesheet.meta)
             .context("Failed to serialize timesheet metadata")?;
@@ -78,14 +78,14 @@ impl TimesheetManager {
             .storage
             .read_string(&timesheet_path)
             .await
-            .with_context(|| format!("Failed to read timesheet for {} on {}", audience_id, date))?;
+            .with_context(|| format!("Failed to read timesheet for {audience_id} on {date}"))?;
         let mut timesheet: Timesheet =
             serde_json::from_str(&timesheet_data).with_context(|| {
-                format!("Failed to parse timesheet for {} on {}", audience_id, date)
+                format!("Failed to parse timesheet for {audience_id} on {date}")
             })?;
 
         // Try to load metadata if it exists
-        let meta_filename = format!("{}.meta", timesheet_filename);
+        let meta_filename = format!("{timesheet_filename}.meta");
         let meta_path = timesheet_dir.join(&meta_filename);
 
         if self.storage.exists(&meta_path) {
@@ -147,8 +147,7 @@ impl TimesheetManager {
                 Ok(d) => d,
                 Err(e) => {
                     eprintln!(
-                        "[WARN] Skipping file with invalid date format '{}': {}",
-                        date_str, e
+                        "[WARN] Skipping file with invalid date format '{date_str}': {e}"
                     );
                     continue;
                 }
@@ -165,14 +164,12 @@ impl TimesheetManager {
                 Ok(Some(timesheet)) => timesheets.push(timesheet),
                 Ok(None) => {
                     eprintln!(
-                        "[WARN] Timesheet file exists but couldn't be loaded: {}.{}",
-                        audience_id, date_str
+                        "[WARN] Timesheet file exists but couldn't be loaded: {audience_id}.{date_str}"
                     );
                 }
                 Err(e) => {
                     eprintln!(
-                        "[ERROR] Failed to load timesheet {}.{}: {}",
-                        audience_id, date_str, e
+                        "[ERROR] Failed to load timesheet {audience_id}.{date_str}: {e}"
                     );
                     return Err(e);
                 }
@@ -211,13 +208,12 @@ impl TimesheetManager {
             .await
             .with_context(|| {
                 format!(
-                    "Failed to delete timesheet for audience '{}' on {}",
-                    audience_id, date
+                    "Failed to delete timesheet for audience '{audience_id}' on {date}"
                 )
             })?;
 
         // Delete the metadata file if it exists
-        let meta_filename = format!("{}.meta", timesheet_filename);
+        let meta_filename = format!("{timesheet_filename}.meta");
         let meta_path = timesheet_dir.join(&meta_filename);
 
         if self.storage.exists(&meta_path) {
@@ -264,8 +260,8 @@ impl TimesheetManager {
 
         // Call the plugin's compile_time_sheet method
         let timesheet = Python::attach(|py| -> PyResult<Timesheet> {
-            use crate::py_models::log::PyLog;
-            use crate::py_models::timesheet::PyTimesheet;
+            use crate::plugins::models::log::PyLog;
+            use crate::plugins::models::timesheet::PyTimesheet;
 
             let pylog = Py::new(py, PyLog { inner: log.clone() })?;
 
@@ -322,7 +318,7 @@ impl TimesheetManager {
         // Try to call the plugin's submit_timesheet method and capture the result
         let submission_result = Python::attach(|py| -> PyResult<()> {
             // Create a PyTimesheet wrapper
-            use crate::py_models::timesheet::PyTimesheet;
+            use crate::plugins::models::timesheet::PyTimesheet;
             let pytimesheet = Py::new(
                 py,
                 PyTimesheet {
@@ -467,18 +463,18 @@ impl TimesheetManager {
                         signed_timesheet
                             .sign(signing_id, &key_bytes)
                             .with_context(|| {
-                                format!("Failed to sign with identity '{}'", signing_id)
+                                format!("Failed to sign with identity '{signing_id}'")
                             })?;
                     signed_at_least_once = true;
                 }
                 Ok(None) => {
                     // Key doesn't exist - this is a warning but not an error
-                    eprintln!("Warning: No identity key found for '{}'", signing_id);
+                    eprintln!("Warning: No identity key found for '{signing_id}'");
                 }
                 Err(e) => {
                     // Error reading the key - this is more serious
                     return Err(e)
-                        .with_context(|| format!("Failed to get identity '{}'", signing_id));
+                        .with_context(|| format!("Failed to get identity '{signing_id}'"));
                 }
             }
         }
@@ -518,7 +514,7 @@ impl TimesheetManager {
 mod tests {
     use super::*;
     use crate::models::TimesheetMeta;
-    use crate::test_utils::mock_storage::MockStorage;
+    use crate::utils::test_utils::mock_storage::MockStorage;
     use std::collections::HashMap;
 
     #[tokio::test]

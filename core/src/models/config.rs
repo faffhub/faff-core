@@ -27,8 +27,7 @@ impl Config {
                 Ok(tz) => tz,
                 Err(_) => {
                     eprintln!(
-                        "Warning: Could not parse detected timezone '{}', defaulting to UTC",
-                        tz_name
+                        "Warning: Could not parse detected timezone '{tz_name}', defaulting to UTC"
                     );
                     chrono_tz::UTC
                 }

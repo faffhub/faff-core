@@ -93,6 +93,7 @@ pub enum SubmissionStatus {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct TimesheetMeta {
     pub audience_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,17 +110,6 @@ pub struct TimesheetMeta {
     pub submission_error: Option<String>,
 }
 
-impl Default for TimesheetMeta {
-    fn default() -> Self {
-        Self {
-            audience_id: String::new(),
-            submitted_at: None,
-            log_hash: None,
-            submission_status: None,
-            submission_error: None,
-        }
-    }
-}
 
 impl TimesheetMeta {
     pub fn new(audience_id: String, submitted_at: Option<DateTime<Tz>>, log_hash: String) -> Self {

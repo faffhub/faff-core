@@ -1,5 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
-use crate::file_system_storage::FileSystemStorage;
+use crate::storage::FileSystemStorage;
 #[cfg(feature = "python")]
 use crate::managers::PluginManager;
 use crate::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
@@ -118,7 +118,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::mock_storage::MockStorage;
+    use crate::utils::test_utils::mock_storage::MockStorage;
     use std::path::PathBuf;
 
     async fn create_test_workspace() -> Workspace {
@@ -241,6 +241,6 @@ mod tests {
 
         // Managers should be functional
         assert!(plans.get_plans(ws.today()).await.is_ok());
-        assert!(logs.log_exists(ws.today()) == false);
+        assert!(!logs.log_exists(ws.today()));
     }
 }

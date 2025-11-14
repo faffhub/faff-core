@@ -29,7 +29,7 @@ pub enum DateParseError {
 /// ```
 /// use chrono::NaiveDate;
 /// use chrono_tz::Europe::London;
-/// use faff_core::date_parsing::parse_natural_date;
+/// use faff_core::utils::date_parsing::parse_natural_date;
 ///
 /// let today = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 ///
@@ -68,14 +68,13 @@ pub fn parse_natural_date(
         .single()
         .ok_or_else(|| {
             DateParseError::InvalidFormat(format!(
-                "Could not convert date {} to timezone {}",
-                today, timezone
+                "Could not convert date {today} to timezone {timezone}"
             ))
         })?;
 
     // Parse with chrono-english (using UK dialect for DD/MM/YY format)
     let parsed = parse_date_string(date_str, base, Dialect::Uk)
-        .map_err(|e| DateParseError::ChronoEnglish(e))?;
+        .map_err(DateParseError::ChronoEnglish)?;
 
     // Extract just the date part
     Ok(parsed.date_naive())
@@ -105,7 +104,7 @@ pub fn parse_natural_date(
 /// ```
 /// use chrono::{NaiveDate, TimeZone, Timelike};
 /// use chrono_tz::Europe::London;
-/// use faff_core::date_parsing::parse_natural_datetime;
+/// use faff_core::utils::date_parsing::parse_natural_datetime;
 ///
 /// let today = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
 /// let now = London.from_local_datetime(&today.and_hms_opt(11, 30, 0).unwrap()).unwrap();
@@ -140,14 +139,13 @@ pub fn parse_natural_datetime(
 
     // Parse with chrono-english using current time as reference
     let parsed = parse_date_string(datetime_str, now, Dialect::Uk)
-        .map_err(|e| DateParseError::ChronoEnglish(e))?;
+        .map_err(DateParseError::ChronoEnglish)?;
 
     // Validate that the parsed datetime is on the expected date
     let parsed_date = parsed.date_naive();
     if parsed_date != expected_date {
         return Err(DateParseError::InvalidFormat(format!(
-            "Parsed time '{}' resulted in date {} but expected {}. The --since flag only accepts times on today's date.",
-            datetime_str, parsed_date, expected_date
+            "Parsed time '{datetime_str}' resulted in date {parsed_date} but expected {expected_date}. The --since flag only accepts times on today's date."
         )));
     }
 

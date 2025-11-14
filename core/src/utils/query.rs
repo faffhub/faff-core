@@ -184,7 +184,7 @@ pub fn query_sessions(
             // Add to results
             results
                 .entry(key)
-                .and_modify(|d| *d = *d + duration)
+                .and_modify(|d| *d += duration)
                 .or_insert(duration);
         }
     }

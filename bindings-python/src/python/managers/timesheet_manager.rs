@@ -1,7 +1,7 @@
 use crate::python::storage::PyStorage;
 use faff_core::managers::TimesheetManager as RustTimesheetManager;
-use faff_core::py_models::timesheet::PyTimesheet;
-use faff_core::type_mapping::date_py_to_rust;
+use faff_core::plugins::models::timesheet::PyTimesheet;
+use faff_core::utils::type_mapping::date_py_to_rust;
 use faff_core::workspace::Workspace as RustWorkspace;
 use pyo3::prelude::*;
 use pyo3::types::PyDate;
@@ -113,8 +113,8 @@ impl PyTimesheetManager {
     /// This automatically calculates and stores the log hash in the timesheet metadata.
     pub fn compile(
         &self,
-        py: Python<'_>,
-        log: &faff_core::py_models::log::PyLog,
+        _py: Python<'_>,
+        log: &faff_core::plugins::models::log::PyLog,
         plugin: Bound<'_, PyAny>,
     ) -> PyResult<PyTimesheet> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
@@ -236,7 +236,7 @@ impl PyTimesheetManager {
 
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.submit(&timesheet.inner, &mut *plugin_manager))
+            .block_on(self.manager.submit(&timesheet.inner, &mut plugin_manager))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

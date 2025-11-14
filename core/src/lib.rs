@@ -1,15 +1,16 @@
-pub mod date_parsing;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod file_system_storage;
-pub mod managers;
+// Core modules
 pub mod models;
-#[cfg(feature = "python")]
-pub mod py_models;
-pub mod query;
+pub mod managers;
 pub mod storage;
-#[cfg(test)]
-pub mod test_utils;
-#[cfg(feature = "python")]
-pub mod type_mapping;
-pub mod version;
 pub mod workspace;
+
+// Utilities
+pub mod utils;
+
+// Python plugin support
+#[cfg(feature = "python")]
+pub mod plugins;
+
+// Re-export commonly used items for convenience
+pub use storage::{Storage, FileSystemStorage};
+pub use workspace::Workspace;

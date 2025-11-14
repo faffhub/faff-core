@@ -214,7 +214,7 @@ impl Session {
     pub fn with_reflection(&self, score: Option<i32>, reflection: Option<String>) -> Self {
         Self {
             reflection_score: score,
-            reflection: reflection,
+            reflection,
             ..self.clone()
         }
     }
@@ -290,7 +290,7 @@ impl Session {
         // Time can be "HH:MM" or "HH:MM+OFFSET"
         if time_str.contains('+') || (time_str.matches('-').count() > 0 && time_str.len() > 5) {
             // Has timezone offset
-            let datetime_str = format!("{}T{}", date, time_str);
+            let datetime_str = format!("{date}T{time_str}");
             let dt = chrono::DateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M%z")?;
             Ok(dt.with_timezone(&timezone))
         } else {

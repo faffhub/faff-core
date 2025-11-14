@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::python::storage::PyStorage;
 use faff_core::managers::LogManager as RustLogManager;
-use faff_core::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
+use faff_core::utils::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
 use faff_core::workspace::Workspace as RustWorkspace;
 
 #[pyclass(name = "LogManager")]
@@ -39,7 +39,7 @@ impl PyLogManager {
         let tz_str: String = timezone.call_method0("__str__")?.extract()?;
         let tz: Tz = tz_str
             .parse()
-            .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {}", e)))?;
+            .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {e}")))?;
 
         // Wrap the Python storage object
         let py_storage = PyStorage::new(storage);
@@ -99,7 +99,7 @@ impl PyLogManager {
     }
 
     /// List all logs (returns Log objects)
-    fn list_logs(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::py_models::log::PyLog>> {
+    fn list_logs(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::plugins::models::log::PyLog>> {
         let dates = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(self.inner.list_logs())
@@ -112,7 +112,7 @@ impl PyLogManager {
                 .block_on(self.inner.get_log(date))
                 .map_err(|e| PyValueError::new_err(e.to_string()))?
             {
-                logs.push(faff_core::py_models::log::PyLog { inner: log });
+                logs.push(faff_core::plugins::models::log::PyLog { inner: log });
             }
         }
 
@@ -139,32 +139,32 @@ impl PyLogManager {
     fn get_log(
         &self,
         date: Bound<'_, PyDate>,
-    ) -> PyResult<Option<faff_core::py_models::log::PyLog>> {
+    ) -> PyResult<Option<faff_core::plugins::models::log::PyLog>> {
         let naive_date = date_py_to_rust(date)?;
         let log = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(self.inner.get_log(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(log.map(|inner| faff_core::py_models::log::PyLog { inner }))
+        Ok(log.map(|inner| faff_core::plugins::models::log::PyLog { inner }))
     }
 
     /// Get a log for a given date (creates an empty log if file doesn't exist)
     fn get_log_or_create(
         &self,
         date: Bound<'_, PyDate>,
-    ) -> PyResult<faff_core::py_models::log::PyLog> {
+    ) -> PyResult<faff_core::plugins::models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
         let log = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(self.inner.get_log_or_create(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(faff_core::py_models::log::PyLog { inner: log })
+        Ok(faff_core::plugins::models::log::PyLog { inner: log })
     }
 
     /// Write a log to storage
     fn write_log(
         &self,
-        log: &faff_core::py_models::log::PyLog,
+        log: &faff_core::plugins::models::log::PyLog,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<()> {
         tokio::runtime::Runtime::new()
@@ -180,7 +180,7 @@ impl PyLogManager {
     fn start_intent_now(
         &self,
         _py: Python<'_>,
-        intent: &faff_core::py_models::intent::PyIntent,
+        intent: &faff_core::plugins::models::intent::PyIntent,
         note: Option<String>,
     ) -> PyResult<()> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
@@ -216,8 +216,8 @@ impl PyLogManager {
     #[pyo3(signature = (intent, start_time, note=None))]
     fn start_intent_at(
         &self,
-        py: Python<'_>,
-        intent: &faff_core::py_models::intent::PyIntent,
+        _py: Python<'_>,
+        intent: &faff_core::plugins::models::intent::PyIntent,
         start_time: Bound<'_, PyDateTime>,
         note: Option<String>,
     ) -> PyResult<()> {
@@ -306,7 +306,7 @@ impl PyLogManager {
     fn update_intent_in_logs(
         &self,
         intent_id: &str,
-        updated_intent: &faff_core::py_models::intent::PyIntent,
+        updated_intent: &faff_core::plugins::models::intent::PyIntent,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<usize> {
         tokio::runtime::Runtime::new()

@@ -1,7 +1,7 @@
 use crate::models::session::SessionError;
 use crate::models::valuetype::ValueType;
 use crate::models::Session as RustSession;
-use crate::py_models::intent::PyIntent;
+use crate::plugins::models::intent::PyIntent;
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use pyo3::exceptions::PyValueError;
@@ -10,7 +10,7 @@ use pyo3::types::PyDateTime;
 use pyo3::types::{PyDelta, PyDict, PyType};
 use std::collections::HashMap;
 
-use crate::type_mapping;
+use crate::utils::type_mapping;
 
 /// The Python-visible Session class
 #[pyclass(name = "Session")]
@@ -34,13 +34,13 @@ pub(crate) fn session_from_dict_internal(
     if let Some(intent_item) = dict.get_item("intent")? {
         if let Ok(intent_dict) = intent_item.downcast::<PyDict>() {
             // Parse the intent first
-            let py_intent = crate::py_models::intent::intent_from_dict_internal(intent_dict)?;
+            let py_intent = crate::plugins::models::intent::intent_from_dict_internal(intent_dict)?;
 
             // Extract start/end/note from the session dict
             // Parse RFC3339 datetime (includes offset) and convert to semantic timezone
             let start_str: String = dict.get_item("start")?.unwrap().extract()?;
             let start = chrono::DateTime::parse_from_rfc3339(&start_str)
-                .map_err(|e| PyValueError::new_err(format!("Invalid start datetime: {}", e)))?
+                .map_err(|e| PyValueError::new_err(format!("Invalid start datetime: {e}")))?
                 .with_timezone(&tz);
 
             let end = dict
@@ -51,7 +51,7 @@ pub(crate) fn session_from_dict_internal(
                 .map(|s| {
                     chrono::DateTime::parse_from_rfc3339(&s)
                         .map(|dt| dt.with_timezone(&tz))
-                        .map_err(|e| PyValueError::new_err(format!("Invalid end datetime: {}", e)))
+                        .map_err(|e| PyValueError::new_err(format!("Invalid end datetime: {e}")))
                 })
                 .transpose()?;
 
@@ -102,7 +102,7 @@ pub(crate) fn session_from_dict_internal(
     }
 
     let inner = RustSession::from_dict_with_tz(data, date, tz)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
 
     Ok(PySession { inner })
 }
@@ -232,8 +232,7 @@ impl PySession {
                 data.insert(key, ValueType::Integer(v.extract()?));
             } else {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "Unsupported type for key '{}'",
-                    key
+                    "Unsupported type for key '{key}'"
                 )));
             }
         }
@@ -248,7 +247,7 @@ impl PySession {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         let inner = RustSession::from_dict_with_tz(data, date, tz)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+            .map_err(pyo3::exceptions::PyValueError::new_err)?;
 
         Ok(Self { inner })
     }

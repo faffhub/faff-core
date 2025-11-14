@@ -5,7 +5,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use crate::models::Toy as RustToy;
-use crate::type_mapping;
+use crate::utils::type_mapping;
 
 #[pyclass(name = "Toy")]
 pub struct PyToy {
@@ -50,7 +50,7 @@ impl PyToy {
         let dt = type_mapping::datetime_py_to_rust(datetime)?;
         self.inner
             .do_a_datetime(dt)
-            .map_err(|e| PyValueError::new_err(format!("Inner error: {}", e)))
+            .map_err(|e| PyValueError::new_err(format!("Inner error: {e}")))
     }
 
     fn add_days<'py>(
@@ -65,7 +65,7 @@ impl PyToy {
 
         match result {
             Ok(dt) => type_mapping::datetime_rust_to_py(py, &dt),
-            Err(e) => Err(PyValueError::new_err(format!("Inner error: {}", e))),
+            Err(e) => Err(PyValueError::new_err(format!("Inner error: {e}"))),
         }
     }
 

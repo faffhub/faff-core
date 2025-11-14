@@ -118,25 +118,25 @@ pub trait Storage: Send + Sync {
     // ============================================================================
 
     fn log_file_path(&self, date: NaiveDate) -> PathBuf {
-        self.log_dir().join(format!("{}.toml", date))
+        self.log_dir().join(format!("{date}.toml"))
     }
 
     fn plan_file_path(&self, date: NaiveDate) -> PathBuf {
-        self.plan_dir().join(format!("{}.json", date))
+        self.plan_dir().join(format!("{date}.json"))
     }
 
     fn timesheet_file_path(&self, audience_id: &str, date: NaiveDate) -> PathBuf {
         self.timesheet_dir()
-            .join(format!("{}.{}.json", audience_id, date))
+            .join(format!("{audience_id}.{date}.json"))
     }
 
     fn timesheet_meta_file_path(&self, audience_id: &str, date: NaiveDate) -> PathBuf {
         self.timesheet_dir()
-            .join(format!("{}.{}.meta.json", audience_id, date))
+            .join(format!("{audience_id}.{date}.meta.json"))
     }
 
     fn remote_file_path(&self, remote_id: &str) -> PathBuf {
-        self.remotes_dir().join(format!("{}.toml", remote_id))
+        self.remotes_dir().join(format!("{remote_id}.toml"))
     }
 
     // ============================================================================

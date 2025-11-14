@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDate;
 
-use faff_core::query::{Filter as RustFilter, FilterError, FilterField, FilterOperator};
-use faff_core::type_mapping::date_py_to_rust;
+use faff_core::utils::query::{Filter as RustFilter, FilterError, FilterField, FilterOperator};
+use faff_core::utils::type_mapping::date_py_to_rust;
 
 /// Python wrapper for Rust Filter
 #[pyclass(name = "Filter")]
@@ -84,7 +84,7 @@ impl PyFilter {
 #[pyfunction]
 fn query_sessions<'py>(
     py: Python<'py>,
-    logs: Vec<faff_core::py_models::log::PyLog>,
+    logs: Vec<faff_core::plugins::models::log::PyLog>,
     filters: Vec<PyFilter>,
     from_date: Option<Bound<'_, PyDate>>,
     to_date: Option<Bound<'_, PyDate>>,
@@ -104,7 +104,7 @@ fn query_sessions<'py>(
 
     // Call Rust query function
     let results =
-        faff_core::query::query_sessions(&rust_logs, &rust_filters, from_date_rust, to_date_rust)
+        faff_core::utils::query::query_sessions(&rust_logs, &rust_filters, from_date_rust, to_date_rust)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
     // Convert to Python dict with tuple keys (tuples are hashable, lists are not)

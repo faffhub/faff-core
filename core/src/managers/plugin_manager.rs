@@ -260,8 +260,7 @@ impl PluginManager {
 
             let plugin_class = plugin_class.ok_or_else(|| {
                 pyo3::exceptions::PyValueError::new_err(format!(
-                    "No concrete plugin class found in {}",
-                    plugin_name_owned
+                    "No concrete plugin class found in {plugin_name_owned}"
                 ))
             })?;
 
@@ -307,10 +306,10 @@ impl PluginManager {
                 .storage
                 .read_string(&remote_file)
                 .await
-                .with_context(|| format!("Failed to read remote file: {:?}", remote_file))?;
+                .with_context(|| format!("Failed to read remote file: {remote_file:?}"))?;
 
             let remote = Remote::from_toml(&remote_toml)
-                .with_context(|| format!("Failed to parse remote config: {:?}", remote_file))?;
+                .with_context(|| format!("Failed to parse remote config: {remote_file:?}"))?;
 
             // Convert RemoteVocabulary to HashMap for plugin
             let mut defaults = HashMap::new();

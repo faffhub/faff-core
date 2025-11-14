@@ -70,7 +70,7 @@ impl Intent {
             .map(|c| c.to_ascii_lowercase())
             .map(char::from)
             .collect();
-        format!("{}:i-{}-{}", source, date_str, random_suffix)
+        format!("{source}:i-{date_str}-{random_suffix}")
     }
 
     pub fn new(

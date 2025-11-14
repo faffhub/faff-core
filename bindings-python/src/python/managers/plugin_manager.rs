@@ -81,12 +81,12 @@ impl PyPluginManager {
         // Convert Python dicts to HashMap<String, toml::Value>
         let config_map: HashMap<String, toml::Value> =
             pythonize::depythonize(&config).map_err(|e| {
-                pyo3::exceptions::PyValueError::new_err(format!("Invalid config: {}", e))
+                pyo3::exceptions::PyValueError::new_err(format!("Invalid config: {e}"))
             })?;
 
         let defaults_map: HashMap<String, toml::Value> = pythonize::depythonize(&defaults)
             .map_err(|e| {
-                pyo3::exceptions::PyValueError::new_err(format!("Invalid defaults: {}", e))
+                pyo3::exceptions::PyValueError::new_err(format!("Invalid defaults: {e}"))
             })?;
 
         tokio::runtime::Runtime::new()

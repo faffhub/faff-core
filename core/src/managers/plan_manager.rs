@@ -409,7 +409,7 @@ impl PlanManager {
             let filename = file_path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .with_context(|| format!("Invalid filename in plan directory: {:?}", file_path))?;
+                .with_context(|| format!("Invalid filename in plan directory: {file_path:?}"))?;
 
             if let Some(captures) = PLAN_FILENAME_REGEX.captures(filename) {
                 let source = captures.name("source").unwrap().as_str().to_string();
@@ -449,8 +449,7 @@ impl PlanManager {
 
         self.storage.delete(&file_path).await.with_context(|| {
             format!(
-                "Failed to delete plan for source '{}' and date {}",
-                source, date
+                "Failed to delete plan for source '{source}' and date {date}"
             )
         })?;
 
@@ -780,13 +779,13 @@ impl PlanManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::mock_storage::MockStorage;
+    use crate::utils::test_utils::mock_storage::MockStorage;
 
     fn sample_plan_toml(source: &str, date: &str) -> String {
         format!(
             r#"
-source = "{}"
-valid_from = "{}"
+source = "{source}"
+valid_from = "{date}"
 roles = ["engineer"]
 objectives = ["development"]
 actions = ["coding"]
@@ -797,10 +796,9 @@ subjects = ["features"]
 
 [[intents]]
 alias = "Work on feature"
-role = "{}:engineer"
-objective = "{}:development"
-"#,
-            source, date, source, source
+role = "{source}:engineer"
+objective = "{source}:development"
+"#
         )
     }
 
