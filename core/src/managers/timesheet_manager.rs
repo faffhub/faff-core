@@ -79,10 +79,8 @@ impl TimesheetManager {
             .read_string(&timesheet_path)
             .await
             .with_context(|| format!("Failed to read timesheet for {audience_id} on {date}"))?;
-        let mut timesheet: Timesheet =
-            serde_json::from_str(&timesheet_data).with_context(|| {
-                format!("Failed to parse timesheet for {audience_id} on {date}")
-            })?;
+        let mut timesheet: Timesheet = serde_json::from_str(&timesheet_data)
+            .with_context(|| format!("Failed to parse timesheet for {audience_id} on {date}"))?;
 
         // Try to load metadata if it exists
         let meta_filename = format!("{timesheet_filename}.meta");
@@ -146,9 +144,7 @@ impl TimesheetManager {
             let ts_date = match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!(
-                        "[WARN] Skipping file with invalid date format '{date_str}': {e}"
-                    );
+                    eprintln!("[WARN] Skipping file with invalid date format '{date_str}': {e}");
                     continue;
                 }
             };
@@ -168,9 +164,7 @@ impl TimesheetManager {
                     );
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[ERROR] Failed to load timesheet {audience_id}.{date_str}: {e}"
-                    );
+                    eprintln!("[ERROR] Failed to load timesheet {audience_id}.{date_str}: {e}");
                     return Err(e);
                 }
             }
@@ -207,9 +201,7 @@ impl TimesheetManager {
             .delete(&timesheet_path)
             .await
             .with_context(|| {
-                format!(
-                    "Failed to delete timesheet for audience '{audience_id}' on {date}"
-                )
+                format!("Failed to delete timesheet for audience '{audience_id}' on {date}")
             })?;
 
         // Delete the metadata file if it exists
@@ -459,12 +451,9 @@ impl TimesheetManager {
             match identity_manager.get_identity(signing_id).await {
                 Ok(Some(signing_key)) => {
                     let key_bytes = signing_key.to_bytes();
-                    signed_timesheet =
-                        signed_timesheet
-                            .sign(signing_id, &key_bytes)
-                            .with_context(|| {
-                                format!("Failed to sign with identity '{signing_id}'")
-                            })?;
+                    signed_timesheet = signed_timesheet
+                        .sign(signing_id, &key_bytes)
+                        .with_context(|| format!("Failed to sign with identity '{signing_id}'"))?;
                     signed_at_least_once = true;
                 }
                 Ok(None) => {
@@ -503,9 +492,9 @@ impl TimesheetManager {
     #[cfg(feature = "python")]
     pub async fn audiences(
         &self,
-        plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>,
+        plugin_manager: &tokio::sync::Mutex<crate::managers::PluginManager>,
     ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
-        let mut pm = plugin_manager.lock().unwrap();
+        let mut pm = plugin_manager.lock().await;
         pm.audiences().await
     }
 }

@@ -26,6 +26,8 @@ pub struct Plan {
 }
 
 impl Plan {
+    /// Constructor mirrors struct fields, so many arguments are unavoidable
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         source: String,
         valid_from: NaiveDate,

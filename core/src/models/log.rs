@@ -181,15 +181,12 @@ impl Log {
     ///
     /// trackers: map of tracker IDs to human-readable names for comments
     pub fn to_log_file(&self, trackers: &HashMap<String, String>) -> String {
-        let mut lines = Vec::new();
-
-        // Header comments
-        lines.push("# This is a Faff-format log file - see faffage.com for details.".to_string());
-        lines.push("# It has been generated but can be edited manually.".to_string());
-        lines.push("# Changes to rows starting with '#' will not be saved.".to_string());
-
-        // Metadata
-        lines.push("version = \"1.1\"".to_string());
+        let mut lines = vec![
+            "# This is a Faff-format log file - see faffage.com for details.".to_string(),
+            "# It has been generated but can be edited manually.".to_string(),
+            "# Changes to rows starting with '#' will not be saved.".to_string(),
+            "version = \"1.1\"".to_string(),
+        ];
 
         // Date with day of week comment
         let day_of_week = self.date.format("%A").to_string();
@@ -332,9 +329,7 @@ impl Log {
         if hours > 0 {
             if minutes > 0 {
                 if seconds > 0 {
-                    format!(
-                        "{hours} {hour_str}, {minutes} {minute_str} and {seconds} {second_str}"
-                    )
+                    format!("{hours} {hour_str}, {minutes} {minute_str} and {seconds} {second_str}")
                 } else {
                     format!("{hours} {hour_str} and {minutes} {minute_str}")
                 }

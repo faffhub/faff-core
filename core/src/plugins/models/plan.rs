@@ -22,6 +22,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 impl PyPlan {
     #[new]
     #[pyo3(signature = (source, valid_from, valid_until=None, roles=vec![], actions=vec![], objectives=vec![], subjects=vec![], trackers=None, intents=vec![]))]
+    /// Python constructor mirrors struct fields, so many arguments are unavoidable
+    #[allow(clippy::too_many_arguments)]
     fn py_new(
         source: String,
         valid_from: Bound<'_, PyDate>,

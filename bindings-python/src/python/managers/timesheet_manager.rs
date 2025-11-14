@@ -100,7 +100,7 @@ impl PyTimesheetManager {
         })?;
 
         let plugin_manager_arc = workspace.plugins();
-        let mut plugin_manager = plugin_manager_arc.lock().unwrap();
+        let mut plugin_manager = plugin_manager_arc.blocking_lock();
 
         tokio::runtime::Runtime::new()
             .unwrap()
@@ -232,7 +232,7 @@ impl PyTimesheetManager {
         })?;
 
         let plugin_manager_arc = workspace.plugins();
-        let mut plugin_manager = plugin_manager_arc.lock().unwrap();
+        let mut plugin_manager = plugin_manager_arc.blocking_lock();
 
         tokio::runtime::Runtime::new()
             .unwrap()

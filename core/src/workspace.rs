@@ -1,15 +1,13 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::storage::FileSystemStorage;
 #[cfg(feature = "python")]
 use crate::managers::PluginManager;
 use crate::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
 use crate::models::Config;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::storage::FileSystemStorage;
 use crate::storage::Storage;
 use chrono::{DateTime, NaiveDate, Utc};
 use chrono_tz::Tz;
 use std::sync::Arc;
-#[cfg(feature = "python")]
-use std::sync::Mutex;
 
 /// Workspace provides coordinated access to faff functionality
 pub struct Workspace {
@@ -20,7 +18,7 @@ pub struct Workspace {
     timesheet_manager: TimesheetManager,
     identity_manager: IdentityManager,
     #[cfg(feature = "python")]
-    plugin_manager: Mutex<PluginManager>,
+    plugin_manager: tokio::sync::Mutex<PluginManager>,
 }
 
 impl Workspace {
@@ -49,7 +47,7 @@ impl Workspace {
         let timesheet_manager = TimesheetManager::new(storage.clone());
         let identity_manager = IdentityManager::new(storage.clone());
         #[cfg(feature = "python")]
-        let plugin_manager = Mutex::new(PluginManager::new(storage.clone()));
+        let plugin_manager = tokio::sync::Mutex::new(PluginManager::new(storage.clone()));
 
         Ok(Self {
             storage,
@@ -110,7 +108,7 @@ impl Workspace {
 
     /// Get the PluginManager
     #[cfg(feature = "python")]
-    pub fn plugins(&self) -> &Mutex<PluginManager> {
+    pub fn plugins(&self) -> &tokio::sync::Mutex<PluginManager> {
         &self.plugin_manager
     }
 }

@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 
-use wasm_bindgen_test::*;
 use faff_core_wasm::*;
+use wasm_bindgen_test::*;
 
 // Tests will run in Node.js when using: wasm-pack test --node
 
@@ -30,14 +30,7 @@ fn test_intent_creation() {
 #[wasm_bindgen_test]
 fn test_intent_minimal() {
     // Test creating an Intent with minimal fields
-    let intent = Intent::new(
-        Some("minimal".to_string()),
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+    let intent = Intent::new(Some("minimal".to_string()), None, None, None, None, None);
 
     assert_eq!(intent.alias(), Some("minimal".to_string()));
     assert_eq!(intent.role(), None);

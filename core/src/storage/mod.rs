@@ -1,5 +1,5 @@
-mod traits;
 mod file_system;
+mod traits;
 
-pub use traits::Storage;
 pub use file_system::FileSystemStorage;
+pub use traits::Storage;

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
 use crate::models::intent::Intent;
@@ -85,7 +85,7 @@ impl PlanManager {
     /// For each source, we find the most recent file where file_date <= target_date
     async fn find_plan_files_for_date(
         &self,
-        plan_dir: &PathBuf,
+        plan_dir: &Path,
         date: NaiveDate,
     ) -> Result<Vec<PathBuf>> {
         let files = self
@@ -448,9 +448,7 @@ impl PlanManager {
         }
 
         self.storage.delete(&file_path).await.with_context(|| {
-            format!(
-                "Failed to delete plan for source '{source}' and date {date}"
-            )
+            format!("Failed to delete plan for source '{source}' and date {date}")
         })?;
 
         Ok(())
@@ -553,9 +551,9 @@ impl PlanManager {
     #[cfg(feature = "python")]
     pub async fn remotes(
         &self,
-        plugin_manager: &std::sync::Mutex<crate::managers::PluginManager>,
+        plugin_manager: &tokio::sync::Mutex<crate::managers::PluginManager>,
     ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
-        let mut pm = plugin_manager.lock().unwrap();
+        let mut pm = plugin_manager.lock().await;
         pm.plan_remotes().await
     }
 

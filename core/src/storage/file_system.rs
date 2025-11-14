@@ -87,8 +87,8 @@ impl FileSystemStorage {
     /// Search upward from a given path for a `.faff` directory
     ///
     /// Returns the directory containing `.faff`, not the `.faff` directory itself.
-    fn find_faff_root(start_path: &PathBuf) -> Result<PathBuf> {
-        let mut current = start_path.clone();
+    fn find_faff_root(start_path: &Path) -> Result<PathBuf> {
+        let mut current = start_path.to_path_buf();
 
         loop {
             let faff_dir = current.join(".faff");

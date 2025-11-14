@@ -73,8 +73,8 @@ pub fn parse_natural_date(
         })?;
 
     // Parse with chrono-english (using UK dialect for DD/MM/YY format)
-    let parsed = parse_date_string(date_str, base, Dialect::Uk)
-        .map_err(DateParseError::ChronoEnglish)?;
+    let parsed =
+        parse_date_string(date_str, base, Dialect::Uk).map_err(DateParseError::ChronoEnglish)?;
 
     // Extract just the date part
     Ok(parsed.date_naive())
@@ -138,8 +138,8 @@ pub fn parse_natural_datetime(
     }
 
     // Parse with chrono-english using current time as reference
-    let parsed = parse_date_string(datetime_str, now, Dialect::Uk)
-        .map_err(DateParseError::ChronoEnglish)?;
+    let parsed =
+        parse_date_string(datetime_str, now, Dialect::Uk).map_err(DateParseError::ChronoEnglish)?;
 
     // Validate that the parsed datetime is on the expected date
     let parsed_date = parsed.date_naive();

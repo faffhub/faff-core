@@ -387,10 +387,7 @@ impl LogManager {
                         // Trackers are a list, count each one
                         for tracker in &session.intent.trackers {
                             *session_count.entry(tracker.clone()).or_insert(0) += 1;
-                            log_dates
-                                .entry(tracker.clone())
-                                .or_default()
-                                .insert(date);
+                            log_dates.entry(tracker.clone()).or_default().insert(date);
                         }
                         continue;
                     }
@@ -399,10 +396,7 @@ impl LogManager {
 
                 if let Some(value) = session_field_value {
                     *session_count.entry(value.clone()).or_insert(0) += 1;
-                    log_dates
-                        .entry(value.clone())
-                        .or_default()
-                        .insert(date);
+                    log_dates.entry(value.clone()).or_default().insert(date);
                 }
             }
         }

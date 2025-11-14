@@ -3,6 +3,18 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use pyo3::types::{PyDict, PyType};
 
+/// Arguments tuple for Intent pickle serialization (__reduce__)
+/// Contains: (alias, role, objective, action, subject, tags, note)
+type PickleArgs = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<String>,
+    Option<String>,
+);
+
 #[pyclass(name = "Intent")]
 #[derive(Clone)]
 pub struct PyIntent {
@@ -127,23 +139,7 @@ impl PyIntent {
         self.__repr__()
     }
 
-    // XXX: I'm acutely aware that I do not know what this is or how it works.
-    // It _is_ needed, however.
-    fn __reduce__(
-        &self,
-        py: Python,
-    ) -> PyResult<(
-        Py<PyAny>,
-        (
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Vec<String>,
-            Option<String>,
-        ),
-    )> {
+    fn __reduce__(&self, py: Python) -> PyResult<(Py<PyAny>, PickleArgs)> {
         let intent_type = py.get_type::<Self>();
         Ok((
             intent_type.into(),

@@ -103,9 +103,13 @@ fn query_sessions<'py>(
     let to_date_rust = to_date.map(|d| date_py_to_rust(d)).transpose()?;
 
     // Call Rust query function
-    let results =
-        faff_core::utils::query::query_sessions(&rust_logs, &rust_filters, from_date_rust, to_date_rust)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let results = faff_core::utils::query::query_sessions(
+        &rust_logs,
+        &rust_filters,
+        from_date_rust,
+        to_date_rust,
+    )
+    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
     // Convert to Python dict with tuple keys (tuples are hashable, lists are not)
     let py_dict = pyo3::types::PyDict::new(py);

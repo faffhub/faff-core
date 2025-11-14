@@ -8,11 +8,16 @@ use std::sync::{Arc, Mutex};
 use crate::models::remote::Remote;
 use crate::storage::Storage;
 
+/// A plugin entry: (plugin_path, plugin_instance)
+type PluginEntry = (PathBuf, Py<PyAny>);
+/// Cache of loaded plugins: plugin_name -> (path, instance)
+type PluginCache = HashMap<String, PluginEntry>;
+
 /// Manages loading and executing Python plugins
 #[derive(Clone)]
 pub struct PluginManager {
     storage: Arc<dyn Storage>,
-    pub plugins_cache: Arc<Mutex<Option<HashMap<String, (PathBuf, Py<PyAny>)>>>>,
+    pub plugins_cache: Arc<Mutex<Option<PluginCache>>>,
 }
 
 impl PluginManager {

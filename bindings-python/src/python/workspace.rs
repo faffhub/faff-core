@@ -58,7 +58,7 @@ impl PyWorkspace {
         );
         let identities = PyIdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
         // Clone the plugin manager from inside the mutex
-        let plugin_manager_clone = inner_arc.plugins().lock().unwrap().clone();
+        let plugin_manager_clone = inner_arc.plugins().blocking_lock().clone();
         let plugins = PyPluginManager::from_rust(Arc::new(Mutex::new(plugin_manager_clone)));
 
         Ok(Self {
@@ -156,8 +156,9 @@ impl PyWorkspace {
         let today = self.inner.today();
         let now = self.inner.now();
 
-        let parsed = faff_core::utils::date_parsing::parse_natural_datetime(datetime_str, today, now)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let parsed =
+            faff_core::utils::date_parsing::parse_natural_datetime(datetime_str, today, now)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
         faff_core::utils::type_mapping::datetime_rust_to_py(py, &parsed)
     }

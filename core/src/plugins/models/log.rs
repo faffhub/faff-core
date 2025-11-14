@@ -155,9 +155,9 @@ impl PyLog {
             Err(LogError::InvalidTime(msg)) => {
                 Err(PyValueError::new_err(format!("Invalid time: {msg}")))
             }
-            Err(LogError::AmbiguousDatetime(msg)) => Err(PyValueError::new_err(format!(
-                "Ambiguous datetime: {msg}"
-            ))),
+            Err(LogError::AmbiguousDatetime(msg)) => {
+                Err(PyValueError::new_err(format!("Ambiguous datetime: {msg}")))
+            }
         }
     }
 
