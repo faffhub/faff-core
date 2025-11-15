@@ -154,22 +154,12 @@ pub struct PyFileSystemStorage {
 
 #[pymethods]
 impl PyFileSystemStorage {
-    /// Create a new FileSystemStorage by searching for .faff directory
+    /// Create a new FileSystemStorage using FAFF_DIR or home directory
     ///
-    /// Starts from the current working directory and searches upward.
+    /// Looks for .faff at $FAFF_DIR/.faff if FAFF_DIR is set, otherwise at ~/.faff
     #[staticmethod]
     pub fn new() -> PyResult<Self> {
         let storage = FileSystemStorage::new()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        Ok(Self {
-            storage: Arc::new(storage),
-        })
-    }
-
-    /// Create a new FileSystemStorage by searching for .faff directory starting from a specific path
-    #[staticmethod]
-    pub fn from_path(path: String) -> PyResult<Self> {
-        let storage = FileSystemStorage::from_path(PathBuf::from(path))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(Self {
             storage: Arc::new(storage),
@@ -193,17 +183,20 @@ impl PyFileSystemStorage {
     /// the standard faff structure and default config.
     ///
     /// Args:
-    ///     path: The directory path where .faff should be created
-    ///     force: If True, override existing .faff or parent .faff checks
+    ///     path: The directory where .faff should be created.
+    ///           If None, uses FAFF_DIR environment variable or home directory.
+    ///           The .faff directory will be created inside this path.
+    ///     force: If True, allows overriding an existing .faff directory
     ///
     /// Returns:
     ///     A new FileSystemStorage instance for the initialized repository
     #[staticmethod]
-    #[pyo3(signature = (path, force=false))]
-    pub fn init_at(path: String, force: bool) -> PyResult<Self> {
+    #[pyo3(signature = (path=None, force=false))]
+    pub fn init_at(path: Option<String>, force: bool) -> PyResult<Self> {
+        let path_buf = path.map(PathBuf::from);
         let storage = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(FileSystemStorage::init_at(PathBuf::from(path), force))
+            .block_on(FileSystemStorage::init_at(path_buf, force))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(Self {
             storage: Arc::new(storage),
