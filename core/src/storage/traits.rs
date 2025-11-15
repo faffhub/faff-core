@@ -69,14 +69,6 @@ pub trait Storage: Send + Sync {
     // Default implementations: Repository structure
     // ============================================================================
 
-    /// Returns the parent of base_dir (the project root)
-    fn root_dir(&self) -> PathBuf {
-        self.base_dir()
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| self.base_dir())
-    }
-
     fn log_dir(&self) -> PathBuf {
         self.base_dir().join("logs")
     }
@@ -194,13 +186,6 @@ pub trait Storage {
     async fn list_files(&self, dir: &Path, pattern: &str) -> Result<Vec<PathBuf>>;
 
     // Default implementations - identical to native version
-    fn root_dir(&self) -> PathBuf {
-        self.base_dir()
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| self.base_dir())
-    }
-
     fn log_dir(&self) -> PathBuf {
         self.base_dir().join("logs")
     }

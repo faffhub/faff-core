@@ -37,7 +37,7 @@ impl IntegrationStorage {
 #[async_trait]
 impl Storage for IntegrationStorage {
     fn base_dir(&self) -> PathBuf {
-        PathBuf::from("/faff/.faff")
+        PathBuf::from("/faff")
     }
 
     async fn read_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
@@ -90,18 +90,32 @@ impl Storage for IntegrationStorage {
         let files = self.files.read().unwrap();
         let glob_pattern = glob::Pattern::new(pattern)?;
 
-        Ok(files
-            .keys()
-            .filter(|path| {
-                path.parent() == Some(dir)
-                    && path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|n| glob_pattern.matches(n))
-                        .unwrap_or(false)
-            })
-            .cloned()
-            .collect())
+        // Collect both files and directories
+        let mut results: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+
+        for path in files.keys() {
+            // Check if this file is a descendant of dir
+            if let Ok(rel_path) = path.strip_prefix(dir) {
+                let mut components = rel_path.components();
+                if let Some(first_component) = components.next() {
+                    // Get the first component (either file name or subdirectory)
+                    if let Some(name_str) = first_component.as_os_str().to_str() {
+                        if glob_pattern.matches(name_str) {
+                            // If there are more components, this is a subdirectory
+                            if components.next().is_some() {
+                                // This is a subdirectory - add it
+                                results.insert(dir.join(first_component.as_os_str()));
+                            } else {
+                                // This is a direct file - add it
+                                results.insert(path.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(results.into_iter().collect())
     }
 }
 
@@ -112,7 +126,7 @@ async fn test_plan_and_log_integration() {
 
     // Add a plan with trackers
     storage.add_file(
-        PathBuf::from("/faff/.faff/plans/local.20250315.toml"),
+        PathBuf::from("/faff/plans/local.20250315.toml"),
         r#"
 source = "local"
 valid_from = "2025-03-15"
@@ -326,8 +340,8 @@ async fn test_multiple_managers_share_storage() {
     // Verify log manager can see the storage was used
     assert!(log_manager.log_exists(date));
 
-    // Verify storage is shared by checking root dir
-    assert_eq!(storage.root_dir(), PathBuf::from("/faff"));
+    // Verify storage is shared by checking base dir
+    assert_eq!(storage.base_dir(), PathBuf::from("/faff"));
 
     // Plan manager should be able to access plans (even if none exist yet)
     let plans = plan_manager.get_plans(date).await.unwrap();
@@ -339,7 +353,7 @@ async fn test_plan_caching_across_calls() {
     let storage = Arc::new(IntegrationStorage::new());
 
     storage.add_file(
-        PathBuf::from("/faff/.faff/plans/local.20250315.toml"),
+        PathBuf::from("/faff/plans/local.20250315.toml"),
         r#"
 source = "local"
 valid_from = "2025-03-15"

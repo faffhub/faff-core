@@ -154,9 +154,9 @@ pub struct PyFileSystemStorage {
 
 #[pymethods]
 impl PyFileSystemStorage {
-    /// Create a new FileSystemStorage using FAFF_DIR or home directory
+    /// Create a new FileSystemStorage using FAFF_DIR or ~/.faff
     ///
-    /// Looks for .faff at $FAFF_DIR/.faff if FAFF_DIR is set, otherwise at ~/.faff
+    /// Uses $FAFF_DIR directly if set, otherwise uses ~/.faff (hidden directory in home)
     #[staticmethod]
     pub fn new() -> PyResult<Self> {
         let storage = FileSystemStorage::new()
@@ -166,9 +166,9 @@ impl PyFileSystemStorage {
         })
     }
 
-    /// Create a FileSystemStorage at a specific path (doesn't check if .faff exists)
+    /// Create a FileSystemStorage at a specific path (doesn't check if directory exists)
     ///
-    /// This is useful for initialization where .faff doesn't exist yet.
+    /// This is useful for initialization where the directory doesn't exist yet.
     #[staticmethod]
     pub fn at_path(path: String) -> Self {
         let storage = FileSystemStorage::at_path(PathBuf::from(path));
@@ -183,32 +183,27 @@ impl PyFileSystemStorage {
     /// the standard faff structure and default config.
     ///
     /// Args:
-    ///     path: The directory where .faff should be created.
-    ///           If None, uses FAFF_DIR environment variable or home directory.
-    ///           The .faff directory will be created inside this path.
-    ///     force: If True, allows overriding an existing .faff directory
+    ///     path: The directory to use as the faff ledger.
+    ///           If None, uses FAFF_DIR environment variable or ~/.faff.
     ///
     /// Returns:
     ///     A new FileSystemStorage instance for the initialized repository
     #[staticmethod]
-    #[pyo3(signature = (path=None, force=false))]
-    pub fn init_at(path: Option<String>, force: bool) -> PyResult<Self> {
+    #[pyo3(signature = (path=None))]
+    pub fn init_at(path: Option<String>) -> PyResult<Self> {
         let path_buf = path.map(PathBuf::from);
         let storage = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(FileSystemStorage::init_at(path_buf, force))
+            .block_on(FileSystemStorage::init_at(path_buf))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         Ok(Self {
             storage: Arc::new(storage),
         })
     }
 
-    /// Get the root directory (parent of .faff)
-    pub fn root_dir(&self) -> String {
-        self.storage.root_dir().to_string_lossy().into_owned()
-    }
-
-    /// Get the base directory (.faff directory)
+    /// Get the base directory (the faff ledger directory)
+    ///
+    /// This is either ~/.faff (default) or the directory specified by FAFF_DIR.
     pub fn base_dir(&self) -> String {
         self.storage.base_dir().to_string_lossy().into_owned()
     }
@@ -343,12 +338,9 @@ pub struct PyStorageWrapper {
 
 #[pymethods]
 impl PyStorageWrapper {
-    /// Get the root directory (parent of .faff)
-    pub fn root_dir(&self) -> String {
-        self.storage.root_dir().to_string_lossy().into_owned()
-    }
-
-    /// Get the base directory (.faff directory)
+    /// Get the base directory (the faff ledger directory)
+    ///
+    /// This is either ~/.faff (default) or the directory specified by FAFF_DIR.
     pub fn base_dir(&self) -> String {
         self.storage.base_dir().to_string_lossy().into_owned()
     }

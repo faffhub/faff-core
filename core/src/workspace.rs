@@ -124,7 +124,7 @@ mod tests {
 
         // Add a config file to storage at the correct path
         storage.add_file(
-            PathBuf::from("/faff/.faff/config.toml"),
+            PathBuf::from("/faff/config.toml"),
             r#"timezone = "America/New_York""#.to_string(),
         );
 
@@ -162,7 +162,7 @@ mod tests {
         let ws = create_test_workspace().await;
         let storage = ws.storage();
 
-        assert_eq!(storage.root_dir(), PathBuf::from("/faff"));
+        assert_eq!(storage.base_dir(), PathBuf::from("/faff"));
     }
 
     #[tokio::test]
@@ -185,7 +185,7 @@ mod tests {
     async fn test_workspace_with_utc_timezone() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/.faff/config.toml"),
+            PathBuf::from("/faff/config.toml"),
             r#"timezone = "UTC""#.to_string(),
         );
 
@@ -197,7 +197,7 @@ mod tests {
     async fn test_workspace_with_london_timezone() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/.faff/config.toml"),
+            PathBuf::from("/faff/config.toml"),
             r#"timezone = "Europe/London""#.to_string(),
         );
 
@@ -218,7 +218,7 @@ mod tests {
     async fn test_workspace_fails_with_invalid_config() {
         let storage = Arc::new(MockStorage::new());
         storage.add_file(
-            PathBuf::from("/faff/.faff/config.toml"),
+            PathBuf::from("/faff/config.toml"),
             r#"invalid toml content {"#.to_string(),
         );
 
@@ -234,8 +234,8 @@ mod tests {
         let plans = ws.plans();
         let logs = ws.logs();
 
-        // Verify they use the same root directory (indirectly testing shared storage)
-        assert_eq!(ws.storage().root_dir(), PathBuf::from("/faff"));
+        // Verify they use the same base directory (indirectly testing shared storage)
+        assert_eq!(ws.storage().base_dir(), PathBuf::from("/faff"));
 
         // Managers should be functional
         assert!(plans.get_plans(ws.today()).await.is_ok());

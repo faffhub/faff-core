@@ -17,19 +17,19 @@ impl TimesheetManager {
 
     /// Write a timesheet to storage
     pub async fn write_timesheet(&self, timesheet: &Timesheet) -> anyhow::Result<()> {
-        let timesheet_dir = self.storage.timesheet_dir();
+        // Create audience subdirectory
+        let audience_dir = self
+            .storage
+            .timesheet_dir()
+            .join(&timesheet.meta.audience_id);
         self.storage
-            .create_dir_all(&timesheet_dir)
+            .create_dir_all(&audience_dir)
             .await
-            .context("Failed to create timesheet directory")?;
+            .context("Failed to create audience timesheet directory")?;
 
-        // Write the canonical timesheet
-        let timesheet_filename = format!(
-            "{}.{}.json",
-            timesheet.meta.audience_id,
-            timesheet.date.format("%Y-%m-%d")
-        );
-        let timesheet_path = timesheet_dir.join(&timesheet_filename);
+        // Write the canonical timesheet (date only in filename now)
+        let timesheet_filename = format!("{}.json", timesheet.date.format("%Y-%m-%d"));
+        let timesheet_path = audience_dir.join(&timesheet_filename);
         let canonical = timesheet
             .submittable_timesheet()
             .canonical_form()
@@ -46,7 +46,7 @@ impl TimesheetManager {
 
         // Write the metadata separately
         let meta_filename = format!("{timesheet_filename}.meta");
-        let meta_path = timesheet_dir.join(&meta_filename);
+        let meta_path = audience_dir.join(&meta_filename);
         let meta_json = serde_json::to_vec(&timesheet.meta)
             .context("Failed to serialize timesheet metadata")?;
         self.storage
@@ -65,9 +65,9 @@ impl TimesheetManager {
         audience_id: &str,
         date: NaiveDate,
     ) -> anyhow::Result<Option<Timesheet>> {
-        let timesheet_dir = self.storage.timesheet_dir();
-        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
-        let timesheet_path = timesheet_dir.join(&timesheet_filename);
+        let audience_dir = self.storage.timesheet_dir().join(audience_id);
+        let timesheet_filename = format!("{}.json", date.format("%Y-%m-%d"));
+        let timesheet_path = audience_dir.join(&timesheet_filename);
 
         if !self.storage.exists(&timesheet_path) {
             return Ok(None);
@@ -84,7 +84,7 @@ impl TimesheetManager {
 
         // Try to load metadata if it exists
         let meta_filename = format!("{timesheet_filename}.meta");
-        let meta_path = timesheet_dir.join(&meta_filename);
+        let meta_path = audience_dir.join(&meta_filename);
 
         if self.storage.exists(&meta_path) {
             let meta_data = self
@@ -104,68 +104,74 @@ impl TimesheetManager {
     pub async fn list_timesheets(&self, date: Option<NaiveDate>) -> anyhow::Result<Vec<Timesheet>> {
         let timesheet_dir = self.storage.timesheet_dir();
 
-        let pattern = if let Some(d) = date {
-            format!("*.{}.json", d.format("%Y-%m-%d"))
-        } else {
-            "*.json".to_string()
-        };
-
-        let files = self
+        // First, get all audience subdirectories using pattern "*"
+        let audience_dirs = self
             .storage
-            .list_files(&timesheet_dir, &pattern)
+            .list_files(&timesheet_dir, "*")
             .await
-            .context("Failed to list timesheet files")?;
+            .context("Failed to list audience directories")?;
+
         let mut timesheets = Vec::new();
 
-        for file in files {
-            let filename = file
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
-
-            // Skip meta files
-            if filename.ends_with(".meta") {
-                continue;
-            }
-
-            // Parse audience_id and date from filename: audience.YYYY-MM-DD
-            let parts: Vec<&str> = filename.split('.').collect();
-            if parts.len() != 2 {
-                eprintln!(
-                    "[WARN] Skipping file with unexpected format: {} ({} parts)",
-                    filename,
-                    parts.len()
-                );
-                continue;
-            }
-
-            let audience_id = parts[0];
-            let date_str = parts[1];
-            let ts_date = match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("[WARN] Skipping file with invalid date format '{date_str}': {e}");
+        // For each audience directory, list timesheet files
+        for audience_path in audience_dirs {
+            let audience_id = match audience_path.file_name().and_then(|n| n.to_str()) {
+                Some(name) => name,
+                None => {
+                    eprintln!(
+                        "[WARN] Skipping directory with invalid name: {}",
+                        audience_path.display()
+                    );
                     continue;
                 }
             };
 
-            // Filter by date if specified
-            if let Some(filter_date) = date {
-                if ts_date != filter_date {
+            // List timesheet files in this audience directory
+            let pattern = if let Some(d) = date {
+                format!("{}.json", d.format("%Y-%m-%d"))
+            } else {
+                "*.json".to_string()
+            };
+
+            let files = self
+                .storage
+                .list_files(&audience_path, &pattern)
+                .await
+                .context("Failed to list timesheet files")?;
+
+            for file in files {
+                let filename = file
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
+
+                // Skip meta files
+                if filename.ends_with(".meta") {
                     continue;
                 }
-            }
 
-            match self.get_timesheet(audience_id, ts_date).await {
-                Ok(Some(timesheet)) => timesheets.push(timesheet),
-                Ok(None) => {
-                    eprintln!(
-                        "[WARN] Timesheet file exists but couldn't be loaded: {audience_id}.{date_str}"
-                    );
-                }
-                Err(e) => {
-                    eprintln!("[ERROR] Failed to load timesheet {audience_id}.{date_str}: {e}");
-                    return Err(e);
+                // Parse date from filename: YYYY-MM-DD
+                let ts_date = match NaiveDate::parse_from_str(filename, "%Y-%m-%d") {
+                    Ok(d) => d,
+                    Err(e) => {
+                        eprintln!(
+                            "[WARN] Skipping file with invalid date format '{filename}': {e}"
+                        );
+                        continue;
+                    }
+                };
+
+                match self.get_timesheet(audience_id, ts_date).await {
+                    Ok(Some(timesheet)) => timesheets.push(timesheet),
+                    Ok(None) => {
+                        eprintln!(
+                            "[WARN] Timesheet file exists but couldn't be loaded: {audience_id}/{filename}"
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("[ERROR] Failed to load timesheet {audience_id}/{filename}: {e}");
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -176,17 +182,17 @@ impl TimesheetManager {
 
     /// Check if a timesheet exists for a specific audience and date
     pub fn timesheet_exists(&self, audience_id: &str, date: NaiveDate) -> bool {
-        let timesheet_dir = self.storage.timesheet_dir();
-        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
-        let timesheet_path = timesheet_dir.join(timesheet_filename);
+        let audience_dir = self.storage.timesheet_dir().join(audience_id);
+        let timesheet_filename = format!("{}.json", date.format("%Y-%m-%d"));
+        let timesheet_path = audience_dir.join(timesheet_filename);
         self.storage.exists(&timesheet_path)
     }
 
     /// Delete a timesheet
     pub async fn delete_timesheet(&self, audience_id: &str, date: NaiveDate) -> anyhow::Result<()> {
-        let timesheet_dir = self.storage.timesheet_dir();
-        let timesheet_filename = format!("{}.{}.json", audience_id, date.format("%Y-%m-%d"));
-        let timesheet_path = timesheet_dir.join(&timesheet_filename);
+        let audience_dir = self.storage.timesheet_dir().join(audience_id);
+        let timesheet_filename = format!("{}.json", date.format("%Y-%m-%d"));
+        let timesheet_path = audience_dir.join(&timesheet_filename);
 
         if !self.storage.exists(&timesheet_path) {
             anyhow::bail!(
@@ -206,7 +212,7 @@ impl TimesheetManager {
 
         // Delete the metadata file if it exists
         let meta_filename = format!("{timesheet_filename}.meta");
-        let meta_path = timesheet_dir.join(&meta_filename);
+        let meta_path = audience_dir.join(&meta_filename);
 
         if self.storage.exists(&meta_path) {
             self.storage

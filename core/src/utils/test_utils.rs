@@ -27,7 +27,7 @@ pub mod mock_storage {
         pub fn new() -> Self {
             Self {
                 files: RwLock::new(HashMap::new()),
-                base_dir: PathBuf::from("/faff/.faff"),
+                base_dir: PathBuf::from("/faff"),
             }
         }
 
@@ -116,19 +116,32 @@ pub mod mock_storage {
             // Use glob::Pattern for proper glob matching
             let glob_pattern = glob::Pattern::new(pattern)?;
 
-            Ok(files
-                .keys()
-                .filter(|path| {
-                    // Check if the file is in the specified directory
-                    path.parent() == Some(dir)
-                        && path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map(|n| glob_pattern.matches(n))
-                            .unwrap_or(false)
-                })
-                .cloned()
-                .collect())
+            // Collect both files and directories
+            let mut results: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+
+            for path in files.keys() {
+                // Check if this file is a descendant of dir
+                if let Ok(rel_path) = path.strip_prefix(dir) {
+                    let mut components = rel_path.components();
+                    if let Some(first_component) = components.next() {
+                        // Get the first component (either file name or subdirectory)
+                        if let Some(name_str) = first_component.as_os_str().to_str() {
+                            if glob_pattern.matches(name_str) {
+                                // If there are more components, this is a subdirectory
+                                if components.next().is_some() {
+                                    // This is a subdirectory - add it
+                                    results.insert(dir.join(first_component.as_os_str()));
+                                } else {
+                                    // This is a direct file - add it
+                                    results.insert(path.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Ok(results.into_iter().collect())
         }
     }
 

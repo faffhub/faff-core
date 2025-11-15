@@ -5,61 +5,54 @@ use tokio::fs as async_fs;
 
 use crate::storage::Storage;
 
-/// FileSystemStorage implements the Storage trait using a .faff directory.
+/// FileSystemStorage implements the Storage trait using a faff directory.
 ///
-/// The .faff directory location is determined by (in order):
-/// 1. $FAFF_DIR/.faff if FAFF_DIR environment variable is set
-/// 2. ~/.faff (default)
+/// The faff directory location is determined by (in order):
+/// 1. $FAFF_DIR if FAFF_DIR environment variable is set (used directly)
+/// 2. ~/.faff (default - hidden directory in home)
 ///
 /// This provides a single workspace location with portability via environment variable.
 #[derive(Clone)]
 pub struct FileSystemStorage {
-    faff_root: PathBuf,
     faff_dir: PathBuf,
 }
 
 impl FileSystemStorage {
     /// Create a new FileSystemStorage using FAFF_DIR or ~/.faff
     ///
-    /// Returns an error if the .faff directory doesn't exist.
+    /// Returns an error if the faff directory doesn't exist.
     pub fn new() -> Result<Self> {
-        let faff_root = Self::get_faff_root()?;
-        let faff_dir = faff_root.join(".faff");
+        let faff_dir = Self::get_faff_dir()?;
 
         if !faff_dir.exists() {
             anyhow::bail!(
-                "No .faff directory found at {}. Run 'faff init' to create one.",
-                faff_root.display()
+                "No faff directory found at {}. Run 'faff init' to create one.",
+                faff_dir.display()
             );
         }
 
-        Ok(Self {
-            faff_root,
-            faff_dir,
-        })
+        Ok(Self { faff_dir })
     }
 
-    /// Get the faff root directory from FAFF_DIR env var or home directory
+    /// Get the faff directory from FAFF_DIR env var or ~/.faff
     ///
-    /// Returns the parent directory where .faff lives:
-    /// - If FAFF_DIR is set: returns FAFF_DIR
-    /// - Otherwise: returns home directory (so .faff will be at ~/.faff)
-    fn get_faff_root() -> Result<PathBuf> {
+    /// - If FAFF_DIR is set: returns $FAFF_DIR (used directly)
+    /// - Otherwise: returns ~/.faff (hidden directory in home)
+    fn get_faff_dir() -> Result<PathBuf> {
         if let Ok(faff_dir) = std::env::var("FAFF_DIR") {
             Ok(PathBuf::from(faff_dir))
         } else {
-            dirs::home_dir().context("Could not determine home directory")
+            let home = dirs::home_dir().context("Could not determine home directory")?;
+            Ok(home.join(".faff"))
         }
     }
 
-    /// Create a FileSystemStorage at a specific path (doesn't check if .faff exists)
+    /// Create a FileSystemStorage at a specific path (doesn't check if directory exists)
     ///
-    /// This is useful for initialization where .faff doesn't exist yet.
+    /// This is useful for initialization where the directory doesn't exist yet.
+    /// The path is used directly as the faff directory.
     pub fn at_path(path: PathBuf) -> Self {
-        Self {
-            faff_root: path.clone(),
-            faff_dir: path.join(".faff"),
-        }
+        Self { faff_dir: path }
     }
 
     /// Initialize a new faff repository at the given path
@@ -69,22 +62,21 @@ impl FileSystemStorage {
     ///
     /// If no path is provided, uses FAFF_DIR or ~/.faff
     ///
-    /// Returns an error if .faff already exists at target (unless force=true)
-    pub async fn init_at(path: Option<PathBuf>, force: bool) -> Result<Self> {
-        let faff_root = match path {
+    /// Returns an error if directory already has faff content
+    pub async fn init_at(path: Option<PathBuf>) -> Result<Self> {
+        let faff_dir = match path {
             Some(p) => p,
-            None => Self::get_faff_root()?,
+            None => Self::get_faff_dir()?,
         };
 
-        let faff_dir = faff_root.join(".faff");
-
-        // Check if .faff already exists at target
-        if faff_dir.exists() && !force {
-            anyhow::bail!(".faff directory already exists at {}", faff_root.display());
+        // Check if faff content already exists (config file is a good indicator)
+        let config_path = faff_dir.join("config.toml");
+        if config_path.exists() {
+            anyhow::bail!("Faff ledger already initialized at {}", faff_dir.display());
         }
 
         // Create the storage and initialize it
-        let storage = Self::at_path(faff_root);
+        let storage = Self::at_path(faff_dir);
         storage.init().await?;
         Ok(storage)
     }
@@ -94,11 +86,6 @@ impl FileSystemStorage {
 impl Storage for FileSystemStorage {
     fn base_dir(&self) -> PathBuf {
         self.faff_dir.clone()
-    }
-
-    // Override root_dir() to use cached value instead of computing from parent
-    fn root_dir(&self) -> PathBuf {
-        self.faff_root.clone()
     }
 
     // Gets log_dir(), plan_dir(), etc. from trait defaults
@@ -183,8 +170,8 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
-        assert_eq!(storage.root_dir(), temp.path());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
+        assert_eq!(storage.base_dir(), faff_dir);
     }
 
     #[test]
@@ -193,14 +180,11 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
-        assert_eq!(storage.log_dir(), temp.path().join(".faff").join("logs"));
-        assert_eq!(storage.plan_dir(), temp.path().join(".faff").join("plans"));
-        assert_eq!(
-            storage.config_file(),
-            temp.path().join(".faff").join("config.toml")
-        );
+        assert_eq!(storage.log_dir(), faff_dir.join("logs"));
+        assert_eq!(storage.plan_dir(), faff_dir.join("plans"));
+        assert_eq!(storage.config_file(), faff_dir.join("config.toml"));
     }
 
     #[tokio::test]
@@ -209,7 +193,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let test_file = storage.log_dir().join("test.txt");
         storage
@@ -227,7 +211,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let test_file = storage.log_dir().join("test.bin");
         let data = vec![0u8, 1, 2, 3, 4, 5];
@@ -244,7 +228,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let test_file = storage.log_dir().join("test.txt");
         assert!(!storage.exists(&test_file));
@@ -259,7 +243,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let nested_dir = storage.log_dir().join("nested").join("deep").join("dir");
         assert!(!nested_dir.exists());
@@ -274,7 +258,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         // Create some test files
         let log_dir = storage.log_dir();
@@ -306,7 +290,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let log_dir = storage.log_dir();
         storage.create_dir_all(&log_dir).await.unwrap();
@@ -321,7 +305,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let nonexistent = temp.path().join("does_not_exist");
         let files = storage.list_files(&nonexistent, "*.toml").await.unwrap();
@@ -334,7 +318,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let nested_file = storage
             .log_dir()
@@ -354,7 +338,7 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
         let nonexistent = storage.log_dir().join("nonexistent.txt");
         let result = storage.read_string(&nonexistent).await;
@@ -368,24 +352,15 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
 
-        // All directories should be under .faff
-        assert_eq!(storage.root_dir(), temp.path());
-        assert_eq!(storage.log_dir(), temp.path().join(".faff").join("logs"));
-        assert_eq!(storage.plan_dir(), temp.path().join(".faff").join("plans"));
-        assert_eq!(
-            storage.identity_dir(),
-            temp.path().join(".faff").join("keys")
-        );
-        assert_eq!(
-            storage.timesheet_dir(),
-            temp.path().join(".faff").join("timesheets")
-        );
-        assert_eq!(
-            storage.config_file(),
-            temp.path().join(".faff").join("config.toml")
-        );
+        // All directories should be under the faff_dir
+        assert_eq!(storage.base_dir(), faff_dir);
+        assert_eq!(storage.log_dir(), faff_dir.join("logs"));
+        assert_eq!(storage.plan_dir(), faff_dir.join("plans"));
+        assert_eq!(storage.identity_dir(), faff_dir.join("keys"));
+        assert_eq!(storage.timesheet_dir(), faff_dir.join("timesheets"));
+        assert_eq!(storage.config_file(), faff_dir.join("config.toml"));
     }
 
     #[test]
@@ -394,10 +369,10 @@ mod tests {
         let faff_dir = temp.path().join(".faff");
         fs::create_dir(&faff_dir).unwrap();
 
-        let storage = FileSystemStorage::at_path(temp.path().to_path_buf());
+        let storage = FileSystemStorage::at_path(faff_dir.clone());
         let cloned = storage.clone();
 
-        assert_eq!(storage.root_dir(), cloned.root_dir());
+        assert_eq!(storage.base_dir(), cloned.base_dir());
         assert_eq!(storage.log_dir(), cloned.log_dir());
     }
 }

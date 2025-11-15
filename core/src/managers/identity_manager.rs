@@ -196,11 +196,11 @@ mod tests {
         let key = manager.create_identity("test", false).await.unwrap();
 
         // Verify private key file exists
-        let private_path = PathBuf::from("/faff/.faff/keys/id_test");
+        let private_path = PathBuf::from("/faff/keys/id_test");
         assert!(storage.exists(&private_path));
 
         // Verify public key file exists
-        let public_path = PathBuf::from("/faff/.faff/keys/id_test.pub");
+        let public_path = PathBuf::from("/faff/keys/id_test.pub");
         assert!(storage.exists(&public_path));
 
         // Verify the key can be read back
