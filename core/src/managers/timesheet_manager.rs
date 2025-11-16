@@ -331,28 +331,30 @@ impl TimesheetManager {
         });
 
         // Update timesheet metadata based on submission result
-        let updated_timesheet = match submission_result {
+        match submission_result {
             Ok(()) => {
                 // Submission succeeded
-                timesheet.with_submission_result(
+                let updated_timesheet = timesheet.with_submission_result(
                     crate::models::SubmissionStatus::Success,
                     None,
                     submitted_at,
-                )
+                );
+                self.write_timesheet(&updated_timesheet).await?;
+                Ok(())
             }
             Err(e) => {
-                // Submission failed - capture the error
-                timesheet.with_submission_result(
+                // Submission failed - capture the error in metadata and propagate it
+                let updated_timesheet = timesheet.with_submission_result(
                     crate::models::SubmissionStatus::Failed,
                     Some(e.to_string()),
                     submitted_at,
-                )
+                );
+                self.write_timesheet(&updated_timesheet).await?;
+
+                // Propagate the error so the caller knows submission failed
+                Err(anyhow::anyhow!("Failed to submit timesheet: {}", e))
             }
-        };
-
-        self.write_timesheet(&updated_timesheet).await?;
-
-        Ok(())
+        }
     }
 
     /// Find timesheets that are stale (log has changed since compilation)
