@@ -6,7 +6,7 @@ use pyo3::types::{PyDate, PyDateTime};
 use std::sync::Arc;
 
 use crate::python::storage::PyStorage;
-use faff_core::managers::LogManager as RustLogManager;
+use faff_core::managers::{LogManager as RustLogManager, PlanManager};
 use faff_core::utils::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
 use faff_core::workspace::Workspace as RustWorkspace;
 
@@ -45,8 +45,11 @@ impl PyLogManager {
         let py_storage = PyStorage::new(storage);
         let storage: Arc<dyn faff_core::storage::Storage> = Arc::new(py_storage);
 
+        // Create a PlanManager for the LogManager to use
+        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+
         Ok(Self {
-            inner: RustLogManager::new(storage, tz),
+            inner: RustLogManager::new(storage, tz, plan_manager),
             workspace: None, // Standalone construction doesn't have workspace reference
         })
     }

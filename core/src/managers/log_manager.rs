@@ -1,26 +1,27 @@
 use anyhow::{Context, Result};
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::managers::PlanManager;
 use crate::models::Log;
 use crate::storage::Storage;
 
 /// Manages log file operations.
 ///
 /// Handles reading, writing, listing, and deleting daily logs.
-/// Note: TOML parsing/formatting is currently handled on the Python side.
-/// This manager provides the storage abstraction layer.
+/// Now includes ledger-wide awareness to handle midnight crossing sessions.
 #[derive(Clone)]
 pub struct LogManager {
     storage: Arc<dyn Storage>,
     timezone: Tz,
+    plan_manager: Arc<PlanManager>,
 }
 
 impl LogManager {
-    pub fn new(storage: Arc<dyn Storage>, timezone: Tz) -> Self {
-        Self { storage, timezone }
+    pub fn new(storage: Arc<dyn Storage>, timezone: Tz, plan_manager: Arc<PlanManager>) -> Self {
+        Self { storage, timezone, plan_manager }
     }
 
     /// Get the path for a log file
@@ -59,11 +60,18 @@ impl LogManager {
 
     /// Get a log for a given date
     ///
-    /// Returns None if the log file doesn't exist
+    /// Returns the log if it exists, or materializes a continuation from yesterday's
+    /// unclosed session if applicable. Returns None if no log exists and no continuation
+    /// is needed.
+    ///
+    /// Materialization: If yesterday has an unclosed session and today has no log file,
+    /// this will automatically close yesterday's session at 23:59 and create today's log
+    /// starting at 00:00 with a continuation of that session.
     pub async fn get_log(&self, date: NaiveDate) -> Result<Option<Log>> {
         let log_path = self.storage.log_file_path(date);
 
         if self.storage.exists(&log_path) {
+            // Log file exists, read and return it
             let toml_str = self
                 .storage
                 .read_string(&log_path)
@@ -75,6 +83,29 @@ impl LogManager {
 
             Ok(Some(log))
         } else {
+            // Log file doesn't exist - check if we should materialize a continuation
+            let yesterday = date - Duration::days(1);
+            let yesterday_path = self.storage.log_file_path(yesterday);
+
+            if self.storage.exists(&yesterday_path) {
+                // Yesterday's file exists - check for unclosed session
+                let yesterday_toml = self.storage.read_string(&yesterday_path).await?;
+                let yesterday_log = Log::from_log_file(&yesterday_toml)?;
+
+                if let Some(unclosed_session) = yesterday_log.active_session() {
+                    // Found an unclosed session in yesterday's log - materialize the continuation
+                    let unclosed_session_clone = unclosed_session.clone();
+                    self.materialize_continuation(date, yesterday, yesterday_log, &unclosed_session_clone)
+                        .await?;
+
+                    // Now read the materialized log for today
+                    let toml_str = self.storage.read_string(&log_path).await?;
+                    let log = Log::from_log_file(&toml_str)?;
+                    return Ok(Some(log));
+                }
+            }
+
+            // No file and no continuation needed
             Ok(None)
         }
     }
@@ -88,6 +119,53 @@ impl LogManager {
         } else {
             Ok(Log::new(date, self.timezone, vec![]))
         }
+    }
+
+    /// Materialize a continuation session from yesterday to today
+    ///
+    /// This closes yesterday's unclosed session at 23:59 and creates today's log
+    /// with a continuation session starting at 00:00.
+    async fn materialize_continuation(
+        &self,
+        today: NaiveDate,
+        yesterday: NaiveDate,
+        yesterday_log: Log,
+        unclosed_session: &crate::models::Session,
+    ) -> Result<()> {
+        // Get trackers from plan manager for proper TOML formatting
+        let yesterday_trackers = self.plan_manager.get_trackers(yesterday).await?;
+        let today_trackers = self.plan_manager.get_trackers(today).await?;
+
+        // Close yesterday's session at 23:59
+        let end_of_day = self
+            .timezone
+            .with_ymd_and_hms(yesterday.year(), yesterday.month(), yesterday.day(), 23, 59, 0)
+            .single()
+            .context("Failed to create end of day timestamp")?;
+
+        let closed_yesterday_log = yesterday_log.stop_active_session(end_of_day)?;
+
+        // Create today's log with continuation session at 00:00
+        let start_of_day = self
+            .timezone
+            .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
+            .single()
+            .context("Failed to create start of day timestamp")?;
+
+        let continuation_session = crate::models::Session::new(
+            unclosed_session.intent.clone(),
+            start_of_day,
+            None, // Unclosed
+            unclosed_session.note.clone(),
+        );
+
+        let today_log = Log::new(today, self.timezone, vec![continuation_session]);
+
+        // Write both files
+        self.write_log(&closed_yesterday_log, &yesterday_trackers).await?;
+        self.write_log(&today_log, &today_trackers).await?;
+
+        Ok(())
     }
 
     /// Write a log to storage
@@ -410,10 +488,16 @@ mod tests {
     use super::*;
     use crate::utils::test_utils::mock_storage::MockStorage;
 
+    // Helper function to create a LogManager with a PlanManager for tests
+    fn create_test_manager(storage: Arc<MockStorage>) -> LogManager {
+        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+        LogManager::new(storage, chrono_tz::UTC, plan_manager)
+    }
+
     #[tokio::test]
     async fn test_log_exists() {
         let storage = Arc::new(MockStorage::new());
-        let manager = LogManager::new(storage.clone(), chrono_tz::UTC);
+        let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         assert!(!manager.log_exists(date));
@@ -429,7 +513,7 @@ mod tests {
     #[tokio::test]
     async fn test_write_and_read_raw() {
         let storage = Arc::new(MockStorage::new());
-        let manager = LogManager::new(storage, chrono_tz::UTC);
+        let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let content = "date = \"2025-03-15\"\ntimezone = \"UTC\"\n";
@@ -443,7 +527,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_logs() {
         let storage = Arc::new(MockStorage::new());
-        let manager = LogManager::new(storage, chrono_tz::UTC);
+        let manager = create_test_manager(storage.clone());
 
         let date1 = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let date2 = NaiveDate::from_ymd_opt(2025, 3, 16).unwrap();
@@ -460,7 +544,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_log_parses_toml() {
         let storage = Arc::new(MockStorage::new());
-        let manager = LogManager::new(storage, chrono_tz::UTC);
+        let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let toml_content = r#"
@@ -496,7 +580,7 @@ note = "Morning session"
     #[tokio::test]
     async fn test_get_log_returns_none_when_missing() {
         let storage = Arc::new(MockStorage::new());
-        let manager = LogManager::new(storage, chrono_tz::UTC);
+        let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let log = manager.get_log(date).await.unwrap();
@@ -507,12 +591,71 @@ note = "Morning session"
     #[tokio::test]
     async fn test_get_log_or_create() {
         let storage = Arc::new(MockStorage::new());
-        let manager = LogManager::new(storage, chrono_tz::UTC);
+        let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let log = manager.get_log_or_create(date).await.unwrap();
 
         assert_eq!(log.date, date);
         assert_eq!(log.timeline.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_midnight_crossing_continuation() {
+        use crate::models::{Intent, Session};
+        use chrono::{TimeZone, Timelike};
+
+        let storage = Arc::new(MockStorage::new());
+        let manager = create_test_manager(storage.clone());
+
+        let yesterday = NaiveDate::from_ymd_opt(2025, 3, 14).unwrap();
+        let today = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+
+        // Create an unclosed session yesterday at 23:30
+        let intent = Intent::new(
+            Some("work".to_string()),
+            Some("dev".to_string()),
+            Some("project".to_string()),
+            Some("coding".to_string()),
+            Some("api".to_string()),
+            vec![],
+        );
+
+        let session_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 14, 23, 30, 0)
+            .unwrap();
+        let unclosed_session = Session::new(intent.clone(), session_start, None, Some("late night coding".to_string()));
+
+        let yesterday_log = crate::models::Log::new(yesterday, chrono_tz::UTC, vec![unclosed_session]);
+
+        // Write yesterday's log with unclosed session
+        manager
+            .write_log(&yesterday_log, &std::collections::HashMap::new())
+            .await
+            .unwrap();
+
+        // Now call get_log(today) - should materialize the continuation
+        let today_log = manager.get_log(today).await.unwrap();
+
+        assert!(today_log.is_some(), "Today's log should be materialized");
+        let today_log = today_log.unwrap();
+
+        // Verify today's log has one session starting at 00:00
+        assert_eq!(today_log.timeline.len(), 1);
+        let today_session = &today_log.timeline[0];
+        assert_eq!(today_session.intent.alias, Some("work".to_string()));
+        assert_eq!(today_session.start.hour(), 0);
+        assert_eq!(today_session.start.minute(), 0);
+        assert!(today_session.end.is_none(), "Today's session should be unclosed");
+        assert_eq!(today_session.note, Some("late night coding".to_string()));
+
+        // Verify yesterday's log was closed at 23:59
+        let yesterday_log_closed = manager.get_log(yesterday).await.unwrap().unwrap();
+        assert_eq!(yesterday_log_closed.timeline.len(), 1);
+        let yesterday_session_closed = &yesterday_log_closed.timeline[0];
+        assert!(yesterday_session_closed.end.is_some(), "Yesterday's session should be closed");
+        let end_time = yesterday_session_closed.end.unwrap();
+        assert_eq!(end_time.hour(), 23);
+        assert_eq!(end_time.minute(), 59);
     }
 }

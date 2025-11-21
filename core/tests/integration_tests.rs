@@ -151,8 +151,8 @@ trackers = ["PROJ-123"]
     );
 
     // Create managers
-    let plan_manager = PlanManager::new(storage.clone());
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC);
+    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager.clone());
 
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
 
@@ -201,7 +201,8 @@ trackers = ["PROJ-123"]
 async fn test_log_and_timesheet_integration() {
     let storage = Arc::new(IntegrationStorage::new());
 
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC);
+    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager);
     let timesheet_manager = TimesheetManager::new(storage.clone());
 
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
@@ -329,8 +330,8 @@ async fn test_multiple_managers_share_storage() {
     let storage = Arc::new(IntegrationStorage::new());
 
     // Create all managers
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC);
-    let plan_manager = PlanManager::new(storage.clone());
+    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager.clone());
 
     // Write data with log manager
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
@@ -402,7 +403,8 @@ roles = ["engineer"]
 #[tokio::test]
 async fn test_log_list_and_read_integration() {
     let storage = Arc::new(IntegrationStorage::new());
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC);
+    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager);
 
     // Create multiple logs
     let date1 = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();

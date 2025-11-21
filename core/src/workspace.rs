@@ -13,7 +13,7 @@ use std::sync::Arc;
 pub struct Workspace {
     storage: Arc<dyn Storage>,
     config: Config,
-    plan_manager: PlanManager,
+    plan_manager: Arc<PlanManager>,
     log_manager: LogManager,
     timesheet_manager: TimesheetManager,
     identity_manager: IdentityManager,
@@ -42,8 +42,8 @@ impl Workspace {
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 
         // Create managers
-        let plan_manager = PlanManager::new(storage.clone());
-        let log_manager = LogManager::new(storage.clone(), config.timezone);
+        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+        let log_manager = LogManager::new(storage.clone(), config.timezone, plan_manager.clone());
         let timesheet_manager = TimesheetManager::new(storage.clone());
         let identity_manager = IdentityManager::new(storage.clone());
         #[cfg(feature = "python")]
@@ -87,7 +87,7 @@ impl Workspace {
     }
 
     /// Get the PlanManager
-    pub fn plans(&self) -> &PlanManager {
+    pub fn plans(&self) -> &Arc<PlanManager> {
         &self.plan_manager
     }
 
