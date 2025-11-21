@@ -222,17 +222,60 @@ impl LogManager {
             .with_context(|| format!("Failed to delete log for {date}"))
     }
 
-    /// Start a new session with the given intent at the current time
-    pub async fn start_intent_now(
+    /// Start a new session with the given intent at a specific time
+    ///
+    /// Validates that:
+    /// - start_time is not in the future (relative to `now`)
+    /// - start_time doesn't conflict with existing sessions
+    ///
+    /// If there's an active session, it will be stopped at `start_time` before
+    /// starting the new session.
+    pub async fn start_intent(
         &self,
         intent: crate::models::Intent,
         note: Option<String>,
         current_date: NaiveDate,
-        current_time: chrono::DateTime<Tz>,
-        trackers: &std::collections::HashMap<String, String>,
+        start_time: chrono::DateTime<Tz>,
+        now: chrono::DateTime<Tz>,
+        trackers: &HashMap<String, String>,
     ) -> Result<()> {
         // Get today's log or create empty one
-        let log = self.get_log_or_create(current_date).await?;
+        let mut log = self.get_log_or_create(current_date).await?;
+
+        // Validate start time is not in the future
+        if start_time > now {
+            anyhow::bail!(
+                "Cannot start session in the future: {} is after current time {}",
+                start_time.format("%H:%M:%S"),
+                now.format("%H:%M:%S")
+            );
+        }
+
+        // Validate against existing timeline
+        if let Some(last_session) = log.timeline.last() {
+            if last_session.end.is_none() {
+                // Active session - start_time must be after its start
+                if start_time < last_session.start {
+                    anyhow::bail!(
+                        "Cannot start at {}. Active session started at {}. Start time must be after the current session started.",
+                        start_time.format("%H:%M:%S"),
+                        last_session.start.format("%H:%M:%S")
+                    );
+                }
+                // Stop the active session at start_time
+                log = log.stop_active_session(start_time)?;
+            } else {
+                // No active session - start_time must be after the last session's end
+                let last_end = last_session.end.unwrap();
+                if start_time < last_end {
+                    anyhow::bail!(
+                        "Cannot start at {}. Previous session ended at {}.",
+                        start_time.format("%H:%M:%S"),
+                        last_end.format("%H:%M:%S")
+                    );
+                }
+            }
+        }
 
         // Validate trackers if any are specified
         if !intent.trackers.is_empty() {
@@ -249,7 +292,7 @@ impl LogManager {
         }
 
         // Create new session
-        let session = crate::models::Session::new(intent, current_time, None, note);
+        let session = crate::models::Session::new(intent, start_time, None, note);
 
         // Append to log and write
         let updated_log = log.append_session(session)?;
@@ -657,5 +700,133 @@ note = "Morning session"
         let end_time = yesterday_session_closed.end.unwrap();
         assert_eq!(end_time.hour(), 23);
         assert_eq!(end_time.minute(), 59);
+    }
+
+    #[tokio::test]
+    async fn test_start_intent_validation_future_time() {
+        use crate::models::Intent;
+        use chrono::TimeZone;
+
+        let storage = Arc::new(MockStorage::new());
+        let manager = create_test_manager(storage.clone());
+
+        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let future = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+
+        let intent = Intent::new(
+            Some("work".to_string()),
+            None, None, None, None,
+            vec![],
+        );
+
+        let result = manager
+            .start_intent(intent, None, date, future, now, &HashMap::new())
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("future"));
+    }
+
+    #[tokio::test]
+    async fn test_start_intent_validation_overlap_active_session() {
+        use crate::models::{Intent, Session};
+        use chrono::TimeZone;
+
+        let storage = Arc::new(MockStorage::new());
+        let manager = create_test_manager(storage.clone());
+
+        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+
+        // Create a log with an active session starting at 10:00
+        let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
+        let session_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let session = Session::new(intent, session_start, None, None);
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
+        manager.write_log(&log, &HashMap::new()).await.unwrap();
+
+        // Try to start a new session at 09:00 (before active session started)
+        let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
+        let bad_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+
+        let result = manager
+            .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Active session"));
+    }
+
+    #[tokio::test]
+    async fn test_start_intent_validation_overlap_completed_session() {
+        use crate::models::{Intent, Session};
+        use chrono::TimeZone;
+
+        let storage = Arc::new(MockStorage::new());
+        let manager = create_test_manager(storage.clone());
+
+        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+
+        // Create a log with a completed session from 09:00 to 10:00
+        let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
+        let session_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let session_end = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let session = Session::new(intent, session_start, Some(session_end), None);
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
+        manager.write_log(&log, &HashMap::new()).await.unwrap();
+
+        // Try to start at 09:30 (overlapping completed session)
+        let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
+        let bad_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 30, 0).unwrap();
+
+        let result = manager
+            .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Previous session ended"));
+    }
+
+    #[tokio::test]
+    async fn test_start_intent_stops_active_session() {
+        use crate::models::{Intent, Session};
+        use chrono::{TimeZone, Timelike};
+
+        let storage = Arc::new(MockStorage::new());
+        let manager = create_test_manager(storage.clone());
+
+        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
+        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+
+        // Create a log with an active session starting at 09:00
+        let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
+        let session_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let session = Session::new(intent, session_start, None, None);
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
+        manager.write_log(&log, &HashMap::new()).await.unwrap();
+
+        // Start a new session at 11:00 (after active session started)
+        let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
+        let new_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+
+        manager
+            .start_intent(new_intent, None, date, new_start, now, &HashMap::new())
+            .await
+            .unwrap();
+
+        // Verify the first session was stopped and second started
+        let log = manager.get_log(date).await.unwrap().unwrap();
+        assert_eq!(log.timeline.len(), 2);
+
+        // First session should be closed at 11:00
+        assert_eq!(log.timeline[0].intent.alias, Some("existing".to_string()));
+        assert!(log.timeline[0].end.is_some());
+        assert_eq!(log.timeline[0].end.unwrap().hour(), 11);
+
+        // Second session should be active
+        assert_eq!(log.timeline[1].intent.alias, Some("new".to_string()));
+        assert!(log.timeline[1].end.is_none());
     }
 }

@@ -271,65 +271,27 @@ impl LogManager {
         })
     }
 
-    /// Start a new session with the given intent at the current time.
-    ///
-    /// Requires workspace reference. Auto-fills current_date, current_time, and trackers.
-    ///
-    /// intent: Intent object
-    /// note: optional string note
-    /// Returns Promise<void>.
-    #[wasm_bindgen(js_name = startIntentNow)]
-    pub fn start_intent_now(
-        &self,
-        intent: &super::super::models::Intent,
-        note: Option<String>,
-    ) -> js_sys::Promise {
-        let workspace = match &self.workspace {
-            Some(ws) => ws.clone(),
-            None => {
-                return js_sys::Promise::reject(&JsValue::from_str(
-                    "LogManager has no workspace reference",
-                ));
-            }
-        };
-
-        let inner = self.inner.clone();
-        let intent_inner = intent.inner.clone();
-
-        future_to_promise(async move {
-            // Get current date and time from workspace
-            let current_date = workspace.today();
-            let current_time = workspace.now();
-
-            // Get trackers from plan manager
-            let trackers = workspace
-                .plans()
-                .get_trackers(current_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get trackers: {}", e)))?;
-
-            inner
-                .start_intent_now(intent_inner, note, current_date, current_time, &trackers)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to start session: {}", e)))?;
-
-            Ok(JsValue::undefined())
-        })
-    }
-
-    /// Start a new session with the given intent at a specific time.
+    /// Start a new session with the given intent.
     ///
     /// Requires workspace reference. Auto-fills trackers.
+    /// If there's an active session, it will be stopped at the start time.
+    /// Validates that start_time is not in the future and doesn't conflict
+    /// with existing sessions.
     ///
     /// intent: Intent object
-    /// startTime: JS Date object
+    /// startTime: optional JS Date object (defaults to now)
     /// note: optional string note
     /// Returns Promise<void>.
-    #[wasm_bindgen(js_name = startIntentAt)]
-    pub fn start_intent_at(
+    ///
+    /// FIXME: This method gathers context (now, trackers) from workspace before
+    /// calling the Rust core. This orchestration logic should live in Rust, not
+    /// in the bindings. See BUSINESS_LOGIC_AUDIT.md for the proposed functional
+    /// core pattern that would eliminate this.
+    #[wasm_bindgen(js_name = startIntent)]
+    pub fn start_intent(
         &self,
         intent: &super::super::models::Intent,
-        start_time: js_sys::Date,
+        start_time: Option<js_sys::Date>,
         note: Option<String>,
     ) -> js_sys::Promise {
         let workspace = match &self.workspace {
@@ -345,13 +307,13 @@ impl LogManager {
         let intent_inner = intent.inner.clone();
 
         future_to_promise(async move {
-            // Convert JS Date to Rust DateTime
-            let start_datetime = js_date_to_chrono(&start_time)?;
+            let now = workspace.now();
+            let start = match start_time {
+                Some(dt) => js_date_to_chrono(&dt)?,
+                None => now,
+            };
+            let current_date = start.date_naive();
 
-            // Get the date from the start time
-            let current_date = start_datetime.date_naive();
-
-            // Get trackers from plan manager
             let trackers = workspace
                 .plans()
                 .get_trackers(current_date)
@@ -359,7 +321,7 @@ impl LogManager {
                 .map_err(|e| JsValue::from_str(&format!("Failed to get trackers: {}", e)))?;
 
             inner
-                .start_intent_now(intent_inner, note, current_date, start_datetime, &trackers)
+                .start_intent(intent_inner, note, current_date, start, now, &trackers)
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to start session: {}", e)))?;
 

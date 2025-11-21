@@ -178,50 +178,25 @@ impl PyLogManager {
 
     /// Start a new session with the given intent
     ///
-    /// Auto-fills current_date, current_time, and trackers from workspace
-    #[pyo3(signature = (intent, note=None))]
-    fn start_intent_now(
-        &self,
-        _py: Python<'_>,
-        intent: &faff_core::plugins::models::intent::PyIntent,
-        note: Option<String>,
-    ) -> PyResult<()> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "LogManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        // Get current date and time from workspace
-        let current_date = workspace.today();
-        let current_time = workspace.now();
-
-        let rt = tokio::runtime::Runtime::new().unwrap();
-
-        // Get trackers from plan manager
-        let trackers = rt
-            .block_on(workspace.plans().get_trackers(current_date))
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        rt.block_on(self.inner.start_intent_now(
-            intent.inner.clone(),
-            note,
-            current_date,
-            current_time,
-            &trackers,
-        ))
-        .map_err(|e| PyValueError::new_err(e.to_string()))
-    }
-
-    /// Start a new session with the given intent at a specific time
+    /// Args:
+    ///     intent: The intent for the session
+    ///     start_time: Optional start time (defaults to now)
+    ///     note: Optional note for the session
     ///
-    /// Takes a Python datetime object for the start time
-    #[pyo3(signature = (intent, start_time, note=None))]
-    fn start_intent_at(
+    /// If there's an active session, it will be stopped at the start time.
+    /// Validates that start_time is not in the future and doesn't conflict
+    /// with existing sessions.
+    ///
+    /// FIXME: This method gathers context (now, trackers) from workspace before
+    /// calling the Rust core. This orchestration logic should live in Rust, not
+    /// in the bindings. See BUSINESS_LOGIC_AUDIT.md for the proposed functional
+    /// core pattern that would eliminate this.
+    #[pyo3(signature = (intent, start_time=None, note=None))]
+    fn start_intent(
         &self,
         _py: Python<'_>,
         intent: &faff_core::plugins::models::intent::PyIntent,
-        start_time: Bound<'_, PyDateTime>,
+        start_time: Option<Bound<'_, PyDateTime>>,
         note: Option<String>,
     ) -> PyResult<()> {
         let workspace = self.workspace.as_ref().ok_or_else(|| {
@@ -230,24 +205,25 @@ impl PyLogManager {
             )
         })?;
 
-        // Convert Python datetime to Rust DateTime<Tz>
-        let start_datetime = datetime_py_to_rust(start_time)?;
-
-        // Get the date from the start time
-        let current_date = start_datetime.date_naive();
+        let now = workspace.now();
+        let start = match start_time {
+            Some(dt) => datetime_py_to_rust(dt)?,
+            None => now,
+        };
+        let current_date = start.date_naive();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
 
-        // Get trackers from plan manager
         let trackers = rt
             .block_on(workspace.plans().get_trackers(current_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        rt.block_on(self.inner.start_intent_now(
+        rt.block_on(self.inner.start_intent(
             intent.inner.clone(),
             note,
             current_date,
-            start_datetime,
+            start,
+            now,
             &trackers,
         ))
         .map_err(|e| PyValueError::new_err(e.to_string()))
