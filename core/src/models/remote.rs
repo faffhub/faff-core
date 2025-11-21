@@ -416,32 +416,36 @@ impl Remote {
         // Apply each mapping
         for mapping in &self.vocabulary_mappings {
             // Get source values based on source_type
+            // source_id is prefixed with plan.source so {source_id} expands to prefixed form
             let source_values: Vec<(String, String)> = match mapping.source_type {
                 VocabularyType::Tracker => {
-                    // For trackers: (tracker_id, tracker_description)
+                    // For trackers: (source:tracker_id, tracker_description)
                     plan.trackers
                         .iter()
-                        .map(|(id, desc)| (id.clone(), desc.clone()))
+                        .map(|(id, desc)| (format!("{}:{}", plan.source, id), desc.clone()))
                         .collect()
                 }
                 VocabularyType::Role => {
-                    // For roles: (role, role) - use the role itself as both ID and value
-                    plan.roles.iter().map(|r| (r.clone(), r.clone())).collect()
+                    // For roles: (source:role, role) - prefix ID, use role itself as value
+                    plan.roles
+                        .iter()
+                        .map(|r| (format!("{}:{}", plan.source, r), r.clone()))
+                        .collect()
                 }
                 VocabularyType::Objective => plan
                     .objectives
                     .iter()
-                    .map(|o| (o.clone(), o.clone()))
+                    .map(|o| (format!("{}:{}", plan.source, o), o.clone()))
                     .collect(),
                 VocabularyType::Action => plan
                     .actions
                     .iter()
-                    .map(|a| (a.clone(), a.clone()))
+                    .map(|a| (format!("{}:{}", plan.source, a), a.clone()))
                     .collect(),
                 VocabularyType::Subject => plan
                     .subjects
                     .iter()
-                    .map(|s| (s.clone(), s.clone()))
+                    .map(|s| (format!("{}:{}", plan.source, s), s.clone()))
                     .collect(),
                 VocabularyType::Intent => {
                     // For intents, use the alias as the value to match against
@@ -948,12 +952,9 @@ mod tests {
 
         remote.vocabulary_mappings.push(mapping);
 
-        // Create a plan with a matching tracker
+        // Create a plan with a matching tracker (keys are unprefixed in plan files)
         let mut trackers = std::collections::HashMap::new();
-        trackers.insert(
-            "element:12345".to_string(),
-            "Support - Acme Corp".to_string(),
-        );
+        trackers.insert("12345".to_string(), "Support - Acme Corp".to_string());
 
         let plan = Plan::new(
             "element".to_string(),
