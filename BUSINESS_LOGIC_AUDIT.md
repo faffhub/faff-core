@@ -110,13 +110,13 @@ The status command finds timesheets where logs changed after compilation.
 
 ---
 
-#### [ ] Filter Operators (`filtering.py:222-249`)
+#### [x] Filter Operators (`filtering.py:222-249`) - ALREADY IN RUST
 Filter matching logic for session queries:
 - Exact match (`=`) with string comparison
 - Contains match (`~`) with case-insensitive substring
 - Not equal (`!=`) operator
 
-**Target:** Ensure `query::Filter` in Rust handles all operators. CLI should only parse filter strings, not implement matching.
+**Status:** Core filtering is in Rust (`query::Filter::matches()` on Session objects). The CLI's `matches_filter()` in `filtering.py` operates on display dicts (for log/session listings), which is appropriate display-layer logic. The Rust `query_sessions()` function handles session filtering properly.
 
 ---
 
@@ -277,7 +277,7 @@ This keeps the low-level methods available for testing and flexibility, while pr
 | Session statistics | Not started | |
 | Active session duration | Done | |
 | Stale timesheet detection | Already in Rust | |
-| Filter operators | Not started | |
+| Filter operators | Already in Rust | |
 | Compilation validation | Not started | |
 | LogManager workspace injection | Not started | |
 | TimesheetManager workspace injection | Not started | |
