@@ -240,7 +240,10 @@ impl Session {
     /// For open sessions, returns time elapsed since start.
     /// Panics if session is already closed (use `duration()` instead).
     pub fn elapsed(&self, now: DateTime<Tz>) -> Duration {
-        assert!(self.end.is_none(), "elapsed() called on closed session - use duration() instead");
+        assert!(
+            self.end.is_none(),
+            "elapsed() called on closed session - use duration() instead"
+        );
         now - self.start
     }
 
