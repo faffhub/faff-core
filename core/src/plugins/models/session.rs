@@ -212,6 +212,32 @@ impl PySession {
         }
     }
 
+    /// Get elapsed time for an open session
+    ///
+    /// For open sessions, returns time elapsed since start.
+    /// Raises ValueError if session is already closed (use duration property instead).
+    fn elapsed<'py>(
+        &self,
+        py: Python<'py>,
+        now: Bound<'py, PyDateTime>,
+    ) -> PyResult<pyo3::Bound<'py, pyo3::types::PyDelta>> {
+        if self.inner.end.is_some() {
+            return Err(PyValueError::new_err(
+                "elapsed() called on closed session - use duration property instead",
+            ));
+        }
+
+        let now_dt = type_mapping::datetime_py_to_rust(now)?;
+        let dur = self.inner.elapsed(now_dt);
+
+        let total_micros = dur.num_microseconds().unwrap_or(0);
+        let days = (total_micros / 86_400_000_000) as i32;
+        let seconds = ((total_micros % 86_400_000_000) / 1_000_000) as i32;
+        let micros = (total_micros % 1_000_000) as i32;
+
+        PyDelta::new(py, days, seconds, micros, false)
+    }
+
     #[classmethod]
     fn from_dict_with_tz(
         _cls: &Bound<'_, PyType>,

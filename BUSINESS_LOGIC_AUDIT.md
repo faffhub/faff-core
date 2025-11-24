@@ -92,17 +92,21 @@ Intent and field list commands parse raw TOML files to build usage statistics:
 
 ---
 
-#### [ ] Active Session Duration (`session.py:106-111`, `main.py:334-342`)
+#### [x] Active Session Duration (`session.py:106-111`, `main.py:334-342`) - DONE
 Multiple places calculate active session duration by checking if end_time is None and using current time.
 
-**Target:** Add `Session::duration()` method that accepts optional `now` parameter, or `Log::active_session_duration()` in Rust
+**Moved to Rust:** Added `Session::elapsed(now)` method for open sessions.
+- `duration` property: for closed sessions (raises error if open)
+- `elapsed(now)` method: for open sessions (raises error if closed)
+
+CLI now uses the appropriate method based on session state.
 
 ---
 
-#### [ ] Stale Timesheet Detection (`main.py:385-404`)
+#### [x] Stale Timesheet Detection (`main.py:385-404`) - ALREADY IN RUST
 The status command finds timesheets where logs changed after compilation.
 
-**Note:** This may already exist in Rust (`find_stale_timesheets`). Check if CLI is duplicating or if it's missing from bindings.
+**Status:** Already implemented in Rust (`TimesheetManager::find_stale_timesheets`) and exposed in Python/WASM bindings. CLI already uses it.
 
 ---
 
@@ -271,8 +275,8 @@ This keeps the low-level methods available for testing and flexibility, while pr
 | Timeline validation | Done | |
 | Duration aggregations | Done | |
 | Session statistics | Not started | |
-| Active session duration | Not started | |
-| Stale timesheet detection | Not started | |
+| Active session duration | Done | |
+| Stale timesheet detection | Already in Rust | |
 | Filter operators | Not started | |
 | Compilation validation | Not started | |
 | LogManager workspace injection | Not started | |

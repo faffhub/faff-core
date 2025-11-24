@@ -219,6 +219,9 @@ impl Session {
         }
     }
 
+    /// Get duration of a closed session
+    ///
+    /// Returns error if session has no end time (use `elapsed()` instead).
     pub fn duration(&self) -> Result<Duration, SessionError> {
         match self.end {
             Some(end) => {
@@ -230,6 +233,15 @@ impl Session {
             }
             None => Err(SessionError::MissingEnd),
         }
+    }
+
+    /// Get elapsed time for an open session
+    ///
+    /// For open sessions, returns time elapsed since start.
+    /// Panics if session is already closed (use `duration()` instead).
+    pub fn elapsed(&self, now: DateTime<Tz>) -> Duration {
+        assert!(self.end.is_none(), "elapsed() called on closed session - use duration() instead");
+        now - self.start
     }
 
     /// Parse a Session from a TOML table (from log file format)
@@ -371,6 +383,30 @@ mod tests {
         let result = session.duration();
 
         assert!(matches!(result, Err(SessionError::MissingEnd)));
+    }
+
+    #[test]
+    fn test_elapsed_open_session() {
+        let intent = sample_intent();
+        let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let now = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
+
+        let session = Session::new(intent, start, None, None);
+        let elapsed = session.elapsed(now);
+
+        assert_eq!(elapsed, Duration::minutes(90));
+    }
+
+    #[test]
+    #[should_panic(expected = "elapsed() called on closed session")]
+    fn test_elapsed_closed_session_panics() {
+        let intent = sample_intent();
+        let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let now = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+
+        let session = Session::new(intent, start, Some(end), None);
+        session.elapsed(now); // should panic
     }
 
     #[test]
