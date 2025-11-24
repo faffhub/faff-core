@@ -2,7 +2,7 @@ use chrono::{Datelike, NaiveDate};
 use chrono_tz::Tz;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDate, PyDelta, PyDict, PyType};
+use pyo3::types::{IntoPyDict, PyDate, PyDelta, PyDict, PyType};
 
 use crate::models::log::{Log as RustLog, LogError};
 use crate::plugins::models::session::PySession;
@@ -186,6 +186,37 @@ impl PyLog {
                 .map_err(|e| PyValueError::new_err(format!("Invalid trackers dict: {e}")))?;
 
         Ok(self.inner.to_log_file(&trackers_map))
+    }
+
+    /// Calculate summary statistics for this log
+    ///
+    /// Args:
+    ///     now: Current datetime (for calculating duration of open sessions)
+    ///
+    /// Returns a dict with:
+    ///     total_minutes: Total recorded time in minutes
+    ///     by_intent: Dict of intent alias -> minutes
+    ///     by_tracker: Dict of tracker -> minutes
+    ///     by_tracker_source: Dict of tracker source -> minutes
+    ///     mean_reflection_score: Float or None
+    fn summary<'py>(
+        &self,
+        py: Python<'py>,
+        now: Bound<'_, pyo3::types::PyDateTime>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        use crate::utils::type_mapping;
+
+        let now_dt = type_mapping::datetime_py_to_rust(now)?;
+        let summary = self.inner.summary(now_dt);
+
+        let result = PyDict::new(py);
+        result.set_item("total_minutes", summary.total_minutes)?;
+        result.set_item("by_intent", summary.by_intent.into_py_dict(py)?)?;
+        result.set_item("by_tracker", summary.by_tracker.into_py_dict(py)?)?;
+        result.set_item("by_tracker_source", summary.by_tracker_source.into_py_dict(py)?)?;
+        result.set_item("mean_reflection_score", summary.mean_reflection_score)?;
+
+        Ok(result)
     }
 
     fn __repr__(&self) -> PyResult<String> {

@@ -10,7 +10,7 @@ pub mod valuetype;
 
 pub use config::Config;
 pub use intent::Intent;
-pub use log::Log;
+pub use log::{Log, LogSummary};
 pub use plan::Plan;
 pub use remote::{Remote, RemoteVocabulary};
 pub use session::Session;

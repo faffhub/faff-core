@@ -25,6 +25,21 @@ pub enum LogError {
     AmbiguousDatetime(String),
 }
 
+/// Summary statistics for a log
+#[derive(Clone, Debug, PartialEq)]
+pub struct LogSummary {
+    /// Total recorded time in minutes
+    pub total_minutes: i64,
+    /// Time by intent alias in minutes
+    pub by_intent: HashMap<String, i64>,
+    /// Time by tracker in minutes
+    pub by_tracker: HashMap<String, i64>,
+    /// Time by tracker source (prefix before ':') in minutes
+    pub by_tracker_source: HashMap<String, i64>,
+    /// Weighted mean reflection score (if any sessions have scores)
+    pub mean_reflection_score: Option<f64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Log {
     pub date: NaiveDate,
@@ -431,6 +446,81 @@ impl Log {
 
         (Log::new(self.date, self.timezone, new_timeline), count)
     }
+
+    /// Calculate summary statistics for this log
+    ///
+    /// Uses the provided `now` time for calculating duration of open sessions on today.
+    /// For open sessions on past dates, caps at end-of-day (23:59).
+    /// All durations are in minutes (faff's base unit).
+    pub fn summary(&self, now: DateTime<Tz>) -> LogSummary {
+        let mut by_intent: HashMap<String, i64> = HashMap::new();
+        let mut by_tracker: HashMap<String, i64> = HashMap::new();
+        let mut by_tracker_source: HashMap<String, i64> = HashMap::new();
+        let mut total_minutes: i64 = 0;
+
+        let mut weighted_score_minutes: f64 = 0.0;
+        let mut total_reflected_minutes: f64 = 0.0;
+
+        let today = now.date_naive();
+
+        for session in &self.timeline {
+            let end = match session.end {
+                Some(end) => end,
+                None => {
+                    if self.date == today {
+                        // For open sessions on today, use current time
+                        now
+                    } else {
+                        // For open sessions on past dates, cap at end of day
+                        let end_of_day_time = NaiveTime::from_hms_opt(23, 59, 0)
+                            .expect("23:59:00 is valid");
+                        let end_of_day_naive = self.date.and_time(end_of_day_time);
+                        self.timezone
+                            .from_local_datetime(&end_of_day_naive)
+                            .single()
+                            .unwrap_or(now) // fallback to now if DST ambiguity
+                    }
+                }
+            };
+            let duration_minutes = (end - session.start).num_minutes();
+
+            total_minutes += duration_minutes;
+
+            // Aggregate by intent alias
+            let alias = session.intent.alias.clone().unwrap_or_default();
+            *by_intent.entry(alias).or_insert(0) += duration_minutes;
+
+            // Aggregate by tracker and tracker source
+            for tracker in &session.intent.trackers {
+                *by_tracker.entry(tracker.clone()).or_insert(0) += duration_minutes;
+
+                let source = tracker.split(':').next().unwrap_or("").to_string();
+                if !source.is_empty() {
+                    *by_tracker_source.entry(source).or_insert(0) += duration_minutes;
+                }
+            }
+
+            // Track weighted reflection score
+            if let Some(score) = session.reflection_score {
+                weighted_score_minutes += score as f64 * duration_minutes as f64;
+                total_reflected_minutes += duration_minutes as f64;
+            }
+        }
+
+        let mean_reflection_score = if total_reflected_minutes > 0.0 {
+            Some(weighted_score_minutes / total_reflected_minutes)
+        } else {
+            None
+        };
+
+        LogSummary {
+            total_minutes,
+            by_intent,
+            by_tracker,
+            by_tracker_source,
+            mean_reflection_score,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -753,5 +843,95 @@ mod tests {
             ),
             "2 hours, 15 minutes and 45 seconds"
         );
+    }
+
+    #[test]
+    fn test_summary() {
+        let intent1 = Intent::new(
+            Some("coding".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec!["element:123".to_string()],
+        );
+        let intent2 = Intent::new(
+            Some("meeting".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec!["element:456".to_string(), "jira:ABC-1".to_string()],
+        );
+
+        let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let end1 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap(); // 90 mins
+        let session1 = Session::new(intent1, start1, Some(end1), None);
+
+        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+        let end2 = london_tz().with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap(); // 60 mins
+        let session2 = Session::new(intent2, start2, Some(end2), None);
+
+        let log = Log::new(sample_date(), london_tz(), vec![session1, session2]);
+        let now = london_tz().with_ymd_and_hms(2025, 3, 15, 15, 0, 0).unwrap();
+
+        let summary = log.summary(now);
+
+        assert_eq!(summary.total_minutes, 150);
+        assert_eq!(summary.by_intent.get("coding"), Some(&90));
+        assert_eq!(summary.by_intent.get("meeting"), Some(&60));
+        assert_eq!(summary.by_tracker.get("element:123"), Some(&90));
+        assert_eq!(summary.by_tracker.get("element:456"), Some(&60));
+        assert_eq!(summary.by_tracker.get("jira:ABC-1"), Some(&60));
+        assert_eq!(summary.by_tracker_source.get("element"), Some(&150));
+        assert_eq!(summary.by_tracker_source.get("jira"), Some(&60));
+        assert_eq!(summary.mean_reflection_score, None);
+    }
+
+    #[test]
+    fn test_summary_with_reflection_scores() {
+        let mut session1 = Session::new(
+            sample_intent(),
+            london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap(),
+            Some(london_tz().with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap()), // 60 mins
+            None,
+        );
+        session1.reflection_score = Some(4);
+
+        let mut session2 = Session::new(
+            sample_intent(),
+            london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap(),
+            Some(london_tz().with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap()), // 60 mins
+            None,
+        );
+        session2.reflection_score = Some(2);
+
+        let log = Log::new(sample_date(), london_tz(), vec![session1, session2]);
+        let now = london_tz().with_ymd_and_hms(2025, 3, 15, 15, 0, 0).unwrap();
+
+        let summary = log.summary(now);
+
+        // Weighted mean: (4*60 + 2*60) / 120 = 360/120 = 3.0
+        assert_eq!(summary.mean_reflection_score, Some(3.0));
+    }
+
+    #[test]
+    fn test_summary_open_session_on_past_date_caps_at_end_of_day() {
+        let intent = sample_intent();
+        let past_date = NaiveDate::from_ymd_opt(2025, 3, 10).unwrap();
+
+        // Open session starting at 17:00 on a past date
+        let start = london_tz().with_ymd_and_hms(2025, 3, 10, 17, 0, 0).unwrap();
+        let open_session = Session::new(intent, start, None, None);
+
+        let log = Log::new(past_date, london_tz(), vec![open_session]);
+
+        // "now" is days later
+        let now = london_tz().with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+        let summary = log.summary(now);
+
+        // Should cap at 23:59 on the log's date, not use "now"
+        // 17:00 to 23:59 = 6 hours 59 minutes = 419 minutes
+        assert_eq!(summary.total_minutes, 419);
     }
 }

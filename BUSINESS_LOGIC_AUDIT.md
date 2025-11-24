@@ -64,14 +64,21 @@ The `--since` flag implementation contains overlap detection, future-time checks
 
 ### HIGH
 
-#### [ ] Duration Aggregations (`log.py:276-332`)
+#### [x] Duration Aggregations (`log.py:276-332`) - DONE
 The `faff log summary` command calculates:
 - Total recorded time
 - Time aggregated by intent
 - Time aggregated by tracker and tracker source
 - Weighted mean reflection score
 
-**Target:** Add `LogManager::summarize()` or `Log::summary()` method in Rust
+**Moved to Rust:** Added `Log::summary()` method that returns `LogSummary`:
+- `total_minutes: i64` - Total time in minutes
+- `by_intent: HashMap<String, i64>` - Minutes per intent alias
+- `by_tracker: HashMap<String, i64>` - Minutes per tracker
+- `by_tracker_source: HashMap<String, i64>` - Minutes per tracker source prefix
+- `mean_reflection_score: Option<f64>` - Weighted mean (by duration)
+
+CLI now just formats the summary dict from Rust.
 
 ---
 
@@ -261,8 +268,8 @@ This keeps the low-level methods available for testing and flexibility, while pr
 
 | Item | Status | PR/Commit |
 |------|--------|-----------|
-| Timeline validation | Not started | |
-| Duration aggregations | Not started | |
+| Timeline validation | Done | |
+| Duration aggregations | Done | |
 | Session statistics | Not started | |
 | Active session duration | Not started | |
 | Stale timesheet detection | Not started | |

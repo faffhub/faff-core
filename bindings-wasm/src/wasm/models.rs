@@ -226,6 +226,52 @@ impl Log {
         serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Calculate summary statistics for this log
+    ///
+    /// now: JS Date for calculating duration of open sessions
+    /// Returns an object with:
+    ///   totalMinutes: number
+    ///   byIntent: Record<string, number>
+    ///   byTracker: Record<string, number>
+    ///   byTrackerSource: Record<string, number>
+    ///   meanReflectionScore: number | null
+    pub fn summary(&self, now: js_sys::Date) -> Result<JsValue, JsValue> {
+        let now_dt = js_date_to_chrono(&now)?;
+        let summary = self.inner.summary(now_dt);
+
+        // Convert to a JS-friendly format
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"totalMinutes".into(), &summary.total_minutes.into())?;
+        js_sys::Reflect::set(
+            &obj,
+            &"byIntent".into(),
+            &serde_wasm_bindgen::to_value(&summary.by_intent)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?,
+        )?;
+        js_sys::Reflect::set(
+            &obj,
+            &"byTracker".into(),
+            &serde_wasm_bindgen::to_value(&summary.by_tracker)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?,
+        )?;
+        js_sys::Reflect::set(
+            &obj,
+            &"byTrackerSource".into(),
+            &serde_wasm_bindgen::to_value(&summary.by_tracker_source)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?,
+        )?;
+        js_sys::Reflect::set(
+            &obj,
+            &"meanReflectionScore".into(),
+            &match summary.mean_reflection_score {
+                Some(score) => JsValue::from_f64(score),
+                None => JsValue::NULL,
+            },
+        )?;
+
+        Ok(obj.into())
+    }
+
     // Note: Log doesn't support from_json because it uses custom TOML parsing
     // Use Workspace.getLog() to load logs from storage
 }
