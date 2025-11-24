@@ -472,8 +472,8 @@ impl Log {
                         now
                     } else {
                         // For open sessions on past dates, cap at end of day
-                        let end_of_day_time = NaiveTime::from_hms_opt(23, 59, 0)
-                            .expect("23:59:00 is valid");
+                        let end_of_day_time =
+                            NaiveTime::from_hms_opt(23, 59, 0).expect("23:59:00 is valid");
                         let end_of_day_naive = self.date.and_time(end_of_day_time);
                         self.timezone
                             .from_local_datetime(&end_of_day_naive)
@@ -865,7 +865,9 @@ mod tests {
         );
 
         let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end1 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap(); // 90 mins
+        let end1 = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
+            .unwrap(); // 90 mins
         let session1 = Session::new(intent1, start1, Some(end1), None);
 
         let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();

@@ -21,7 +21,11 @@ pub struct LogManager {
 
 impl LogManager {
     pub fn new(storage: Arc<dyn Storage>, timezone: Tz, plan_manager: Arc<PlanManager>) -> Self {
-        Self { storage, timezone, plan_manager }
+        Self {
+            storage,
+            timezone,
+            plan_manager,
+        }
     }
 
     /// Get the path for a log file
@@ -95,8 +99,13 @@ impl LogManager {
                 if let Some(unclosed_session) = yesterday_log.active_session() {
                     // Found an unclosed session in yesterday's log - materialize the continuation
                     let unclosed_session_clone = unclosed_session.clone();
-                    self.materialize_continuation(date, yesterday, yesterday_log, &unclosed_session_clone)
-                        .await?;
+                    self.materialize_continuation(
+                        date,
+                        yesterday,
+                        yesterday_log,
+                        &unclosed_session_clone,
+                    )
+                    .await?;
 
                     // Now read the materialized log for today
                     let toml_str = self.storage.read_string(&log_path).await?;
@@ -139,7 +148,14 @@ impl LogManager {
         // Close yesterday's session at 23:59
         let end_of_day = self
             .timezone
-            .with_ymd_and_hms(yesterday.year(), yesterday.month(), yesterday.day(), 23, 59, 0)
+            .with_ymd_and_hms(
+                yesterday.year(),
+                yesterday.month(),
+                yesterday.day(),
+                23,
+                59,
+                0,
+            )
             .single()
             .context("Failed to create end of day timestamp")?;
 
@@ -162,7 +178,8 @@ impl LogManager {
         let today_log = Log::new(today, self.timezone, vec![continuation_session]);
 
         // Write both files
-        self.write_log(&closed_yesterday_log, &yesterday_trackers).await?;
+        self.write_log(&closed_yesterday_log, &yesterday_trackers)
+            .await?;
         self.write_log(&today_log, &today_trackers).await?;
 
         Ok(())
@@ -667,9 +684,15 @@ note = "Morning session"
         let session_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 14, 23, 30, 0)
             .unwrap();
-        let unclosed_session = Session::new(intent.clone(), session_start, None, Some("late night coding".to_string()));
+        let unclosed_session = Session::new(
+            intent.clone(),
+            session_start,
+            None,
+            Some("late night coding".to_string()),
+        );
 
-        let yesterday_log = crate::models::Log::new(yesterday, chrono_tz::UTC, vec![unclosed_session]);
+        let yesterday_log =
+            crate::models::Log::new(yesterday, chrono_tz::UTC, vec![unclosed_session]);
 
         // Write yesterday's log with unclosed session
         manager
@@ -689,14 +712,20 @@ note = "Morning session"
         assert_eq!(today_session.intent.alias, Some("work".to_string()));
         assert_eq!(today_session.start.hour(), 0);
         assert_eq!(today_session.start.minute(), 0);
-        assert!(today_session.end.is_none(), "Today's session should be unclosed");
+        assert!(
+            today_session.end.is_none(),
+            "Today's session should be unclosed"
+        );
         assert_eq!(today_session.note, Some("late night coding".to_string()));
 
         // Verify yesterday's log was closed at 23:59
         let yesterday_log_closed = manager.get_log(yesterday).await.unwrap().unwrap();
         assert_eq!(yesterday_log_closed.timeline.len(), 1);
         let yesterday_session_closed = &yesterday_log_closed.timeline[0];
-        assert!(yesterday_session_closed.end.is_some(), "Yesterday's session should be closed");
+        assert!(
+            yesterday_session_closed.end.is_some(),
+            "Yesterday's session should be closed"
+        );
         let end_time = yesterday_session_closed.end.unwrap();
         assert_eq!(end_time.hour(), 23);
         assert_eq!(end_time.minute(), 59);
@@ -711,14 +740,14 @@ note = "Morning session"
         let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
-        let future = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+        let now = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
+            .unwrap();
+        let future = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
+            .unwrap();
 
-        let intent = Intent::new(
-            Some("work".to_string()),
-            None, None, None, None,
-            vec![],
-        );
+        let intent = Intent::new(Some("work".to_string()), None, None, None, None, vec![]);
 
         let result = manager
             .start_intent(intent, None, date, future, now, &HashMap::new())
@@ -737,18 +766,24 @@ note = "Morning session"
         let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+        let now = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 12, 0, 0)
+            .unwrap();
 
         // Create a log with an active session starting at 10:00
         let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
-        let session_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let session_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
+            .unwrap();
         let session = Session::new(intent, session_start, None, None);
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         manager.write_log(&log, &HashMap::new()).await.unwrap();
 
         // Try to start a new session at 09:00 (before active session started)
         let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
-        let bad_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let bad_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
+            .unwrap();
 
         let result = manager
             .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
@@ -767,26 +802,37 @@ note = "Morning session"
         let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+        let now = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 12, 0, 0)
+            .unwrap();
 
         // Create a log with a completed session from 09:00 to 10:00
         let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
-        let session_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let session_end = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let session_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
+            .unwrap();
+        let session_end = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
+            .unwrap();
         let session = Session::new(intent, session_start, Some(session_end), None);
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         manager.write_log(&log, &HashMap::new()).await.unwrap();
 
         // Try to start at 09:30 (overlapping completed session)
         let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
-        let bad_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 30, 0).unwrap();
+        let bad_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 9, 30, 0)
+            .unwrap();
 
         let result = manager
             .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
             .await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Previous session ended"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Previous session ended"));
     }
 
     #[tokio::test]
@@ -798,18 +844,24 @@ note = "Morning session"
         let manager = create_test_manager(storage.clone());
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+        let now = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 12, 0, 0)
+            .unwrap();
 
         // Create a log with an active session starting at 09:00
         let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
-        let session_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let session_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
+            .unwrap();
         let session = Session::new(intent, session_start, None, None);
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         manager.write_log(&log, &HashMap::new()).await.unwrap();
 
         // Start a new session at 11:00 (after active session started)
         let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
-        let new_start = chrono_tz::UTC.with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+        let new_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
+            .unwrap();
 
         manager
             .start_intent(new_intent, None, date, new_start, now, &HashMap::new())
