@@ -111,12 +111,10 @@ impl PyLogManager {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let mut logs = Vec::new();
         for date in dates {
-            if let Some(log) = rt
+            let log = rt
                 .block_on(self.inner.get_log(date))
-                .map_err(|e| PyValueError::new_err(e.to_string()))?
-            {
-                logs.push(faff_core::plugins::models::log::PyLog { inner: log });
-            }
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            logs.push(faff_core::plugins::models::log::PyLog { inner: log });
         }
 
         Ok(logs)
@@ -138,28 +136,15 @@ impl PyLogManager {
         Ok(zone_info)
     }
 
-    /// Get a log for a given date (returns None if file doesn't exist)
+    /// Get a log for a given date (returns empty log if file doesn't exist)
     fn get_log(
-        &self,
-        date: Bound<'_, PyDate>,
-    ) -> PyResult<Option<faff_core::plugins::models::log::PyLog>> {
-        let naive_date = date_py_to_rust(date)?;
-        let log = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.inner.get_log(naive_date))
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(log.map(|inner| faff_core::plugins::models::log::PyLog { inner }))
-    }
-
-    /// Get a log for a given date (creates an empty log if file doesn't exist)
-    fn get_log_or_create(
         &self,
         date: Bound<'_, PyDate>,
     ) -> PyResult<faff_core::plugins::models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
         let log = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.inner.get_log_or_create(naive_date))
+            .block_on(self.inner.get_log(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(faff_core::plugins::models::log::PyLog { inner: log })
     }

@@ -156,13 +156,11 @@ impl LogManager {
 
             let array = js_sys::Array::new();
             for date in dates {
-                if let Some(log) = inner
+                let log = inner
                     .get_log(date)
                     .await
-                    .map_err(|e| JsValue::from_str(&format!("Failed to get log: {}", e)))?
-                {
-                    array.push(&JsValue::from(Log { inner: log }));
-                }
+                    .map_err(|e| JsValue::from_str(&format!("Failed to get log: {}", e)))?;
+                array.push(&JsValue::from(Log { inner: log }));
             }
 
             Ok(JsValue::from(array))
@@ -197,10 +195,10 @@ impl LogManager {
         self.inner.timezone().name().to_string()
     }
 
-    /// Get a log for a given date (returns null if file doesn't exist).
+    /// Get a log for a given date (returns empty log if file doesn't exist).
     ///
     /// date: JS Date object
-    /// Returns Promise<Log | null>.
+    /// Returns Promise<Log>.
     #[wasm_bindgen(js_name = getLog)]
     pub fn get_log(&self, date: js_sys::Date) -> js_sys::Promise {
         let inner = self.inner.clone();
@@ -210,32 +208,6 @@ impl LogManager {
 
             let log = inner
                 .get_log(naive_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get log: {}", e)))?;
-
-            match log {
-                Some(inner) => {
-                    let log = Log { inner };
-                    Ok(JsValue::from(log))
-                }
-                None => Ok(JsValue::null()),
-            }
-        })
-    }
-
-    /// Get a log for a given date (creates an empty log if file doesn't exist).
-    ///
-    /// date: JS Date object
-    /// Returns Promise<Log>.
-    #[wasm_bindgen(js_name = getLogOrCreate)]
-    pub fn get_log_or_create(&self, date: js_sys::Date) -> js_sys::Promise {
-        let inner = self.inner.clone();
-
-        future_to_promise(async move {
-            let naive_date = js_date_to_naive_date(&date)?;
-
-            let log = inner
-                .get_log_or_create(naive_date)
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to get log: {}", e)))?;
 

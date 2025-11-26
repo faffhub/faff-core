@@ -429,12 +429,8 @@ class LogManager:
         """Get the timezone for this log manager."""
         ...
 
-    def get_log(self, date: datetime.date) -> Optional[models.Log]:
-        """Get a log for a given date (returns None if file doesn't exist)."""
-        ...
-
-    def get_log_or_create(self, date: datetime.date) -> models.Log:
-        """Get a log for a given date (creates empty log if file doesn't exist)."""
+    def get_log(self, date: datetime.date) -> models.Log:
+        """Get a log for a given date (returns empty log if file doesn't exist)."""
         ...
 
     def write_log(self, log: models.Log, trackers: Dict[str, str]) -> None:

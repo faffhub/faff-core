@@ -188,8 +188,7 @@ trackers = ["PROJ-123"]
     let retrieved_log = log_manager
         .get_log(date)
         .await
-        .unwrap()
-        .expect("Log should exist after writing");
+        .unwrap();
     assert_eq!(retrieved_log.timeline.len(), 1);
     assert_eq!(
         retrieved_log.timeline[0].intent.alias.as_ref().unwrap(),
@@ -432,8 +431,7 @@ async fn test_log_list_and_read_integration() {
         let log = log_manager
             .get_log(date)
             .await
-            .unwrap()
-            .expect("Log should exist");
+            .unwrap();
         assert_eq!(log.date, date);
     }
 }
