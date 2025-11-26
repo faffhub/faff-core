@@ -49,7 +49,10 @@ impl Workspace {
                 config.timezone,
                 weak_workspace.clone(),
             ));
-            let timesheet_manager = Arc::new(TimesheetManager::new(storage.clone()));
+            let timesheet_manager = Arc::new(TimesheetManager::new(
+                storage.clone(),
+                weak_workspace.clone(),
+            ));
             let identity_manager = Arc::new(IdentityManager::new(storage.clone()));
             #[cfg(feature = "python")]
             let plugin_manager = Arc::new(tokio::sync::Mutex::new(PluginManager::new(storage.clone())));

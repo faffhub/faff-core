@@ -1,4 +1,3 @@
-use crate::python::storage::PyStorage;
 use faff_core::managers::TimesheetManager as RustTimesheetManager;
 use faff_core::plugins::models::timesheet::PyTimesheet;
 use faff_core::utils::type_mapping::date_py_to_rust;
@@ -12,20 +11,24 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct PyTimesheetManager {
     manager: Arc<RustTimesheetManager>,
-    workspace: Option<Arc<RustWorkspace>>,
 }
 
 #[pymethods]
 impl PyTimesheetManager {
-    #[new]
-    pub fn new(storage: Py<PyAny>) -> PyResult<Self> {
-        let py_storage = PyStorage::new(storage);
-        let manager = RustTimesheetManager::new(Arc::new(py_storage));
-        Ok(Self {
-            manager: Arc::new(manager),
-            workspace: None,
-        })
-    }
+    // NOTE: Standalone construction is no longer supported. TimesheetManager must be
+    // created through Workspace using the from_rust() method. The TimesheetManager
+    // requires a workspace reference to function properly (for operations that
+    // need access to other managers like LogManager, IdentityManager, PluginManager).
+    //
+    // #[new]
+    // pub fn new(storage: Py<PyAny>) -> PyResult<Self> {
+    //     let py_storage = PyStorage::new(storage);
+    //     let manager = RustTimesheetManager::new(Arc::new(py_storage), Weak::new());
+    //     Ok(Self {
+    //         manager: Arc::new(manager),
+    //         workspace: None,
+    //     })
+    // }
 
     /// Write a timesheet to storage
     pub fn write_timesheet(&self, timesheet: &PyTimesheet) -> PyResult<()> {
@@ -77,84 +80,59 @@ impl PyTimesheetManager {
 
     /// Get all audience plugin instances
     ///
-    /// This delegates to the Rust TimesheetManager's audiences() method.
+    /// Gets workspace context internally.
     pub fn audiences(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.audiences(workspace.plugins()))
+            .block_on(self.manager.audiences())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Get a specific audience plugin by ID
+    ///
+    /// Gets workspace context internally.
     pub fn get_audience(&self, _py: Python<'_>, audience_id: &str) -> PyResult<Option<Py<PyAny>>> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        let plugin_manager_arc = workspace.plugins();
-        let mut plugin_manager = plugin_manager_arc.blocking_lock();
-
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(plugin_manager.get_audience_by_id(audience_id))
+            .block_on(self.manager.get_audience(audience_id))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Compile a timesheet from a log using an audience plugin
     ///
     /// This automatically calculates and stores the log hash in the timesheet metadata.
+    /// Gets workspace context internally.
     pub fn compile(
         &self,
         _py: Python<'_>,
         log: &faff_core::plugins::models::log::PyLog,
         plugin: Bound<'_, PyAny>,
     ) -> PyResult<PyTimesheet> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        let log_manager = workspace.logs();
-
         // Convert Bound to Py for the Rust API
         let plugin_py: Py<PyAny> = plugin.unbind();
 
         let timesheet = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.compile(&log.inner, log_manager, &plugin_py))
+            .block_on(self.manager.compile(&log.inner, &plugin_py))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyTimesheet { inner: timesheet })
     }
 
     /// Find timesheets that are stale (log has changed since compilation)
+    ///
+    /// Gets workspace context internally.
     #[pyo3(signature = (date=None))]
     pub fn find_stale_timesheets(
         &self,
         _py: Python<'_>,
         date: Option<Bound<'_, PyDate>>,
     ) -> PyResult<Vec<PyTimesheet>> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        let log_manager = workspace.logs();
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
         let stale = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.find_stale_timesheets(log_manager, naive_date))
+            .block_on(self.manager.find_stale_timesheets(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(stale
@@ -198,25 +176,19 @@ impl PyTimesheetManager {
     ///
     /// # Errors
     /// Returns an error if no valid signing keys are found or if signing fails
+    ///
+    /// Gets workspace context internally.
     pub fn sign_timesheet(
         &self,
         _py: Python<'_>,
         timesheet: &PyTimesheet,
         signing_ids: Vec<String>,
     ) -> PyResult<PyTimesheet> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        let identity_manager = workspace.identities();
-
         let signed = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(
                 self.manager
-                    .sign_timesheet(&timesheet.inner, &signing_ids, identity_manager),
+                    .sign_timesheet(&timesheet.inner, &signing_ids),
             )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -224,29 +196,19 @@ impl PyTimesheetManager {
     }
 
     /// Submit a timesheet via its audience plugin
+    ///
+    /// Gets workspace context internally.
     pub fn submit(&self, _py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "TimesheetManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        let plugin_manager_arc = workspace.plugins();
-        let mut plugin_manager = plugin_manager_arc.blocking_lock();
-
         tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.submit(&timesheet.inner, &mut plugin_manager))
+            .block_on(self.manager.submit(&timesheet.inner))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
 
 impl PyTimesheetManager {
-    pub fn from_rust(manager: Arc<RustTimesheetManager>, workspace: Arc<RustWorkspace>) -> Self {
-        Self {
-            manager,
-            workspace: Some(workspace),
-        }
+    pub fn from_rust(manager: Arc<RustTimesheetManager>, _workspace: Arc<RustWorkspace>) -> Self {
+        Self { manager }
     }
 }
 

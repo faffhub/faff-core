@@ -251,12 +251,16 @@ impl LogManager {
     pub async fn start_intent(
         &self,
         intent: crate::models::Intent,
-        note: Option<String>,
-        current_date: NaiveDate,
         start_time: chrono::DateTime<Tz>,
-        now: chrono::DateTime<Tz>,
-        trackers: &HashMap<String, String>,
+        note: Option<String>,
     ) -> Result<()> {
+        // Get workspace context
+        let ws = self.workspace.upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+
+        let current_date = start_time.date_naive();
+        let now = ws.now();
+        let trackers = ws.plans().get_trackers(current_date).await?;
         // Get today's log (returns empty log if file doesn't exist)
         let mut log = self.get_log(current_date).await?;
 
@@ -314,7 +318,7 @@ impl LogManager {
 
         // Append to log and write
         let updated_log = log.append_session(session)?;
-        self.write_log(&updated_log, trackers).await?;
+        self.write_log(&updated_log, &trackers).await?;
 
         Ok(())
     }
@@ -322,17 +326,20 @@ impl LogManager {
     /// Stop the currently active session
     ///
     /// Returns Ok(()) if a session was stopped, or an error if no active session exists
-    pub async fn stop_current_session(
-        &self,
-        current_date: NaiveDate,
-        current_time: chrono::DateTime<Tz>,
-        trackers: &std::collections::HashMap<String, String>,
-    ) -> Result<()> {
+    pub async fn stop_current_session(&self) -> Result<()> {
+        // Get workspace context
+        let ws = self.workspace.upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+
+        let current_date = ws.today();
+        let current_time = ws.now();
+        let trackers = ws.plans().get_trackers(current_date).await?;
+
         let log = self.get_log(current_date).await?;
 
         if log.active_session().is_some() {
             let updated_log = log.stop_active_session(current_time)?;
-            self.write_log(&updated_log, trackers).await?;
+            self.write_log(&updated_log, &trackers).await?;
             Ok(())
         } else {
             anyhow::bail!("No active session to stop")
@@ -730,23 +737,18 @@ note = "Morning session"
     #[tokio::test]
     async fn test_start_intent_validation_future_time() {
         use crate::models::Intent;
-        use chrono::TimeZone;
+        use chrono::{Duration, Utc};
 
         let storage = Arc::new(MockStorage::new());
         let ws = create_test_workspace(storage.clone()).await;
 
-        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
-            .unwrap();
-        let future = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
-            .unwrap();
+        // Create a time that is definitely in the future (1 hour from now)
+        let future = Utc::now().with_timezone(&chrono_tz::UTC) + Duration::hours(1);
 
         let intent = Intent::new(Some("work".to_string()), None, None, None, None, vec![]);
 
         let result = ws.logs()
-            .start_intent(intent, None, date, future, now, &HashMap::new())
+            .start_intent(intent, future, None)
             .await;
 
         assert!(result.is_err());
@@ -762,9 +764,6 @@ note = "Morning session"
         let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 12, 0, 0)
-            .unwrap();
 
         // Create a log with an active session starting at 10:00
         let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
@@ -782,7 +781,7 @@ note = "Morning session"
             .unwrap();
 
         let result = ws.logs()
-            .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
+            .start_intent(new_intent, bad_start, None)
             .await;
 
         assert!(result.is_err());
@@ -798,9 +797,6 @@ note = "Morning session"
         let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 12, 0, 0)
-            .unwrap();
 
         // Create a log with a completed session from 09:00 to 10:00
         let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
@@ -821,7 +817,7 @@ note = "Morning session"
             .unwrap();
 
         let result = ws.logs()
-            .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
+            .start_intent(new_intent, bad_start, None)
             .await;
 
         assert!(result.is_err());
@@ -840,9 +836,6 @@ note = "Morning session"
         let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let now = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 12, 0, 0)
-            .unwrap();
 
         // Create a log with an active session starting at 09:00
         let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
@@ -860,7 +853,7 @@ note = "Morning session"
             .unwrap();
 
         ws.logs()
-            .start_intent(new_intent, None, date, new_start, now, &HashMap::new())
+            .start_intent(new_intent, new_start, None)
             .await
             .unwrap();
 

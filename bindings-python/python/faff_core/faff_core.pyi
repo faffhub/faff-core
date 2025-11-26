@@ -437,22 +437,20 @@ class LogManager:
         """Write a log to storage."""
         ...
 
-    def start_intent_now(self, intent: models.Intent, note: Optional[str] = None) -> None:
+    def start_intent(self, intent: models.Intent, start_time: Optional[datetime.datetime] = None, note: Optional[str] = None) -> None:
         """
         Start a new session with the given intent.
 
-        Auto-fills current_date, current_time, and trackers from workspace.
-        """
-        ...
-
-    def start_intent_at(self, intent: models.Intent, start_time: datetime.datetime, note: Optional[str] = None) -> None:
-        """
-        Start a new session with the given intent at a specific time.
+        If there's an active session, it will be stopped at the start time.
+        Validates that start_time is not in the future and doesn't conflict
+        with existing sessions.
 
         Args:
             intent: The intent to start
-            start_time: When to start the session
+            start_time: When to start the session (defaults to now)
             note: Optional note for the session
+
+        Gets current date, time, and trackers from workspace internally.
         """
         ...
 
@@ -460,7 +458,7 @@ class LogManager:
         """
         Stop the currently active session.
 
-        Auto-fills current_date, current_time, and trackers from workspace.
+        Gets current date, time, and trackers from workspace internally.
         """
         ...
 

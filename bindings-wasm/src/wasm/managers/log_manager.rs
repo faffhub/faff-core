@@ -245,7 +245,6 @@ impl LogManager {
 
     /// Start a new session with the given intent.
     ///
-    /// Requires workspace reference. Auto-fills trackers.
     /// If there's an active session, it will be stopped at the start time.
     /// Validates that start_time is not in the future and doesn't conflict
     /// with existing sessions.
@@ -254,11 +253,6 @@ impl LogManager {
     /// startTime: optional JS Date object (defaults to now)
     /// note: optional string note
     /// Returns Promise<void>.
-    ///
-    /// FIXME: This method gathers context (now, trackers) from workspace before
-    /// calling the Rust core. This orchestration logic should live in Rust, not
-    /// in the bindings. See BUSINESS_LOGIC_AUDIT.md for the proposed functional
-    /// core pattern that would eliminate this.
     #[wasm_bindgen(js_name = startIntent)]
     pub fn start_intent(
         &self,
@@ -279,21 +273,13 @@ impl LogManager {
         let intent_inner = intent.inner.clone();
 
         future_to_promise(async move {
-            let now = workspace.now();
             let start = match start_time {
                 Some(dt) => js_date_to_chrono(&dt)?,
-                None => now,
+                None => workspace.now(),
             };
-            let current_date = start.date_naive();
-
-            let trackers = workspace
-                .plans()
-                .get_trackers(current_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get trackers: {}", e)))?;
 
             inner
-                .start_intent(intent_inner, note, current_date, start, now, &trackers)
+                .start_intent(intent_inner, start, note)
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to start session: {}", e)))?;
 
@@ -303,36 +289,14 @@ impl LogManager {
 
     /// Stop the currently active session.
     ///
-    /// Requires workspace reference. Auto-fills current_date, current_time, and trackers.
-    ///
     /// Returns Promise<void>.
     #[wasm_bindgen(js_name = stopCurrentSession)]
     pub fn stop_current_session(&self) -> js_sys::Promise {
-        let workspace = match &self.workspace {
-            Some(ws) => ws.clone(),
-            None => {
-                return js_sys::Promise::reject(&JsValue::from_str(
-                    "LogManager has no workspace reference",
-                ));
-            }
-        };
-
         let inner = self.inner.clone();
 
         future_to_promise(async move {
-            // Get current date and time from workspace
-            let current_date = workspace.today();
-            let current_time = workspace.now();
-
-            // Get trackers from plan manager
-            let trackers = workspace
-                .plans()
-                .get_trackers(current_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get trackers: {}", e)))?;
-
             inner
-                .stop_current_session(current_date, current_time, &trackers)
+                .stop_current_session()
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to stop session: {}", e)))?;
 

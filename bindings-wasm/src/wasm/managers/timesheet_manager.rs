@@ -13,19 +13,15 @@ use wasm_bindgen_futures::future_to_promise;
 #[wasm_bindgen]
 pub struct TimesheetManager {
     inner: Arc<RustTimesheetManager>,
-    workspace: Option<Arc<RustWorkspace>>,
 }
 
 impl TimesheetManager {
     /// Create from Rust manager with workspace reference
     pub(crate) fn from_rust(
         manager: Arc<RustTimesheetManager>,
-        workspace: Arc<RustWorkspace>,
+        _workspace: Arc<RustWorkspace>,
     ) -> Self {
-        Self {
-            inner: manager,
-            workspace: Some(workspace),
-        }
+        Self { inner: manager }
     }
 }
 
@@ -33,17 +29,17 @@ impl TimesheetManager {
 impl TimesheetManager {
     /// Create a new TimesheetManager with storage.
     ///
+    /// NOTE: This standalone constructor is deprecated. TimesheetManager should
+    /// be obtained through Workspace.timesheets() to ensure proper workspace
+    /// integration for methods that need workspace context.
+    ///
     /// storage: JsStorageAdapter
     /// Returns TimesheetManager.
     #[wasm_bindgen(constructor)]
-    pub fn new(storage: JsStorageAdapter) -> TimesheetManager {
-        let js_storage = super::super::storage::JsStorage::new(storage);
-        let storage_arc: Arc<dyn faff_core::storage::Storage> = Arc::new(js_storage);
-
-        Self {
-            inner: Arc::new(RustTimesheetManager::new(storage_arc)),
-            workspace: None,
-        }
+    pub fn new(_storage: JsStorageAdapter) -> Result<TimesheetManager, JsValue> {
+        Err(JsValue::from_str(
+            "Direct TimesheetManager construction is not supported. Use Workspace.timesheets() instead.",
+        ))
     }
 
     /// Write a timesheet to storage.
@@ -139,29 +135,19 @@ impl TimesheetManager {
 
     /// Find timesheets that are stale (log has changed since compilation).
     ///
-    /// Requires workspace reference.
+    /// Gets workspace context internally.
     ///
     /// date: optional JS Date object to filter by
     /// Returns Promise<Timesheet[]>.
     #[wasm_bindgen(js_name = findStaleTimesheets)]
     pub fn find_stale_timesheets(&self, date: Option<js_sys::Date>) -> js_sys::Promise {
-        let workspace = match &self.workspace {
-            Some(ws) => ws.clone(),
-            None => {
-                return js_sys::Promise::reject(&JsValue::from_str(
-                    "TimesheetManager has no workspace reference",
-                ));
-            }
-        };
-
         let inner = self.inner.clone();
 
         future_to_promise(async move {
-            let log_manager = workspace.logs();
             let naive_date = date.as_ref().map(js_date_to_naive_date).transpose()?;
 
             let stale = inner
-                .find_stale_timesheets(log_manager, naive_date)
+                .find_stale_timesheets(naive_date)
                 .await
                 .map_err(|e| {
                     JsValue::from_str(&format!("Failed to find stale timesheets: {}", e))
@@ -205,7 +191,7 @@ impl TimesheetManager {
 
     /// Sign a timesheet with the given signing identities.
     ///
-    /// Requires workspace reference.
+    /// Gets workspace context internally.
     ///
     /// timesheet: Timesheet object
     /// signing_ids: array of identity IDs to use for signing
@@ -216,23 +202,12 @@ impl TimesheetManager {
         timesheet: &Timesheet,
         signing_ids: Vec<String>,
     ) -> js_sys::Promise {
-        let workspace = match &self.workspace {
-            Some(ws) => ws.clone(),
-            None => {
-                return js_sys::Promise::reject(&JsValue::from_str(
-                    "TimesheetManager has no workspace reference",
-                ));
-            }
-        };
-
         let inner = self.inner.clone();
         let timesheet_inner = timesheet.inner.clone();
 
         future_to_promise(async move {
-            let identity_manager = workspace.identities();
-
             let signed = inner
-                .sign_timesheet(&timesheet_inner, &signing_ids, identity_manager)
+                .sign_timesheet(&timesheet_inner, &signing_ids)
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to sign timesheet: {}", e)))?;
 

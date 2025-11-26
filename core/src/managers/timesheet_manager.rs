@@ -2,17 +2,18 @@ use crate::models::{Timesheet, TimesheetMeta};
 use crate::storage::Storage;
 use anyhow::Context;
 use chrono::NaiveDate;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 /// Manages timesheet storage and retrieval
 #[derive(Clone)]
 pub struct TimesheetManager {
     storage: Arc<dyn Storage>,
+    workspace: Weak<crate::workspace::Workspace>,
 }
 
 impl TimesheetManager {
-    pub fn new(storage: Arc<dyn Storage>) -> Self {
-        Self { storage }
+    pub fn new(storage: Arc<dyn Storage>, workspace: Weak<crate::workspace::Workspace>) -> Self {
+        Self { storage, workspace }
     }
 
     /// Write a timesheet to storage
@@ -234,21 +235,26 @@ impl TimesheetManager {
     ///
     /// # Arguments
     /// * `log` - The log to compile
-    /// * `log_manager` - LogManager to read the raw log file for hashing
     /// * `plugin` - The audience plugin to use for compilation
     ///
     /// # Errors
     /// Returns an error if:
     /// - The log file cannot be read
     /// - The plugin compilation fails
+    /// - The workspace is no longer available
     #[cfg(feature = "python")]
     pub async fn compile(
         &self,
         log: &crate::models::Log,
-        log_manager: &crate::managers::LogManager,
         plugin: &pyo3::Py<pyo3::PyAny>,
     ) -> anyhow::Result<Timesheet> {
         use pyo3::prelude::*;
+
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let log_manager = ws.logs();
 
         // Calculate hash of the raw log file
         let log_hash = log_manager
@@ -288,10 +294,10 @@ impl TimesheetManager {
     ///
     /// # Arguments
     /// * `timesheet` - The timesheet to submit
-    /// * `plugin_manager` - Mutable reference to the plugin manager for audience lookup
     ///
     /// # Errors
     /// Returns an error if:
+    /// - The workspace is no longer available
     /// - The audience plugin is not found
     /// - Writing the timesheet back fails
     ///
@@ -300,9 +306,15 @@ impl TimesheetManager {
     pub async fn submit(
         &self,
         timesheet: &Timesheet,
-        plugin_manager: &mut crate::managers::PluginManager,
     ) -> anyhow::Result<()> {
         use pyo3::prelude::*;
+
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let plugin_manager_arc = ws.plugins();
+        let mut plugin_manager = plugin_manager_arc.lock().await;
 
         let audience_id = &timesheet.meta.audience_id;
         let submitted_at = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
@@ -363,17 +375,24 @@ impl TimesheetManager {
     /// no longer matches the log_hash stored in its metadata.
     ///
     /// # Arguments
-    /// * `log_manager` - Reference to the log manager to read raw log files
     /// * `date` - Optional date filter (None = check all timesheets)
     ///
     /// # Returns
     /// Vector of stale timesheets
+    ///
+    /// # Errors
+    /// Returns an error if the workspace is no longer available
     pub async fn find_stale_timesheets(
         &self,
-        log_manager: &crate::managers::LogManager,
         date: Option<chrono::NaiveDate>,
     ) -> anyhow::Result<Vec<Timesheet>> {
         use crate::models::Log;
+
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let log_manager = ws.logs();
 
         let all_timesheets = self.list_timesheets(date).await?;
         let mut stale = Vec::new();
@@ -437,21 +456,26 @@ impl TimesheetManager {
     /// # Arguments
     /// * `timesheet` - The timesheet to sign
     /// * `signing_ids` - List of identity IDs to use for signing
-    /// * `identity_manager` - Reference to the identity manager to get keys from
     ///
     /// # Returns
     /// The signed timesheet, or an error if any signing operation fails
     ///
     /// # Errors
     /// Returns an error if:
+    /// - The workspace is no longer available
     /// - No valid signing keys are found for any of the signing IDs
     /// - The signing operation fails for any key
     pub async fn sign_timesheet(
         &self,
         timesheet: &Timesheet,
         signing_ids: &[String],
-        identity_manager: &crate::managers::IdentityManager,
     ) -> anyhow::Result<Timesheet> {
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let identity_manager = ws.identities();
+
         let mut signed_timesheet = timesheet.clone();
         let mut signed_at_least_once = false;
 
@@ -492,18 +516,48 @@ impl TimesheetManager {
     /// While audiences are implemented as plugins, they are conceptually
     /// associated with timesheets, so this provides a domain-focused access pattern.
     ///
-    /// # Arguments
-    /// * `plugin_manager` - Reference to the plugin manager
-    ///
     /// # Returns
     /// Vector of audience plugin instances
+    ///
+    /// # Errors
+    /// Returns an error if the workspace is no longer available
     #[cfg(feature = "python")]
     pub async fn audiences(
         &self,
-        plugin_manager: &tokio::sync::Mutex<crate::managers::PluginManager>,
     ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
-        let mut pm = plugin_manager.lock().await;
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let plugin_manager_arc = ws.plugins();
+        let mut pm = plugin_manager_arc.lock().await;
         pm.audiences().await
+    }
+
+    /// Get a specific audience plugin by ID
+    ///
+    /// This is a convenience method that delegates to the plugin manager.
+    ///
+    /// # Arguments
+    /// * `audience_id` - The ID of the audience to get
+    ///
+    /// # Returns
+    /// The audience plugin instance, or None if not found
+    ///
+    /// # Errors
+    /// Returns an error if the workspace is no longer available
+    #[cfg(feature = "python")]
+    pub async fn get_audience(
+        &self,
+        audience_id: &str,
+    ) -> anyhow::Result<Option<pyo3::Py<pyo3::PyAny>>> {
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let plugin_manager_arc = ws.plugins();
+        let mut pm = plugin_manager_arc.lock().await;
+        pm.get_audience_by_id(audience_id).await
     }
 }
 
@@ -512,12 +566,23 @@ mod tests {
     use super::*;
     use crate::models::TimesheetMeta;
     use crate::utils::test_utils::mock_storage::MockStorage;
+    use crate::workspace::Workspace;
     use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    async fn create_test_workspace() -> Arc<Workspace> {
+        let storage = Arc::new(MockStorage::new());
+        storage.add_file(
+            PathBuf::from("/faff/config.toml"),
+            r#"timezone = "Europe/London""#.to_string(),
+        );
+        Workspace::with_storage(storage).await.unwrap()
+    }
 
     #[tokio::test]
     async fn test_write_and_read_timesheet() {
-        let storage = Arc::new(MockStorage::new());
-        let manager = TimesheetManager::new(storage.clone());
+        let ws = create_test_workspace().await;
+        let manager = ws.timesheets();
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
@@ -549,8 +614,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_timesheets() {
-        let storage = Arc::new(MockStorage::new());
-        let manager = TimesheetManager::new(storage.clone());
+        let ws = create_test_workspace().await;
+        let manager = ws.timesheets();
 
         let date1 = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let date2 = NaiveDate::from_ymd_opt(2025, 10, 16).unwrap();
@@ -584,8 +649,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_timesheet_exists() {
-        let storage = Arc::new(MockStorage::new());
-        let manager = TimesheetManager::new(storage.clone());
+        let ws = create_test_workspace().await;
+        let manager = ws.timesheets();
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
@@ -609,8 +674,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_timesheet() {
-        let storage = Arc::new(MockStorage::new());
-        let manager = TimesheetManager::new(storage.clone());
+        let ws = create_test_workspace().await;
+        let manager = ws.timesheets();
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
         let compiled = chrono::Utc::now().with_timezone(&chrono_tz::Europe::London);
@@ -639,8 +704,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_nonexistent_timesheet() {
-        let storage = Arc::new(MockStorage::new());
-        let manager = TimesheetManager::new(storage);
+        let ws = create_test_workspace().await;
+        let manager = ws.timesheets();
 
         let date = NaiveDate::from_ymd_opt(2025, 10, 15).unwrap();
 

@@ -195,56 +195,29 @@ impl PyLogManager {
             )
         })?;
 
-        let now = workspace.now();
         let start = match start_time {
             Some(dt) => datetime_py_to_rust(dt)?,
-            None => now,
+            None => workspace.now(),
         };
-        let current_date = start.date_naive();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
 
-        let trackers = rt
-            .block_on(workspace.plans().get_trackers(current_date))
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
         rt.block_on(self.inner.start_intent(
             intent.inner.clone(),
-            note,
-            current_date,
             start,
-            now,
-            &trackers,
+            note,
         ))
         .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
     ///
-    /// Auto-fills current_date, current_time, and trackers from workspace
+    /// Gets current date, time, and trackers from workspace internally.
     fn stop_current_session(&self, _py: Python<'_>) -> PyResult<()> {
-        let workspace = self.workspace.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "LogManager has no workspace reference. This should not happen.",
-            )
-        })?;
-
-        // Get current date and time from workspace
-        let current_date = workspace.today();
-        let current_time = workspace.now();
-
         let rt = tokio::runtime::Runtime::new().unwrap();
 
-        // Get trackers from plan manager
-        let trackers = rt
-            .block_on(workspace.plans().get_trackers(current_date))
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        rt.block_on(
-            self.inner
-                .stop_current_session(current_date, current_time, &trackers),
-        )
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+        rt.block_on(self.inner.stop_current_session())
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Find all logs that contain sessions using the given intent
