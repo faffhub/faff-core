@@ -30,7 +30,8 @@ impl PyWorkspace {
     #[new]
     #[pyo3(signature = (storage=None))]
     fn py_new(storage: Option<Py<PyAny>>) -> PyResult<Self> {
-        let inner = match storage {
+        // Workspace::new() and with_storage() now return Arc<Workspace> directly
+        let inner_arc = match storage {
             Some(storage_obj) => {
                 let py_storage = PyStorage::new(storage_obj);
                 tokio::runtime::Runtime::new()
@@ -44,18 +45,15 @@ impl PyWorkspace {
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
         };
 
-        // Wrap the workspace in Arc so we can share it with managers
-        let inner_arc = Arc::new(inner);
-
         // Create Python manager wrappers from the Rust managers
-        // Clone managers and wrap in Arc for the Python layer
+        // Managers are already Arc<Manager> in the workspace
         let plans = PyPlanManager::from_rust_arc(inner_arc.plans().clone(), inner_arc.clone());
-        let logs = PyLogManager::from_rust(inner_arc.logs().clone(), inner_arc.clone());
+        let logs = PyLogManager::from_rust((**inner_arc.logs()).clone(), inner_arc.clone());
         let timesheets = PyTimesheetManager::from_rust(
-            Arc::new(inner_arc.timesheets().clone()),
+            inner_arc.timesheets().clone(),
             inner_arc.clone(),
         );
-        let identities = PyIdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
+        let identities = PyIdentityManager::from_rust(inner_arc.identities().clone());
         // Clone the plugin manager from inside the mutex
         let plugin_manager_clone = inner_arc.plugins().blocking_lock().clone();
         let plugins = PyPluginManager::from_rust(Arc::new(Mutex::new(plugin_manager_clone)));

@@ -1,12 +1,10 @@
 use chrono::Datelike;
-use chrono_tz::Tz;
 use pyo3::exceptions::{PyFileNotFoundError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDateTime};
 use std::sync::Arc;
 
-use crate::python::storage::PyStorage;
-use faff_core::managers::{LogManager as RustLogManager, PlanManager};
+use faff_core::managers::LogManager as RustLogManager;
 use faff_core::utils::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
 use faff_core::workspace::Workspace as RustWorkspace;
 
@@ -33,26 +31,31 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 #[pymethods]
 impl PyLogManager {
-    #[new]
-    fn py_new(storage: Py<PyAny>, timezone: &Bound<'_, PyAny>) -> PyResult<Self> {
-        // Convert timezone
-        let tz_str: String = timezone.call_method0("__str__")?.extract()?;
-        let tz: Tz = tz_str
-            .parse()
-            .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {e}")))?;
-
-        // Wrap the Python storage object
-        let py_storage = PyStorage::new(storage);
-        let storage: Arc<dyn faff_core::storage::Storage> = Arc::new(py_storage);
-
-        // Create a PlanManager for the LogManager to use
-        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-
-        Ok(Self {
-            inner: RustLogManager::new(storage, tz, plan_manager),
-            workspace: None, // Standalone construction doesn't have workspace reference
-        })
-    }
+    // NOTE: Standalone construction is no longer supported. LogManager must be
+    // created through Workspace using the from_rust() method. The LogManager
+    // requires a workspace reference to function properly (for operations like
+    // start_intent and stop_current_session that need workspace context).
+    //
+    // #[new]
+    // fn py_new(storage: Py<PyAny>, timezone: &Bound<'_, PyAny>) -> PyResult<Self> {
+    //     // Convert timezone
+    //     let tz_str: String = timezone.call_method0("__str__")?.extract()?;
+    //     let tz: Tz = tz_str
+    //         .parse()
+    //         .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {e}")))?;
+    //
+    //     // Wrap the Python storage object
+    //     let py_storage = PyStorage::new(storage);
+    //     let storage: Arc<dyn faff_core::storage::Storage> = Arc::new(py_storage);
+    //
+    //     // Create a PlanManager for the LogManager to use
+    //     let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+    //
+    //     Ok(Self {
+    //         inner: RustLogManager::new(storage, tz, plan_manager),
+    //         workspace: None, // Standalone construction doesn't have workspace reference
+    //     })
+    // }
 
     /// Check if a log exists for the given date
     fn log_exists(&self, date: Bound<'_, PyDate>) -> PyResult<bool> {
@@ -114,6 +117,7 @@ impl PyLogManager {
             let log = rt
                 .block_on(self.inner.get_log(date))
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
             logs.push(faff_core::plugins::models::log::PyLog { inner: log });
         }
 
@@ -146,6 +150,7 @@ impl PyLogManager {
             .unwrap()
             .block_on(self.inner.get_log(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
         Ok(faff_core::plugins::models::log::PyLog { inner: log })
     }
 

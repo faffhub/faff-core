@@ -34,23 +34,21 @@ impl Workspace {
             // Create JsStorage wrapper
             let js_storage = JsStorage::new(storage);
 
-            // Create the real Workspace
-            let workspace = RustWorkspace::with_storage(Arc::new(js_storage))
+            // Create the real Workspace (returns Arc<Workspace> directly)
+            let inner_arc = RustWorkspace::with_storage(Arc::new(js_storage))
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to create workspace: {}", e)))?;
 
-            // Wrap in Arc so we can share it with managers
-            let inner_arc = Arc::new(workspace);
-
             // Create manager wrappers from the Rust managers
-            let logs = LogManager::from_rust(inner_arc.logs().clone(), inner_arc.clone());
+            // Managers are already Arc<Manager> in the workspace
+            let logs = LogManager::from_rust((**inner_arc.logs()).clone(), inner_arc.clone());
             let plans =
-                PlanManager::from_rust(Arc::new(inner_arc.plans().clone()), inner_arc.clone());
+                PlanManager::from_rust(inner_arc.plans().clone(), inner_arc.clone());
             let timesheets = TimesheetManager::from_rust(
-                Arc::new(inner_arc.timesheets().clone()),
+                inner_arc.timesheets().clone(),
                 inner_arc.clone(),
             );
-            let identities = IdentityManager::from_rust(Arc::new(inner_arc.identities().clone()));
+            let identities = IdentityManager::from_rust(inner_arc.identities().clone());
 
             let wasm_workspace = Workspace {
                 inner: inner_arc,

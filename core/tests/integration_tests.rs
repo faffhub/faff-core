@@ -5,13 +5,14 @@
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use faff_core::managers::{IdentityManager, LogManager, PlanManager, TimesheetManager};
+use faff_core::managers::{IdentityManager, PlanManager, TimesheetManager};
 use faff_core::models::intent::Intent;
 use faff_core::models::log::Log;
 use faff_core::models::plan::Plan;
 use faff_core::models::session::Session;
 use faff_core::models::timesheet::{Timesheet, TimesheetMeta};
 use faff_core::storage::Storage;
+use faff_core::workspace::Workspace;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -119,6 +120,16 @@ impl Storage for IntegrationStorage {
     }
 }
 
+// Helper function to create a Workspace with integration storage for tests
+async fn create_test_workspace(storage: Arc<IntegrationStorage>) -> Arc<Workspace> {
+    // Add a config file to storage
+    storage.add_file(
+        PathBuf::from("/faff/config.toml"),
+        r#"timezone = "UTC""#.to_string(),
+    );
+    Workspace::with_storage(storage).await.unwrap()
+}
+
 #[tokio::test]
 async fn test_plan_and_log_integration() {
     // Create shared storage
@@ -150,19 +161,18 @@ trackers = ["PROJ-123"]
         .to_string(),
     );
 
-    // Create managers
-    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager.clone());
+    // Create workspace
+    let ws = create_test_workspace(storage.clone()).await;
 
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
 
     // Load plan
-    let plans = plan_manager.get_plans(date).await.unwrap();
+    let plans = ws.plans().get_plans(date).await.unwrap();
     assert_eq!(plans.len(), 1);
     assert!(plans.contains_key("local"));
 
     // Get trackers from plan
-    let trackers = plan_manager.get_trackers(date).await.unwrap();
+    let trackers = ws.plans().get_trackers(date).await.unwrap();
     assert_eq!(trackers.len(), 2);
     assert_eq!(
         trackers.get("local:PROJ-123"),
@@ -170,7 +180,7 @@ trackers = ["PROJ-123"]
     );
 
     // Create a log using intent from plan
-    let intents = plan_manager.get_intents(date).await.unwrap();
+    let intents = ws.plans().get_intents(date).await.unwrap();
     assert_eq!(intents.len(), 1);
 
     let intent = &intents[0];
@@ -182,10 +192,10 @@ trackers = ["PROJ-123"]
     let log = Log::new(date, chrono_tz::UTC, vec![session]);
 
     // Write log
-    log_manager.write_log(&log, &trackers).await.unwrap();
+    ws.logs().write_log(&log, &trackers).await.unwrap();
 
     // Read log back
-    let retrieved_log = log_manager
+    let retrieved_log = ws.logs()
         .get_log(date)
         .await
         .unwrap();
@@ -199,9 +209,7 @@ trackers = ["PROJ-123"]
 #[tokio::test]
 async fn test_log_and_timesheet_integration() {
     let storage = Arc::new(IntegrationStorage::new());
-
-    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager);
+    let ws = create_test_workspace(storage.clone()).await;
     let timesheet_manager = TimesheetManager::new(storage.clone());
 
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
@@ -236,7 +244,7 @@ async fn test_log_and_timesheet_integration() {
     let log = Log::new(date, chrono_tz::UTC, vec![session]);
 
     let trackers = HashMap::new();
-    log_manager.write_log(&log, &trackers).await.unwrap();
+    ws.logs().write_log(&log, &trackers).await.unwrap();
 
     // Create a timesheet from the log data
     let meta = TimesheetMeta::new("client1".to_string(), None, "test-hash".to_string());
@@ -327,24 +335,21 @@ async fn test_identity_and_timesheet_integration() {
 #[tokio::test]
 async fn test_multiple_managers_share_storage() {
     let storage = Arc::new(IntegrationStorage::new());
-
-    // Create all managers
-    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager.clone());
+    let ws = create_test_workspace(storage.clone()).await;
 
     // Write data with log manager
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
     let log = Log::new(date, chrono_tz::UTC, vec![]);
-    log_manager.write_log(&log, &HashMap::new()).await.unwrap();
+    ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
     // Verify log manager can see the storage was used
-    assert!(log_manager.log_exists(date));
+    assert!(ws.logs().log_exists(date));
 
     // Verify storage is shared by checking base dir
     assert_eq!(storage.base_dir(), PathBuf::from("/faff"));
 
     // Plan manager should be able to access plans (even if none exist yet)
-    let plans = plan_manager.get_plans(date).await.unwrap();
+    let plans = ws.plans().get_plans(date).await.unwrap();
     assert_eq!(plans.len(), 0); // No plans yet, but should not error
 }
 
@@ -402,8 +407,7 @@ roles = ["engineer"]
 #[tokio::test]
 async fn test_log_list_and_read_integration() {
     let storage = Arc::new(IntegrationStorage::new());
-    let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-    let log_manager = LogManager::new(storage.clone(), chrono_tz::UTC, plan_manager);
+    let ws = create_test_workspace(storage.clone()).await;
 
     // Create multiple logs
     let date1 = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
@@ -415,12 +419,12 @@ async fn test_log_list_and_read_integration() {
     let log3 = Log::new(date3, chrono_tz::UTC, vec![]);
 
     let trackers = HashMap::new();
-    log_manager.write_log(&log1, &trackers).await.unwrap();
-    log_manager.write_log(&log2, &trackers).await.unwrap();
-    log_manager.write_log(&log3, &trackers).await.unwrap();
+    ws.logs().write_log(&log1, &trackers).await.unwrap();
+    ws.logs().write_log(&log2, &trackers).await.unwrap();
+    ws.logs().write_log(&log3, &trackers).await.unwrap();
 
     // List all logs
-    let dates = log_manager.list_logs().await.unwrap();
+    let dates = ws.logs().list_logs().await.unwrap();
     assert_eq!(dates.len(), 3);
     assert_eq!(dates[0], date1);
     assert_eq!(dates[1], date2);
@@ -428,7 +432,7 @@ async fn test_log_list_and_read_integration() {
 
     // Read each log back
     for date in dates {
-        let log = log_manager
+        let log = ws.logs()
             .get_log(date)
             .await
             .unwrap();

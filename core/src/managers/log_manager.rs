@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use chrono::{Datelike, Duration, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
-use crate::managers::PlanManager;
 use crate::models::Log;
 use crate::storage::Storage;
+use crate::workspace::Workspace;
 
 /// Manages log file operations.
 ///
@@ -16,15 +16,15 @@ use crate::storage::Storage;
 pub struct LogManager {
     storage: Arc<dyn Storage>,
     timezone: Tz,
-    plan_manager: Arc<PlanManager>,
+    workspace: Weak<Workspace>,
 }
 
 impl LogManager {
-    pub fn new(storage: Arc<dyn Storage>, timezone: Tz, plan_manager: Arc<PlanManager>) -> Self {
+    pub fn new(storage: Arc<dyn Storage>, timezone: Tz, workspace: Weak<Workspace>) -> Self {
         Self {
             storage,
             timezone,
-            plan_manager,
+            workspace,
         }
     }
 
@@ -64,14 +64,13 @@ impl LogManager {
 
     /// Get a log for a given date
     ///
-    /// Returns the log if it exists, or materializes a continuation from yesterday's
-    /// unclosed session if applicable. Returns None if no log exists and no continuation
-    /// is needed.
+    /// Returns the log if it exists, or an empty in-memory log if it doesn't.
     ///
-    /// Materialization: If yesterday has an unclosed session and today has no log file,
-    /// this will automatically close yesterday's session at 23:59 and create today's log
-    /// starting at 00:00 with a continuation of that session.
-    pub async fn get_log(&self, date: NaiveDate) -> Result<Option<Log>> {
+    /// Materialization: Only happens when the requested date is TODAY (in the configured timezone).
+    /// If yesterday has an unclosed session and today has no log file, this will automatically
+    /// close yesterday's session at 23:59 and create today's log starting at 00:00 with a
+    /// continuation of that session. Historical and future dates are never materialized.
+    pub async fn get_log(&self, date: NaiveDate) -> Result<Log> {
         let log_path = self.storage.log_file_path(date);
 
         if self.storage.exists(&log_path) {
@@ -85,65 +84,67 @@ impl LogManager {
             let log = Log::from_log_file(&toml_str)
                 .with_context(|| format!("Failed to parse log file for {date}"))?;
 
-            Ok(Some(log))
+            Ok(log)
         } else {
             // Log file doesn't exist - check if we should materialize a continuation
-            let yesterday = date - Duration::days(1);
-            let yesterday_path = self.storage.log_file_path(yesterday);
+            // Only materialize if the requested date is today
+            let ws = self.workspace.upgrade()
+                .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+            let is_today = date == ws.today();
 
-            if self.storage.exists(&yesterday_path) {
-                // Yesterday's file exists - check for unclosed session
-                let yesterday_toml = self.storage.read_string(&yesterday_path).await?;
-                let yesterday_log = Log::from_log_file(&yesterday_toml)?;
+            if is_today {
+                let yesterday = date - Duration::days(1);
+                let yesterday_path = self.storage.log_file_path(yesterday);
 
-                if let Some(unclosed_session) = yesterday_log.active_session() {
-                    // Found an unclosed session in yesterday's log - materialize the continuation
-                    let unclosed_session_clone = unclosed_session.clone();
-                    self.materialize_continuation(
-                        date,
-                        yesterday,
-                        yesterday_log,
-                        &unclosed_session_clone,
-                    )
-                    .await?;
+                if self.storage.exists(&yesterday_path) {
+                    // Yesterday's file exists - check for unclosed session
+                    let yesterday_toml = self.storage.read_string(&yesterday_path).await?;
+                    let yesterday_log = Log::from_log_file(&yesterday_toml)?;
 
-                    // Now read the materialized log for today
-                    let toml_str = self.storage.read_string(&log_path).await?;
-                    let log = Log::from_log_file(&toml_str)?;
-                    return Ok(Some(log));
+                    if let Some(unclosed_session) = yesterday_log.active_session() {
+                        // Found an unclosed session in yesterday's log - materialize the continuation
+                        let unclosed_session_clone = unclosed_session.clone();
+                        self.materialize_continuation(
+                            date,
+                            yesterday,
+                            yesterday_log,
+                            &unclosed_session_clone,
+                        )
+                        .await?;
+
+                        // Now read the materialized log for today
+                        let toml_str = self.storage.read_string(&log_path).await?;
+                        let log = Log::from_log_file(&toml_str)?;
+                        return Ok(log);
+                    }
                 }
             }
 
-            // No file and no continuation needed
-            Ok(None)
-        }
-    }
-
-    /// Get a log for a given date, creating an empty one if it doesn't exist
-    ///
-    /// This is a convenience method for callers who always want a log to work with
-    pub async fn get_log_or_create(&self, date: NaiveDate) -> Result<Log> {
-        if let Some(log) = self.get_log(date).await? {
-            Ok(log)
-        } else {
+            // No file and no continuation needed - return empty in-memory log
             Ok(Log::new(date, self.timezone, vec![]))
         }
     }
+
 
     /// Materialize a continuation session from yesterday to today
     ///
     /// This closes yesterday's unclosed session at 23:59 and creates today's log
     /// with a continuation session starting at 00:00.
-    async fn materialize_continuation(
+    ///
+    /// Normally called automatically by get_log() when the date is today.
+    /// Public for testing purposes.
+    pub async fn materialize_continuation(
         &self,
         today: NaiveDate,
         yesterday: NaiveDate,
         yesterday_log: Log,
         unclosed_session: &crate::models::Session,
     ) -> Result<()> {
-        // Get trackers from plan manager for proper TOML formatting
-        let yesterday_trackers = self.plan_manager.get_trackers(yesterday).await?;
-        let today_trackers = self.plan_manager.get_trackers(today).await?;
+        // Get workspace and trackers from plan manager for proper TOML formatting
+        let ws = self.workspace.upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+        let yesterday_trackers = ws.plans().get_trackers(yesterday).await?;
+        let today_trackers = ws.plans().get_trackers(today).await?;
 
         // Close yesterday's session at 23:59
         let end_of_day = self
@@ -256,8 +257,8 @@ impl LogManager {
         now: chrono::DateTime<Tz>,
         trackers: &HashMap<String, String>,
     ) -> Result<()> {
-        // Get today's log or create empty one
-        let mut log = self.get_log_or_create(current_date).await?;
+        // Get today's log (returns empty log if file doesn't exist)
+        let mut log = self.get_log(current_date).await?;
 
         // Validate start time is not in the future
         if start_time > now {
@@ -327,7 +328,7 @@ impl LogManager {
         current_time: chrono::DateTime<Tz>,
         trackers: &std::collections::HashMap<String, String>,
     ) -> Result<()> {
-        let log = self.get_log_or_create(current_date).await?;
+        let log = self.get_log(current_date).await?;
 
         if log.active_session().is_some() {
             let updated_log = log.stop_active_session(current_time)?;
@@ -346,7 +347,7 @@ impl LogManager {
         let mut logs_with_intent = Vec::new();
 
         for date in all_dates {
-            if let Ok(Some(log)) = self.get_log(date).await {
+            if let Ok(log) = self.get_log(date).await {
                 let count = log
                     .timeline
                     .iter()
@@ -375,7 +376,7 @@ impl LogManager {
         let mut total_updated = 0;
 
         for (date, _) in logs_with_intent {
-            if let Ok(Some(log)) = self.get_log(date).await {
+            if let Ok(log) = self.get_log(date).await {
                 let (updated_log, count) = log.update_intent(intent_id, updated_intent.clone());
 
                 if count > 0 {
@@ -414,10 +415,7 @@ impl LogManager {
 
         for date in all_dates {
             // Load log
-            let log = match self.get_log(date).await? {
-                Some(log) => log,
-                None => continue,
-            };
+            let log = self.get_log(date).await?;
 
             let mut log_modified = false;
             let mut updated_timeline = Vec::new();
@@ -509,10 +507,7 @@ impl LogManager {
 
         for date in all_dates {
             // Load log
-            let log = match self.get_log(date).await? {
-                Some(log) => log,
-                None => continue,
-            };
+            let log = self.get_log(date).await?;
 
             // Count sessions
             for session in &log.timeline {
@@ -547,39 +542,45 @@ impl LogManager {
 mod tests {
     use super::*;
     use crate::utils::test_utils::mock_storage::MockStorage;
+    use crate::workspace::Workspace;
+    use std::path::PathBuf;
 
-    // Helper function to create a LogManager with a PlanManager for tests
-    fn create_test_manager(storage: Arc<MockStorage>) -> LogManager {
-        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-        LogManager::new(storage, chrono_tz::UTC, plan_manager)
+    // Helper function to create a Workspace with LogManager for tests
+    async fn create_test_workspace(storage: Arc<MockStorage>) -> Arc<Workspace> {
+        // Add a config file to storage
+        storage.add_file(
+            PathBuf::from("/faff/config.toml"),
+            r#"timezone = "UTC""#.to_string(),
+        );
+        Workspace::with_storage(storage).await.unwrap()
     }
 
     #[tokio::test]
     async fn test_log_exists() {
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        assert!(!manager.log_exists(date));
+        assert!(!ws.logs().log_exists(date));
 
         // Write a log
-        manager
+        ws.logs()
             .write_log_raw(date, "date = \"2025-03-15\"\n")
             .await
             .unwrap();
-        assert!(manager.log_exists(date));
+        assert!(ws.logs().log_exists(date));
     }
 
     #[tokio::test]
     async fn test_write_and_read_raw() {
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let content = "date = \"2025-03-15\"\ntimezone = \"UTC\"\n";
 
-        manager.write_log_raw(date, content).await.unwrap();
-        let retrieved = manager.read_log_raw(date).await.unwrap();
+        ws.logs().write_log_raw(date, content).await.unwrap();
+        let retrieved = ws.logs().read_log_raw(date).await.unwrap();
 
         assert_eq!(retrieved, content);
     }
@@ -587,15 +588,15 @@ mod tests {
     #[tokio::test]
     async fn test_list_logs() {
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date1 = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let date2 = NaiveDate::from_ymd_opt(2025, 3, 16).unwrap();
 
-        manager.write_log_raw(date1, "test").await.unwrap();
-        manager.write_log_raw(date2, "test").await.unwrap();
+        ws.logs().write_log_raw(date1, "test").await.unwrap();
+        ws.logs().write_log_raw(date2, "test").await.unwrap();
 
-        let dates = manager.list_logs().await.unwrap();
+        let dates = ws.logs().list_logs().await.unwrap();
         assert_eq!(dates.len(), 2);
         assert_eq!(dates[0], date1);
         assert_eq!(dates[1], date2);
@@ -604,7 +605,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_log_parses_toml() {
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let toml_content = r#"
@@ -624,8 +625,8 @@ end = "10:30"
 note = "Morning session"
 "#;
 
-        manager.write_log_raw(date, toml_content).await.unwrap();
-        let log = manager.get_log(date).await.unwrap().unwrap();
+        ws.logs().write_log_raw(date, toml_content).await.unwrap();
+        let log = ws.logs().get_log(date).await.unwrap();
 
         assert_eq!(log.date, date);
         assert_eq!(log.timezone, chrono_tz::UTC);
@@ -638,24 +639,14 @@ note = "Morning session"
     }
 
     #[tokio::test]
-    async fn test_get_log_returns_none_when_missing() {
+    async fn test_get_log_returns_empty_when_missing() {
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let log = manager.get_log(date).await.unwrap();
+        let log = ws.logs().get_log(date).await.unwrap();
 
-        assert!(log.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_get_log_or_create() {
-        let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
-
-        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-        let log = manager.get_log_or_create(date).await.unwrap();
-
+        // Should return an empty log when file doesn't exist
         assert_eq!(log.date, date);
         assert_eq!(log.timeline.len(), 0);
     }
@@ -666,7 +657,7 @@ note = "Morning session"
         use chrono::{TimeZone, Timelike};
 
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let yesterday = NaiveDate::from_ymd_opt(2025, 3, 14).unwrap();
         let today = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
@@ -695,16 +686,21 @@ note = "Morning session"
             crate::models::Log::new(yesterday, chrono_tz::UTC, vec![unclosed_session]);
 
         // Write yesterday's log with unclosed session
-        manager
+        ws.logs()
             .write_log(&yesterday_log, &std::collections::HashMap::new())
             .await
             .unwrap();
 
-        // Now call get_log(today) - should materialize the continuation
-        let today_log = manager.get_log(today).await.unwrap();
+        // Manually call materialize_continuation for testing
+        // (normally this only happens when date == workspace.today())
+        let unclosed = yesterday_log.active_session().unwrap().clone();
+        ws.logs()
+            .materialize_continuation(today, yesterday, yesterday_log, &unclosed)
+            .await
+            .unwrap();
 
-        assert!(today_log.is_some(), "Today's log should be materialized");
-        let today_log = today_log.unwrap();
+        // Now get_log should return the materialized log
+        let today_log = ws.logs().get_log(today).await.unwrap();
 
         // Verify today's log has one session starting at 00:00
         assert_eq!(today_log.timeline.len(), 1);
@@ -719,7 +715,7 @@ note = "Morning session"
         assert_eq!(today_session.note, Some("late night coding".to_string()));
 
         // Verify yesterday's log was closed at 23:59
-        let yesterday_log_closed = manager.get_log(yesterday).await.unwrap().unwrap();
+        let yesterday_log_closed = ws.logs().get_log(yesterday).await.unwrap();
         assert_eq!(yesterday_log_closed.timeline.len(), 1);
         let yesterday_session_closed = &yesterday_log_closed.timeline[0];
         assert!(
@@ -737,7 +733,7 @@ note = "Morning session"
         use chrono::TimeZone;
 
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let now = chrono_tz::UTC
@@ -749,7 +745,7 @@ note = "Morning session"
 
         let intent = Intent::new(Some("work".to_string()), None, None, None, None, vec![]);
 
-        let result = manager
+        let result = ws.logs()
             .start_intent(intent, None, date, future, now, &HashMap::new())
             .await;
 
@@ -763,7 +759,7 @@ note = "Morning session"
         use chrono::TimeZone;
 
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let now = chrono_tz::UTC
@@ -777,7 +773,7 @@ note = "Morning session"
             .unwrap();
         let session = Session::new(intent, session_start, None, None);
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
-        manager.write_log(&log, &HashMap::new()).await.unwrap();
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
         // Try to start a new session at 09:00 (before active session started)
         let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
@@ -785,7 +781,7 @@ note = "Morning session"
             .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
             .unwrap();
 
-        let result = manager
+        let result = ws.logs()
             .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
             .await;
 
@@ -799,7 +795,7 @@ note = "Morning session"
         use chrono::TimeZone;
 
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let now = chrono_tz::UTC
@@ -816,7 +812,7 @@ note = "Morning session"
             .unwrap();
         let session = Session::new(intent, session_start, Some(session_end), None);
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
-        manager.write_log(&log, &HashMap::new()).await.unwrap();
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
         // Try to start at 09:30 (overlapping completed session)
         let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
@@ -824,7 +820,7 @@ note = "Morning session"
             .with_ymd_and_hms(2025, 3, 15, 9, 30, 0)
             .unwrap();
 
-        let result = manager
+        let result = ws.logs()
             .start_intent(new_intent, None, date, bad_start, now, &HashMap::new())
             .await;
 
@@ -841,7 +837,7 @@ note = "Morning session"
         use chrono::{TimeZone, Timelike};
 
         let storage = Arc::new(MockStorage::new());
-        let manager = create_test_manager(storage.clone());
+        let ws = create_test_workspace(storage.clone()).await;
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
         let now = chrono_tz::UTC
@@ -855,7 +851,7 @@ note = "Morning session"
             .unwrap();
         let session = Session::new(intent, session_start, None, None);
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
-        manager.write_log(&log, &HashMap::new()).await.unwrap();
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
         // Start a new session at 11:00 (after active session started)
         let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
@@ -863,13 +859,13 @@ note = "Morning session"
             .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
             .unwrap();
 
-        manager
+        ws.logs()
             .start_intent(new_intent, None, date, new_start, now, &HashMap::new())
             .await
             .unwrap();
 
         // Verify the first session was stopped and second started
-        let log = manager.get_log(date).await.unwrap().unwrap();
+        let log = ws.logs().get_log(date).await.unwrap();
         assert_eq!(log.timeline.len(), 2);
 
         // First session should be closed at 11:00

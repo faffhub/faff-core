@@ -14,11 +14,11 @@ pub struct Workspace {
     storage: Arc<dyn Storage>,
     config: Config,
     plan_manager: Arc<PlanManager>,
-    log_manager: LogManager,
-    timesheet_manager: TimesheetManager,
-    identity_manager: IdentityManager,
+    log_manager: Arc<LogManager>,
+    timesheet_manager: Arc<TimesheetManager>,
+    identity_manager: Arc<IdentityManager>,
     #[cfg(feature = "python")]
-    plugin_manager: tokio::sync::Mutex<PluginManager>,
+    plugin_manager: Arc<tokio::sync::Mutex<PluginManager>>,
 }
 
 impl Workspace {
@@ -28,37 +28,45 @@ impl Workspace {
     ///
     /// Note: Only available on non-WASM targets.
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> anyhow::Result<Arc<Self>> {
         let storage = Arc::new(FileSystemStorage::new()?);
         Self::with_storage(storage).await
     }
 
     /// Create a new Workspace with a custom storage implementation
-    pub async fn with_storage(storage: Arc<dyn Storage>) -> anyhow::Result<Self> {
+    pub async fn with_storage(storage: Arc<dyn Storage>) -> anyhow::Result<Arc<Self>> {
         // Load config from storage
         let config_path = storage.config_file();
         let config_str = storage.read_string(&config_path).await?;
         let config = Config::from_toml(&config_str)
             .map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))?;
 
-        // Create managers
-        let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-        let log_manager = LogManager::new(storage.clone(), config.timezone, plan_manager.clone());
-        let timesheet_manager = TimesheetManager::new(storage.clone());
-        let identity_manager = IdentityManager::new(storage.clone());
-        #[cfg(feature = "python")]
-        let plugin_manager = tokio::sync::Mutex::new(PluginManager::new(storage.clone()));
-
-        Ok(Self {
-            storage,
-            config,
-            plan_manager,
-            log_manager,
-            timesheet_manager,
-            identity_manager,
+        // Use Arc::new_cyclic to create workspace with managers that hold Weak<Workspace>
+        let workspace = Arc::new_cyclic(|weak_workspace| {
+            let plan_manager = Arc::new(PlanManager::new(storage.clone()));
+            let log_manager = Arc::new(LogManager::new(
+                storage.clone(),
+                config.timezone,
+                weak_workspace.clone(),
+            ));
+            let timesheet_manager = Arc::new(TimesheetManager::new(storage.clone()));
+            let identity_manager = Arc::new(IdentityManager::new(storage.clone()));
             #[cfg(feature = "python")]
-            plugin_manager,
-        })
+            let plugin_manager = Arc::new(tokio::sync::Mutex::new(PluginManager::new(storage.clone())));
+
+            Workspace {
+                storage,
+                config,
+                plan_manager,
+                log_manager,
+                timesheet_manager,
+                identity_manager,
+                #[cfg(feature = "python")]
+                plugin_manager,
+            }
+        });
+
+        Ok(workspace)
     }
 
     /// Get the current time in the configured timezone
@@ -92,23 +100,23 @@ impl Workspace {
     }
 
     /// Get the LogManager
-    pub fn logs(&self) -> &LogManager {
+    pub fn logs(&self) -> &Arc<LogManager> {
         &self.log_manager
     }
 
     /// Get the TimesheetManager
-    pub fn timesheets(&self) -> &TimesheetManager {
+    pub fn timesheets(&self) -> &Arc<TimesheetManager> {
         &self.timesheet_manager
     }
 
     /// Get the IdentityManager
-    pub fn identities(&self) -> &IdentityManager {
+    pub fn identities(&self) -> &Arc<IdentityManager> {
         &self.identity_manager
     }
 
     /// Get the PluginManager
     #[cfg(feature = "python")]
-    pub fn plugins(&self) -> &tokio::sync::Mutex<PluginManager> {
+    pub fn plugins(&self) -> &Arc<tokio::sync::Mutex<PluginManager>> {
         &self.plugin_manager
     }
 }
@@ -119,7 +127,7 @@ mod tests {
     use crate::utils::test_utils::mock_storage::MockStorage;
     use std::path::PathBuf;
 
-    async fn create_test_workspace() -> Workspace {
+    async fn create_test_workspace() -> Arc<Workspace> {
         let storage = Arc::new(MockStorage::new());
 
         // Add a config file to storage at the correct path
