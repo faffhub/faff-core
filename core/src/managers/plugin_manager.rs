@@ -383,6 +383,38 @@ impl PluginManager {
         Ok(instances)
     }
 
+    /// Get remote configurations without instantiating plugins
+    ///
+    /// Returns the raw Remote configuration objects for all configured remotes.
+    /// Use this to access remote metadata like connection settings, vocabulary, etc.
+    ///
+    /// # Returns
+    /// Vector of Remote configuration objects
+    pub async fn get_remote_configs(&self) -> Result<Vec<Remote>> {
+        let remotes_dir = self.storage.remotes_dir();
+        let remote_files = self
+            .storage
+            .list_files(&remotes_dir, "*.toml")
+            .await
+            .context("Failed to list remote config files")?;
+
+        let mut configs = Vec::new();
+        for remote_file in remote_files {
+            let remote_toml = self
+                .storage
+                .read_string(&remote_file)
+                .await
+                .with_context(|| format!("Failed to read remote file: {remote_file:?}"))?;
+
+            let remote = Remote::from_toml(&remote_toml)
+                .with_context(|| format!("Failed to parse remote config: {remote_file:?}"))?;
+
+            configs.push(remote);
+        }
+
+        Ok(configs)
+    }
+
     /// Get instantiated audience plugins from remotes directory
     ///
     /// TODO: For now this returns all remotes. In the future we may want to

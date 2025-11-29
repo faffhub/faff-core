@@ -98,6 +98,35 @@ impl PyPluginManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
+    /// Get remote configurations
+    ///
+    /// Returns the raw Remote configuration objects for all configured remotes.
+    /// Use this to access remote metadata like connection settings, vocabulary, etc.
+    ///
+    /// Returns:
+    ///     List of remote configuration dictionaries
+    pub fn get_remote_configs<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyAny>>> {
+        let manager = self
+            .manager
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        let configs = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(manager.get_remote_configs())
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        // Convert Remote structs to Python objects using pythonize
+        let mut result = Vec::new();
+        for config in configs {
+            let py_obj = pythonize::pythonize(py, &config)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+            result.push(py_obj);
+        }
+
+        Ok(result)
+    }
+
     /// Get instantiated plan remote plugins based on config
     ///
     /// Returns:
