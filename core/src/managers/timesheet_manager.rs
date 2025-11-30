@@ -303,10 +303,7 @@ impl TimesheetManager {
     ///
     /// Note: Plugin submission failures are captured in metadata, not returned as errors
     #[cfg(feature = "python")]
-    pub async fn submit(
-        &self,
-        timesheet: &Timesheet,
-    ) -> anyhow::Result<()> {
+    pub async fn submit(&self, timesheet: &Timesheet) -> anyhow::Result<()> {
         use pyo3::prelude::*;
 
         let ws = self
@@ -522,9 +519,7 @@ impl TimesheetManager {
     /// # Errors
     /// Returns an error if the workspace is no longer available
     #[cfg(feature = "python")]
-    pub async fn audiences(
-        &self,
-    ) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
+    pub async fn audiences(&self) -> anyhow::Result<Vec<pyo3::Py<pyo3::PyAny>>> {
         let ws = self
             .workspace
             .upgrade()

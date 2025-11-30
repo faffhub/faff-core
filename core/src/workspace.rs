@@ -55,7 +55,8 @@ impl Workspace {
             ));
             let identity_manager = Arc::new(IdentityManager::new(storage.clone()));
             #[cfg(feature = "python")]
-            let plugin_manager = Arc::new(tokio::sync::Mutex::new(PluginManager::new(storage.clone())));
+            let plugin_manager =
+                Arc::new(tokio::sync::Mutex::new(PluginManager::new(storage.clone())));
 
             Workspace {
                 storage,

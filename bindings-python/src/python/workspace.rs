@@ -49,10 +49,8 @@ impl PyWorkspace {
         // Managers are already Arc<Manager> in the workspace
         let plans = PyPlanManager::from_rust_arc(inner_arc.plans().clone(), inner_arc.clone());
         let logs = PyLogManager::from_rust((**inner_arc.logs()).clone(), inner_arc.clone());
-        let timesheets = PyTimesheetManager::from_rust(
-            inner_arc.timesheets().clone(),
-            inner_arc.clone(),
-        );
+        let timesheets =
+            PyTimesheetManager::from_rust(inner_arc.timesheets().clone(), inner_arc.clone());
         let identities = PyIdentityManager::from_rust(inner_arc.identities().clone());
         // Clone the plugin manager from inside the mutex
         let plugin_manager_clone = inner_arc.plugins().blocking_lock().clone();

@@ -141,10 +141,7 @@ impl PyLogManager {
     }
 
     /// Get a log for a given date (returns empty log if file doesn't exist)
-    fn get_log(
-        &self,
-        date: Bound<'_, PyDate>,
-    ) -> PyResult<faff_core::plugins::models::log::PyLog> {
+    fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<faff_core::plugins::models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
         let log = tokio::runtime::Runtime::new()
             .unwrap()
@@ -202,12 +199,8 @@ impl PyLogManager {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
 
-        rt.block_on(self.inner.start_intent(
-            intent.inner.clone(),
-            start,
-            note,
-        ))
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+        rt.block_on(self.inner.start_intent(intent.inner.clone(), start, note))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session

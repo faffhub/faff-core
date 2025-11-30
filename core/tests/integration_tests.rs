@@ -195,10 +195,7 @@ trackers = ["PROJ-123"]
     ws.logs().write_log(&log, &trackers).await.unwrap();
 
     // Read log back
-    let retrieved_log = ws.logs()
-        .get_log(date)
-        .await
-        .unwrap();
+    let retrieved_log = ws.logs().get_log(date).await.unwrap();
     assert_eq!(retrieved_log.timeline.len(), 1);
     assert_eq!(
         retrieved_log.timeline[0].intent.alias.as_ref().unwrap(),
@@ -432,10 +429,7 @@ async fn test_log_list_and_read_integration() {
 
     // Read each log back
     for date in dates {
-        let log = ws.logs()
-            .get_log(date)
-            .await
-            .unwrap();
+        let log = ws.logs().get_log(date).await.unwrap();
         assert_eq!(log.date, date);
     }
 }

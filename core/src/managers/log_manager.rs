@@ -88,7 +88,9 @@ impl LogManager {
         } else {
             // Log file doesn't exist - check if we should materialize a continuation
             // Only materialize if the requested date is today
-            let ws = self.workspace.upgrade()
+            let ws = self
+                .workspace
+                .upgrade()
                 .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
             let is_today = date == ws.today();
 
@@ -125,7 +127,6 @@ impl LogManager {
         }
     }
 
-
     /// Materialize a continuation session from yesterday to today
     ///
     /// This closes yesterday's unclosed session at 23:59 and creates today's log
@@ -141,7 +142,9 @@ impl LogManager {
         unclosed_session: &crate::models::Session,
     ) -> Result<()> {
         // Get workspace and trackers from plan manager for proper TOML formatting
-        let ws = self.workspace.upgrade()
+        let ws = self
+            .workspace
+            .upgrade()
             .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
         let yesterday_trackers = ws.plans().get_trackers(yesterday).await?;
         let today_trackers = ws.plans().get_trackers(today).await?;
@@ -255,7 +258,9 @@ impl LogManager {
         note: Option<String>,
     ) -> Result<()> {
         // Get workspace context
-        let ws = self.workspace.upgrade()
+        let ws = self
+            .workspace
+            .upgrade()
             .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
 
         let current_date = start_time.date_naive();
@@ -328,7 +333,9 @@ impl LogManager {
     /// Returns Ok(()) if a session was stopped, or an error if no active session exists
     pub async fn stop_current_session(&self) -> Result<()> {
         // Get workspace context
-        let ws = self.workspace.upgrade()
+        let ws = self
+            .workspace
+            .upgrade()
             .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
 
         let current_date = ws.today();
@@ -747,9 +754,7 @@ note = "Morning session"
 
         let intent = Intent::new(Some("work".to_string()), None, None, None, None, vec![]);
 
-        let result = ws.logs()
-            .start_intent(intent, future, None)
-            .await;
+        let result = ws.logs().start_intent(intent, future, None).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("future"));
@@ -780,9 +785,7 @@ note = "Morning session"
             .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
             .unwrap();
 
-        let result = ws.logs()
-            .start_intent(new_intent, bad_start, None)
-            .await;
+        let result = ws.logs().start_intent(new_intent, bad_start, None).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Active session"));
@@ -816,9 +819,7 @@ note = "Morning session"
             .with_ymd_and_hms(2025, 3, 15, 9, 30, 0)
             .unwrap();
 
-        let result = ws.logs()
-            .start_intent(new_intent, bad_start, None)
-            .await;
+        let result = ws.logs().start_intent(new_intent, bad_start, None).await;
 
         assert!(result.is_err());
         assert!(result

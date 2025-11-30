@@ -186,10 +186,7 @@ impl PyTimesheetManager {
     ) -> PyResult<PyTimesheet> {
         let signed = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(
-                self.manager
-                    .sign_timesheet(&timesheet.inner, &signing_ids),
-            )
+            .block_on(self.manager.sign_timesheet(&timesheet.inner, &signing_ids))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyTimesheet { inner: signed })

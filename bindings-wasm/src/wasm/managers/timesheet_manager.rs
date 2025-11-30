@@ -146,12 +146,9 @@ impl TimesheetManager {
         future_to_promise(async move {
             let naive_date = date.as_ref().map(js_date_to_naive_date).transpose()?;
 
-            let stale = inner
-                .find_stale_timesheets(naive_date)
-                .await
-                .map_err(|e| {
-                    JsValue::from_str(&format!("Failed to find stale timesheets: {}", e))
-                })?;
+            let stale = inner.find_stale_timesheets(naive_date).await.map_err(|e| {
+                JsValue::from_str(&format!("Failed to find stale timesheets: {}", e))
+            })?;
 
             let array = js_sys::Array::new();
             for timesheet in stale {
