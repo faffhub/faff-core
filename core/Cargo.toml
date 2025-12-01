@@ -41,6 +41,7 @@ glob.workspace = true
 base64.workspace = true
 rand.workspace = true
 dirs.workspace = true
+notify.workspace = true
 
 # Cryptography (for identities)
 ed25519-dalek.workspace = true

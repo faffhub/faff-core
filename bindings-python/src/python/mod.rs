@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::PyResult;
 
+pub mod events;
 pub mod managers;
 pub mod query;
 pub mod storage;
@@ -28,6 +29,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     workspace::register(m)?;
     storage::register(m)?;
     query::register(m)?;
+    events::register_module(m)?;
 
     Ok(())
 }

@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 
 use crate::models::Config;
 
+#[cfg(not(target_arch = "wasm32"))]
+use super::events::EventStreamHandle;
+
 /// Storage abstraction for Faffage data persistence.
 ///
 /// This trait defines the interface for reading and writing Faffage data.
@@ -132,6 +135,42 @@ pub trait Storage: Send + Sync {
     }
 
     // ============================================================================
+    // Optional: Event stream support
+    // ============================================================================
+
+    /// Returns true if this storage implementation supports event streams.
+    ///
+    /// Storage implementations that can detect file changes (like FileSystemStorage)
+    /// can override this to return true and implement spawn_event_stream().
+    fn supports_events(&self) -> bool {
+        false
+    }
+
+    /// Spawn an event stream for watching file changes.
+    ///
+    /// Returns None if this storage implementation doesn't support events.
+    /// Check supports_events() before calling this method.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use faff_core::storage::{Storage, FileSystemStorage};
+    /// use std::path::PathBuf;
+    ///
+    /// let storage = FileSystemStorage::new(PathBuf::from("/path/to/.faff"));
+    /// if storage.supports_events() {
+    ///     if let Some(handle) = storage.spawn_event_stream() {
+    ///         let mut rx = handle.subscribe();
+    ///         // Process events...
+    ///     }
+    /// }
+    /// ```
+    #[cfg(not(target_arch = "wasm32"))]
+    fn spawn_event_stream(&self) -> Option<EventStreamHandle> {
+        None
+    }
+
+    // ============================================================================
     // Default implementation: Repository initialization
     // ============================================================================
 
@@ -242,6 +281,11 @@ pub trait Storage {
 
     fn remote_file_path(&self, remote_id: &str) -> PathBuf {
         self.remotes_dir().join(format!("{}.toml", remote_id))
+    }
+
+    // Event support not available on WASM
+    fn supports_events(&self) -> bool {
+        false
     }
 
     async fn init(&self) -> Result<()> {

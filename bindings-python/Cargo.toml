@@ -26,3 +26,6 @@ toml.workspace = true
 # For async support
 async-trait.workspace = true
 tokio.workspace = true
+
+# For event stream
+dirs.workspace = true

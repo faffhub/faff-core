@@ -156,6 +156,17 @@ impl Storage for FileSystemStorage {
 
         paths.context("Failed to list files")
     }
+
+    // Event support - FileSystemStorage supports watching file changes
+    fn supports_events(&self) -> bool {
+        true
+    }
+
+    fn spawn_event_stream(&self) -> Option<super::events::EventStreamHandle> {
+        Some(super::events::spawn_filesystem_watcher(
+            self.base_dir(),
+        ))
+    }
 }
 
 #[cfg(test)]
