@@ -140,10 +140,14 @@ fn process_event(event: &Event, logs_dir: &Path, plans_dir: &Path) -> Option<Sto
     match event.kind {
         notify::EventKind::Create(_) | notify::EventKind::Remove(_) => {}
         notify::EventKind::Modify(modify_kind) => {
-            // Only process data content changes, ignore metadata
+            // Process data content changes and name changes (for iCloud sync compatibility)
             match modify_kind {
                 notify::event::ModifyKind::Data(_) => {}
-                _ => return None, // Ignore metadata, name, and other non-content changes
+                notify::event::ModifyKind::Name(_) => {
+                    // iCloud Drive syncs files by atomically replacing them,
+                    // which generates Name modification events instead of Data events
+                }
+                _ => return None, // Ignore other metadata changes
             }
         }
         _ => return None,
