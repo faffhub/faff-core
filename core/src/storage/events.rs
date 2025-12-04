@@ -97,9 +97,7 @@ pub(crate) fn spawn_filesystem_watcher(base_dir: PathBuf) -> EventStreamHandle {
                     if let Some(storage_event) = process_event(&event, &logs_dir, &plans_dir) {
                         // Get the path for debouncing
                         let path = match &storage_event {
-                            StorageEvent::LogChanged(p) | StorageEvent::PlanChanged(p) => {
-                                p.clone()
-                            }
+                            StorageEvent::LogChanged(p) | StorageEvent::PlanChanged(p) => p.clone(),
                         };
 
                         // Check if we should emit this event (debounce)
