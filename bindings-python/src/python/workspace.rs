@@ -1,3 +1,4 @@
+use crate::python::exceptions::UninitializedLedgerError;
 use crate::python::managers::{
     identity_manager::PyIdentityManager, log_manager::PyLogManager, plan_manager::PyPlanManager,
     plugin_manager::PyPluginManager, timesheet_manager::PyTimesheetManager,
@@ -37,12 +38,26 @@ impl PyWorkspace {
                 tokio::runtime::Runtime::new()
                     .unwrap()
                     .block_on(RustWorkspace::with_storage(Arc::new(py_storage)))
-                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
+                    .map_err(|e| {
+                        let error_msg = e.to_string();
+                        if error_msg.contains("No faff directory found") {
+                            UninitializedLedgerError::new_err(error_msg)
+                        } else {
+                            pyo3::exceptions::PyRuntimeError::new_err(error_msg)
+                        }
+                    })?
             }
             None => tokio::runtime::Runtime::new()
                 .unwrap()
                 .block_on(RustWorkspace::new())
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
+                .map_err(|e| {
+                    let error_msg = e.to_string();
+                    if error_msg.contains("No faff directory found") {
+                        UninitializedLedgerError::new_err(error_msg)
+                    } else {
+                        pyo3::exceptions::PyRuntimeError::new_err(error_msg)
+                    }
+                })?,
         };
 
         // Create Python manager wrappers from the Rust managers

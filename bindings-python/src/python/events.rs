@@ -66,7 +66,7 @@ impl PyEventStream {
     fn __next__(&mut self, py: Python<'_>) -> PyResult<PyFaffEvent> {
         // Release GIL and poll with timeout to allow Ctrl+C
         loop {
-            let result = py.allow_threads(|| {
+            let result = py.detach(|| {
                 self.runtime.block_on(async {
                     tokio::time::timeout(
                         std::time::Duration::from_millis(100),
