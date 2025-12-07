@@ -206,7 +206,10 @@ mod tests {
 
         match event {
             StorageEvent::LogChanged(path) => {
-                assert_eq!(path, log_file);
+                // Canonicalize both paths before comparing (handles /var vs /private/var on macOS)
+                let canonical_received = std::fs::canonicalize(path).unwrap();
+                let canonical_expected = std::fs::canonicalize(log_file).unwrap();
+                assert_eq!(canonical_received, canonical_expected);
             }
             _ => panic!("Expected LogChanged event"),
         }
@@ -240,7 +243,10 @@ mod tests {
 
         match event {
             StorageEvent::PlanChanged(path) => {
-                assert_eq!(path, plan_file);
+                // Canonicalize both paths before comparing (handles /var vs /private/var on macOS)
+                let canonical_received = std::fs::canonicalize(path).unwrap();
+                let canonical_expected = std::fs::canonicalize(plan_file).unwrap();
+                assert_eq!(canonical_received, canonical_expected);
             }
             _ => panic!("Expected PlanChanged event"),
         }

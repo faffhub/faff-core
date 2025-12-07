@@ -155,9 +155,9 @@ pub trait Storage: Send + Sync {
     ///
     /// ```no_run
     /// use faff_core::storage::{Storage, FileSystemStorage};
-    /// use std::path::PathBuf;
     ///
-    /// let storage = FileSystemStorage::new(PathBuf::from("/path/to/.faff"));
+    /// let storage = FileSystemStorage::new()
+    ///     .expect("Failed to create storage");
     /// if storage.supports_events() {
     ///     if let Some(handle) = storage.spawn_event_stream() {
     ///         let mut rx = handle.subscribe();

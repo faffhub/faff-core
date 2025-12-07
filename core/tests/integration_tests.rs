@@ -207,7 +207,7 @@ trackers = ["PROJ-123"]
 async fn test_log_and_timesheet_integration() {
     let storage = Arc::new(IntegrationStorage::new());
     let ws = create_test_workspace(storage.clone()).await;
-    let timesheet_manager = TimesheetManager::new(storage.clone());
+    let timesheet_manager = TimesheetManager::new(storage.clone(), Arc::downgrade(&ws));
 
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
 
@@ -276,9 +276,10 @@ async fn test_log_and_timesheet_integration() {
 #[tokio::test]
 async fn test_identity_and_timesheet_integration() {
     let storage = Arc::new(IntegrationStorage::new());
+    let ws = create_test_workspace(storage.clone()).await;
 
     let identity_manager = IdentityManager::new(storage.clone());
-    let timesheet_manager = TimesheetManager::new(storage.clone());
+    let timesheet_manager = TimesheetManager::new(storage.clone(), Arc::downgrade(&ws));
 
     // Create an identity
     let signing_key = identity_manager
@@ -437,7 +438,8 @@ async fn test_log_list_and_read_integration() {
 #[tokio::test]
 async fn test_timesheet_list_filtering() {
     let storage = Arc::new(IntegrationStorage::new());
-    let timesheet_manager = TimesheetManager::new(storage.clone());
+    let ws = create_test_workspace(storage.clone()).await;
+    let timesheet_manager = TimesheetManager::new(storage.clone(), Arc::downgrade(&ws));
 
     let date1 = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
     let date2 = NaiveDate::from_ymd_opt(2025, 3, 16).unwrap();
