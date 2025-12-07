@@ -12,7 +12,7 @@ from pathlib import Path
 import tempfile
 
 import faff_core
-from faff_core import Workspace
+from faff_core import Workspace, UninitializedLedgerError
 from faff_core.models import Log, Session, Intent, Plan, Timesheet
 
 
@@ -293,7 +293,7 @@ class TestWorkspace:
             # If we're in a directory with .faff, this should work
             assert ws is not None
             assert ws.timezone is not None
-        except RuntimeError:
+        except UninitializedLedgerError:
             # If we're not in a .faff directory, that's expected
             pass
 
@@ -307,7 +307,7 @@ class TestWorkspace:
             assert ws.identities is not None
             assert ws.timesheets is not None
             assert ws.plugins is not None
-        except RuntimeError:
+        except UninitializedLedgerError:
             # If we're not in a .faff directory, skip this test
             pytest.skip("Not in a .faff directory")
 
