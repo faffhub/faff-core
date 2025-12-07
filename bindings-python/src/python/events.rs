@@ -33,7 +33,10 @@ impl From<StorageEvent> for PyFaffEvent {
 #[pymethods]
 impl PyFaffEvent {
     fn __repr__(&self) -> String {
-        format!("FaffEvent(type='{}', path='{}')", self.event_type, self.path)
+        format!(
+            "FaffEvent(type='{}', path='{}')",
+            self.event_type, self.path
+        )
     }
 
     fn __str__(&self) -> String {
@@ -68,10 +71,8 @@ impl PyEventStream {
         loop {
             let result = py.detach(|| {
                 self.runtime.block_on(async {
-                    tokio::time::timeout(
-                        std::time::Duration::from_millis(100),
-                        self.rx.recv()
-                    ).await
+                    tokio::time::timeout(std::time::Duration::from_millis(100), self.rx.recv())
+                        .await
                 })
             });
 
@@ -131,12 +132,14 @@ pub fn start_watching(path: String) -> PyResult<PyEventStream> {
     };
 
     // Create a tokio runtime for async operations
-    let runtime = tokio::runtime::Runtime::new()
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e))
+    })?;
 
     // Create a FileSystemStorage and spawn its event stream
     let storage = FileSystemStorage::at_path(expanded_path);
-    let handle = storage.spawn_event_stream()
+    let handle = storage
+        .spawn_event_stream()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("Event streams not supported"))?;
     let rx = handle.subscribe();
 

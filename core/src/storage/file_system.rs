@@ -163,9 +163,7 @@ impl Storage for FileSystemStorage {
     }
 
     fn spawn_event_stream(&self) -> Option<super::events::EventStreamHandle> {
-        Some(super::events::spawn_filesystem_watcher(
-            self.base_dir(),
-        ))
+        Some(super::events::spawn_filesystem_watcher(self.base_dir()))
     }
 }
 

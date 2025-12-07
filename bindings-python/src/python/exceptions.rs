@@ -10,6 +10,9 @@ create_exception!(
 );
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("UninitializedLedgerError", m.py().get_type::<UninitializedLedgerError>())?;
+    m.add(
+        "UninitializedLedgerError",
+        m.py().get_type::<UninitializedLedgerError>(),
+    )?;
     Ok(())
 }
