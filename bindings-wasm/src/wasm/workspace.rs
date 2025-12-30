@@ -40,12 +40,12 @@ impl Workspace {
                 .map_err(|e| JsValue::from_str(&format!("Failed to create workspace: {}", e)))?;
 
             // Create manager wrappers from the Rust managers
-            // Managers are already Arc<Manager> in the workspace
-            let logs = LogManager::from_rust((**inner_arc.logs()).clone(), inner_arc.clone());
-            let plans = PlanManager::from_rust(inner_arc.plans().clone(), inner_arc.clone());
+            // Managers are Arc<Manager> in the workspace, accessors return &Arc<Manager>
+            let logs = LogManager::from_rust((*inner_arc.logs()).clone(), inner_arc.clone());
+            let plans = PlanManager::from_rust((*inner_arc.plans()).clone(), inner_arc.clone());
             let timesheets =
-                TimesheetManager::from_rust(inner_arc.timesheets().clone(), inner_arc.clone());
-            let identities = IdentityManager::from_rust(inner_arc.identities().clone());
+                TimesheetManager::from_rust((*inner_arc.timesheets()).clone(), inner_arc.clone());
+            let identities = IdentityManager::from_rust((*inner_arc.identities()).clone());
 
             let wasm_workspace = Workspace {
                 inner: inner_arc,
@@ -85,8 +85,8 @@ impl Workspace {
     #[wasm_bindgen(getter)]
     pub fn logs(&self) -> LogManager {
         // We need to clone because wasm-bindgen requires returning by value
-        // The LogManager itself contains Arc internally, so this is cheap
-        LogManager::from_rust(self.inner.logs().clone(), self.inner.clone())
+        // Clone the Arc (cheap - just increments reference count)
+        LogManager::from_rust((*self.inner.logs()).clone(), self.inner.clone())
     }
 
     /// Get the PlanManager.
@@ -94,7 +94,7 @@ impl Workspace {
     /// Returns: PlanManager
     #[wasm_bindgen(getter)]
     pub fn plans(&self) -> PlanManager {
-        PlanManager::from_rust(Arc::new(self.inner.plans().clone()), self.inner.clone())
+        PlanManager::from_rust((*self.inner.plans()).clone(), self.inner.clone())
     }
 
     /// Get the TimesheetManager.
@@ -102,10 +102,7 @@ impl Workspace {
     /// Returns: TimesheetManager
     #[wasm_bindgen(getter)]
     pub fn timesheets(&self) -> TimesheetManager {
-        TimesheetManager::from_rust(
-            Arc::new(self.inner.timesheets().clone()),
-            self.inner.clone(),
-        )
+        TimesheetManager::from_rust((*self.inner.timesheets()).clone(), self.inner.clone())
     }
 
     /// Get the IdentityManager.
@@ -113,7 +110,7 @@ impl Workspace {
     /// Returns: IdentityManager
     #[wasm_bindgen(getter)]
     pub fn identities(&self) -> IdentityManager {
-        IdentityManager::from_rust(Arc::new(self.inner.identities().clone()))
+        IdentityManager::from_rust((*self.inner.identities()).clone())
     }
 }
 

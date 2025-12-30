@@ -12,5 +12,7 @@ pub mod utils;
 pub mod plugins;
 
 // Re-export commonly used items for convenience
-pub use storage::{FileSystemStorage, Storage};
+#[cfg(not(target_arch = "wasm32"))]
+pub use storage::FileSystemStorage;
+pub use storage::Storage;
 pub use workspace::Workspace;

@@ -39,6 +39,11 @@ impl Intent {
     }
 
     #[wasm_bindgen(getter)]
+    pub fn intent_id(&self) -> String {
+        self.inner.intent_id.clone()
+    }
+
+    #[wasm_bindgen(getter)]
     pub fn alias(&self) -> Option<String> {
         self.inner.alias.clone()
     }

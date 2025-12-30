@@ -1,5 +1,4 @@
 use super::super::models::Log;
-use super::super::storage::JsStorageAdapter;
 use chrono::Datelike;
 use faff_core::managers::LogManager as RustLogManager;
 use faff_core::workspace::Workspace as RustWorkspace;
@@ -14,13 +13,13 @@ use wasm_bindgen_futures::future_to_promise;
 /// through JavaScript Promises.
 #[wasm_bindgen]
 pub struct LogManager {
-    inner: RustLogManager,
+    inner: Arc<RustLogManager>,
     workspace: Option<Arc<RustWorkspace>>,
 }
 
 impl LogManager {
     /// Create from Rust manager with workspace reference
-    pub(crate) fn from_rust(manager: RustLogManager, workspace: Arc<RustWorkspace>) -> Self {
+    pub(crate) fn from_rust(manager: Arc<RustLogManager>, workspace: Arc<RustWorkspace>) -> Self {
         Self {
             inner: manager,
             workspace: Some(workspace),
@@ -30,26 +29,6 @@ impl LogManager {
 
 #[wasm_bindgen]
 impl LogManager {
-    /// Create a new LogManager with storage and timezone.
-    ///
-    /// storage: JsStorageAdapter
-    /// timezone: string (e.g., "America/New_York", "UTC")
-    /// Returns Promise<LogManager>.
-    #[wasm_bindgen(constructor)]
-    pub fn new(storage: JsStorageAdapter, timezone: &str) -> Result<LogManager, JsValue> {
-        let tz = timezone
-            .parse()
-            .map_err(|_| JsValue::from_str(&format!("Invalid timezone: {}", timezone)))?;
-
-        let js_storage = super::super::storage::JsStorage::new(storage);
-        let storage_arc: Arc<dyn faff_core::storage::Storage> = Arc::new(js_storage);
-
-        Ok(Self {
-            inner: RustLogManager::new(storage_arc, tz),
-            workspace: None,
-        })
-    }
-
     /// Check if a log exists for the given date.
     ///
     /// date: JS Date object
