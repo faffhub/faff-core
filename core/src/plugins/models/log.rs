@@ -211,7 +211,7 @@ impl PyLog {
 
         let result = PyDict::new(py);
         result.set_item("total_minutes", summary.total_minutes)?;
-        result.set_item("by_intent", summary.by_intent.into_py_dict(py)?)?;
+        result.set_item("by_alias", summary.by_alias.into_py_dict(py)?)?;
         result.set_item("by_tracker", summary.by_tracker.into_py_dict(py)?)?;
         result.set_item(
             "by_tracker_source",

@@ -6,7 +6,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use faff_core::managers::{IdentityManager, PlanManager, TimesheetManager};
-use faff_core::models::intent::Intent;
 use faff_core::models::log::Log;
 use faff_core::models::plan::Plan;
 use faff_core::models::session::Session;
@@ -149,14 +148,6 @@ subjects = ["api"]
 [trackers]
 "PROJ-123" = "Implement user auth"
 "PROJ-456" = "Add API endpoints"
-
-[[intents]]
-alias = "auth-work"
-role = "engineer"
-objective = "development"
-action = "coding"
-subject = "api"
-trackers = ["PROJ-123"]
 "#
         .to_string(),
     );
@@ -179,16 +170,19 @@ trackers = ["PROJ-123"]
         Some(&"Implement user auth".to_string())
     );
 
-    // Create a log using intent from plan
-    let intents = ws.plans().get_intents(date).await.unwrap();
-    assert_eq!(intents.len(), 1);
-
-    let intent = &intents[0];
-    assert_eq!(intent.alias.as_ref().unwrap(), "auth-work");
-
     // Create session and log
     let start_time = chrono::Utc::now().with_timezone(&chrono_tz::UTC);
-    let session = Session::new(intent.clone(), start_time, None, None);
+    let session = Session::new(
+        Some("auth-work".to_string()),
+        Some("engineer".to_string()),
+        Some("development".to_string()),
+        Some("coding".to_string()),
+        Some("api".to_string()),
+        vec!["local:PROJ-123".to_string()],
+        start_time,
+        None,
+        None,
+    );
     let log = Log::new(date, chrono_tz::UTC, vec![session]);
 
     // Write log
@@ -198,7 +192,7 @@ trackers = ["PROJ-123"]
     let retrieved_log = ws.logs().get_log(date).await.unwrap();
     assert_eq!(retrieved_log.timeline.len(), 1);
     assert_eq!(
-        retrieved_log.timeline[0].intent.alias.as_ref().unwrap(),
+        retrieved_log.timeline[0].alias.as_ref().unwrap(),
         "auth-work"
     );
 }
@@ -210,16 +204,6 @@ async fn test_log_and_timesheet_integration() {
     let timesheet_manager = TimesheetManager::new(storage.clone(), Arc::downgrade(&ws));
 
     let date = NaiveDate::from_ymd_opt(2025, 3, 20).unwrap();
-
-    // Create a log with sessions
-    let intent = Intent::new(
-        Some("work".to_string()),
-        Some("engineer".to_string()),
-        Some("development".to_string()),
-        Some("coding".to_string()),
-        Some("features".to_string()),
-        vec!["PROJ-123".to_string()],
-    );
 
     let start_datetime = date
         .and_hms_opt(9, 0, 0)
@@ -233,7 +217,12 @@ async fn test_log_and_timesheet_integration() {
         .with_timezone(&chrono_tz::UTC);
 
     let session = Session::new(
-        intent.clone(),
+        Some("work".to_string()),
+        Some("engineer".to_string()),
+        Some("development".to_string()),
+        Some("coding".to_string()),
+        Some("features".to_string()),
+        vec!["PROJ-123".to_string()],
         start_datetime,
         Some(end_datetime),
         Some("Morning work".to_string()),
@@ -269,7 +258,7 @@ async fn test_log_and_timesheet_integration() {
 
     assert_eq!(retrieved.date, date);
     assert_eq!(retrieved.timeline.len(), 1);
-    assert_eq!(retrieved.timeline[0].intent.alias.as_ref().unwrap(), "work");
+    assert_eq!(retrieved.timeline[0].alias.as_ref().unwrap(), "work");
     assert_eq!(retrieved.timeline[0].note.as_ref().unwrap(), "Morning work");
 }
 
@@ -389,7 +378,6 @@ roles = ["engineer"]
         vec![],
         vec![],
         HashMap::new(),
-        vec![],
     );
     plan_manager.write_plan(&new_plan).await.unwrap();
 

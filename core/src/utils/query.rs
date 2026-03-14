@@ -63,11 +63,11 @@ impl FromStr for FilterField {
 impl FilterField {
     fn get_value<'a>(&self, session: &'a Session) -> Option<&'a str> {
         match self {
-            FilterField::Alias => session.intent.alias.as_deref(),
-            FilterField::Role => session.intent.role.as_deref(),
-            FilterField::Objective => session.intent.objective.as_deref(),
-            FilterField::Action => session.intent.action.as_deref(),
-            FilterField::Subject => session.intent.subject.as_deref(),
+            FilterField::Alias => session.alias.as_deref(),
+            FilterField::Role => session.role.as_deref(),
+            FilterField::Objective => session.objective.as_deref(),
+            FilterField::Action => session.action.as_deref(),
+            FilterField::Subject => session.subject.as_deref(),
             FilterField::Note => session.note.as_deref(),
         }
     }
@@ -195,7 +195,6 @@ pub fn query_sessions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::Intent;
     use chrono::{TimeZone, Utc};
     use chrono_tz::America::New_York;
 
@@ -205,15 +204,6 @@ mod tests {
         objective: Option<&str>,
         note: Option<&str>,
     ) -> Session {
-        let intent = Intent::new(
-            alias.map(String::from),
-            role.map(String::from),
-            objective.map(String::from),
-            None,
-            None,
-            vec![],
-        );
-
         let start = Utc
             .with_ymd_and_hms(2025, 1, 1, 9, 0, 0)
             .unwrap()
@@ -223,7 +213,17 @@ mod tests {
             .unwrap()
             .with_timezone(&New_York);
 
-        Session::new(intent, start, Some(end), note.map(String::from))
+        Session::new(
+            alias.map(String::from),
+            role.map(String::from),
+            objective.map(String::from),
+            None,
+            None,
+            vec![],
+            start,
+            Some(end),
+            note.map(String::from),
+        )
     }
 
     #[test]

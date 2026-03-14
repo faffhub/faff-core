@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crate::python::storage::PyStorage;
 use faff_core::managers::plan_manager::PlanManager as RustPlanManager;
-use faff_core::plugins::models::intent::PyIntent;
 use faff_core::plugins::models::plan::PyPlan;
 use faff_core::utils::type_mapping::date_py_to_rust;
 use faff_core::workspace::Workspace as RustWorkspace;
@@ -64,25 +63,6 @@ impl PyPlanManager {
         }
 
         Ok(dict.into())
-    }
-
-    /// Get all intents from plans valid for a given date
-    ///
-    /// Returns: list[Intent]
-    pub fn get_intents(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
-        let naive_date = date_py_to_rust(date)?;
-        let intents = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.get_intents(naive_date))
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-
-        let list = PyList::empty(py);
-        for intent in intents {
-            let py_intent = PyIntent { inner: intent };
-            list.append(py_intent)?;
-        }
-
-        Ok(list.into())
     }
 
     /// Get all roles from plans valid for a given date
@@ -223,45 +203,6 @@ impl PyPlanManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
-    /// Find an intent by ID across all plan files
-    ///
-    /// Returns: tuple (source, Intent, plan_file_path) or None if not found
-    pub fn find_intent_by_id(&self, py: Python, intent_id: &str) -> PyResult<Option<Py<PyAny>>> {
-        let result = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.find_intent_by_id(intent_id))
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-
-        match result {
-            Some((source, intent, path)) => {
-                let py_intent = PyIntent { inner: intent };
-                let path_str = path.to_string_lossy().to_string();
-                let tuple = (source, py_intent, path_str).into_pyobject(py)?;
-                Ok(Some(tuple.unbind().into()))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Update an intent by ID across all plan files
-    ///
-    /// Returns: updated Plan or None if intent not found
-    pub fn update_intent_by_id(
-        &self,
-        intent_id: &str,
-        updated_intent: &PyIntent,
-    ) -> PyResult<Option<PyPlan>> {
-        let result = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(
-                self.manager
-                    .update_intent_by_id(intent_id, updated_intent.inner.clone()),
-            )
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-
-        Ok(result.map(|inner| PyPlan { inner }))
-    }
-
     /// Get plan remote plugin instances
     ///
     /// This delegates to the Rust PlanManager's remotes() method.
@@ -280,13 +221,13 @@ impl PyPlanManager {
 
     /// Replace a field value across all plans
     ///
-    /// Returns tuple of (plans_updated, intents_updated)
+    /// Returns number of plans updated
     pub fn replace_field_in_all_plans(
         &self,
         field: &str,
         old_value: &str,
         new_value: &str,
-    ) -> PyResult<(usize, usize)> {
+    ) -> PyResult<usize> {
         tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(
@@ -298,7 +239,7 @@ impl PyPlanManager {
 
     /// Get usage statistics for a field across all plans
     ///
-    /// Returns dict of field value -> intent count
+    /// Returns dict of field value -> count
     pub fn get_field_usage_stats(&self, field: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let stats = tokio::runtime::Runtime::new()
             .unwrap()

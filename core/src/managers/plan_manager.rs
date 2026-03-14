@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
-use crate::models::intent::Intent;
 use crate::models::plan::Plan;
 use crate::storage::Storage;
 
@@ -129,39 +128,16 @@ impl PlanManager {
         Ok(candidates.into_values().map(|(_, path)| path).collect())
     }
 
-    /// Get all intents from plans valid for a given date
-    pub async fn get_intents(&self, date: NaiveDate) -> Result<Vec<Intent>> {
-        let plans = self.get_plans(date).await?;
-        let mut intents = std::collections::HashSet::new();
-
-        for plan in plans.values() {
-            for intent in &plan.intents {
-                intents.insert(intent.clone());
-            }
-        }
-
-        Ok(intents.into_iter().collect())
-    }
-
     /// Get all roles from plans valid for a given date
     ///
     /// Returns roles prefixed with their source (e.g., "element:engineer")
-    /// plus any roles from intents
     pub async fn get_roles(&self, date: NaiveDate) -> Result<Vec<String>> {
         let plans = self.get_plans(date).await?;
         let mut roles = Vec::new();
 
         for plan in plans.values() {
-            // Roles from plan (prefixed with source)
             for role in &plan.roles {
                 roles.push(format!("{}:{}", plan.source, role));
-            }
-
-            // Roles from intents
-            for intent in &plan.intents {
-                if let Some(role) = &intent.role {
-                    roles.push(role.clone());
-                }
             }
         }
 
@@ -178,16 +154,8 @@ impl PlanManager {
         let mut objectives = Vec::new();
 
         for plan in plans.values() {
-            // Objectives from plan (prefixed with source)
             for objective in &plan.objectives {
                 objectives.push(format!("{}:{}", plan.source, objective));
-            }
-
-            // Objectives from intents
-            for intent in &plan.intents {
-                if let Some(objective) = &intent.objective {
-                    objectives.push(objective.clone());
-                }
             }
         }
 
@@ -204,16 +172,8 @@ impl PlanManager {
         let mut actions = Vec::new();
 
         for plan in plans.values() {
-            // Actions from plan (prefixed with source)
             for action in &plan.actions {
                 actions.push(format!("{}:{}", plan.source, action));
-            }
-
-            // Actions from intents
-            for intent in &plan.intents {
-                if let Some(action) = &intent.action {
-                    actions.push(action.clone());
-                }
             }
         }
 
@@ -230,16 +190,8 @@ impl PlanManager {
         let mut subjects = Vec::new();
 
         for plan in plans.values() {
-            // Subjects from plan (prefixed with source)
             for subject in &plan.subjects {
                 subjects.push(format!("{}:{}", plan.source, subject));
-            }
-
-            // Subjects from intents
-            for intent in &plan.intents {
-                if let Some(subject) = &intent.subject {
-                    subjects.push(subject.clone());
-                }
             }
         }
 
@@ -311,7 +263,6 @@ impl PlanManager {
                 vec![],
                 vec![],
                 HashMap::new(),
-                vec![],
             ))
         }
     }
@@ -346,7 +297,7 @@ impl PlanManager {
             })?;
 
             if !remote.vocabulary_mappings.is_empty() {
-                // Try to load existing plan for this date to maintain intent ID continuity
+                // Try to load existing plan for this date to maintain continuity
                 let existing_plan = self
                     .get_plans(plan.valid_from)
                     .await
@@ -454,89 +405,6 @@ impl PlanManager {
         Ok(())
     }
 
-    /// Find an intent by ID across all plan files
-    ///
-    /// Searches all plan files for an intent with the given intent_id.
-    /// Returns None if the intent is not found.
-    ///
-    /// # Returns
-    /// - Ok(Some((source, intent, plan_file_path))) if found
-    /// - Ok(None) if not found
-    /// - Err if there's an error reading files
-    pub async fn find_intent_by_id(
-        &self,
-        intent_id: &str,
-    ) -> Result<Option<(String, Intent, PathBuf)>> {
-        let plan_dir = self.storage.plan_dir();
-        let plan_files = self
-            .storage
-            .list_files(&plan_dir, "*.toml")
-            .await
-            .context("Failed to list plan files")?;
-
-        for file_path in plan_files {
-            let content = self
-                .storage
-                .read_string(&file_path)
-                .await
-                .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
-
-            let plan: Plan = match toml::from_str(&content) {
-                Ok(p) => p,
-                Err(_) => continue, // Skip invalid plan files
-            };
-
-            // Search for the intent in this plan
-            for intent in &plan.intents {
-                if intent.intent_id == intent_id {
-                    return Ok(Some((plan.source.clone(), intent.clone(), file_path)));
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Update an intent by ID across all plan files
-    ///
-    /// Searches all plan files for an intent with the given intent_id and updates it.
-    /// Returns the updated plan if found and successfully updated.
-    ///
-    /// # Returns
-    /// - Ok(Some(plan)) if the intent was found and updated
-    /// - Ok(None) if the intent was not found
-    /// - Err if there's an error reading/writing files or updating the intent
-    pub async fn update_intent_by_id(
-        &self,
-        intent_id: &str,
-        updated_intent: Intent,
-    ) -> Result<Option<Plan>> {
-        // First find the intent
-        let found = self.find_intent_by_id(intent_id).await?;
-
-        if let Some((_source, _original_intent, file_path)) = found {
-            // Load the plan
-            let content = self
-                .storage
-                .read_string(&file_path)
-                .await
-                .with_context(|| format!("Failed to read plan file: {}", file_path.display()))?;
-
-            let plan: Plan = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse plan file: {}", file_path.display()))?;
-
-            // Update the intent
-            let updated_plan = plan.update_intent(intent_id, updated_intent)?;
-
-            // Write it back
-            self.write_plan(&updated_plan).await?;
-
-            Ok(Some(updated_plan))
-        } else {
-            Ok(None)
-        }
-    }
-
     /// Get plan remote plugin instances
     ///
     /// This is a convenience method that delegates to the plugin manager.
@@ -559,7 +427,7 @@ impl PlanManager {
 
     /// Replace a field value across all plans
     ///
-    /// Updates both plan-level ASTRO collections and intents
+    /// Updates plan-level ASTRO collections
     ///
     /// # Arguments
     /// * `field` - The field to update (role, objective, action, subject)
@@ -567,19 +435,18 @@ impl PlanManager {
     /// * `new_value` - The new value
     ///
     /// # Returns
-    /// Tuple of (plans_updated, intents_updated)
+    /// Number of plans updated
     pub async fn replace_field_in_all_plans(
         &self,
         field: &str,
         old_value: &str,
         new_value: &str,
-    ) -> Result<(usize, usize)> {
+    ) -> Result<usize> {
         let plan_dir = self.storage.plan_dir();
         let entries = std::fs::read_dir(&plan_dir)
             .with_context(|| format!("Failed to read plan directory: {}", plan_dir.display()))?;
 
         let mut plans_updated = 0;
-        let mut intents_updated = 0;
 
         for entry in entries {
             let entry = entry?;
@@ -669,64 +536,18 @@ impl PlanManager {
                 _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
             };
 
-            // Update intents
-            let mut updated_intents = Vec::new();
-            for intent in &plan.intents {
-                let intent_field_value = match field {
-                    "role" => &intent.role,
-                    "objective" => &intent.objective,
-                    "action" => &intent.action,
-                    "subject" => &intent.subject,
-                    _ => unreachable!(),
-                };
-
-                if intent_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
-                    // Create updated intent
-                    let updated_intent = Intent::new(
-                        intent.alias.clone(),
-                        if field == "role" {
-                            Some(new_value.to_string())
-                        } else {
-                            intent.role.clone()
-                        },
-                        if field == "objective" {
-                            Some(new_value.to_string())
-                        } else {
-                            intent.objective.clone()
-                        },
-                        if field == "action" {
-                            Some(new_value.to_string())
-                        } else {
-                            intent.action.clone()
-                        },
-                        if field == "subject" {
-                            Some(new_value.to_string())
-                        } else {
-                            intent.subject.clone()
-                        },
-                        intent.trackers.clone(),
-                    );
-                    updated_intents.push(updated_intent);
-                    intents_updated += 1;
-                    plan_modified = true;
-                } else {
-                    updated_intents.push(intent.clone());
-                }
-            }
-
             if plan_modified {
-                plan.intents = updated_intents;
                 self.write_plan(&plan).await?;
                 plans_updated += 1;
             }
         }
 
-        Ok((plans_updated, intents_updated))
+        Ok(plans_updated)
     }
 
     /// Get usage statistics for a field across all plans
     ///
-    /// Returns a HashMap of field value -> intent count
+    /// Returns a HashMap of field value -> plan count
     pub async fn get_field_usage_stats(&self, field: &str) -> Result<HashMap<String, usize>> {
         let plan_dir = self.storage.plan_dir();
         let entries = std::fs::read_dir(&plan_dir)
@@ -747,26 +568,23 @@ impl PlanManager {
             let content = self.storage.read_string(&path).await?;
             let plan: Plan = toml::from_str(&content)?;
 
-            // Count intents using this field value
-            for intent in &plan.intents {
-                let intent_field_value = match field {
-                    "role" => &intent.role,
-                    "objective" => &intent.objective,
-                    "action" => &intent.action,
-                    "subject" => &intent.subject,
-                    "tracker" => {
-                        // Trackers are a list, count each one
-                        for tracker in &intent.trackers {
-                            *usage_stats.entry(tracker.clone()).or_insert(0) += 1;
-                        }
-                        continue;
+            // Count vocabulary usage in this plan
+            let values: Vec<&String> = match field {
+                "role" => plan.roles.iter().collect(),
+                "objective" => plan.objectives.iter().collect(),
+                "action" => plan.actions.iter().collect(),
+                "subject" => plan.subjects.iter().collect(),
+                "tracker" => {
+                    for tracker in plan.trackers.keys() {
+                        *usage_stats.entry(tracker.clone()).or_insert(0) += 1;
                     }
-                    _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
-                };
-
-                if let Some(value) = intent_field_value {
-                    *usage_stats.entry(value.clone()).or_insert(0) += 1;
+                    continue;
                 }
+                _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
+            };
+
+            for value in values {
+                *usage_stats.entry(value.clone()).or_insert(0) += 1;
             }
         }
 
@@ -791,11 +609,6 @@ subjects = ["features"]
 
 [trackers]
 "123" = "Task 123"
-
-[[intents]]
-alias = "Work on feature"
-role = "{source}:engineer"
-objective = "{source}:development"
 "#
         )
     }
@@ -869,7 +682,7 @@ objective = "{source}:development"
         let plan = manager.get_local_plan_or_create(date).await.unwrap();
         assert_eq!(plan.source, "local");
         assert_eq!(plan.valid_from, date);
-        assert_eq!(plan.intents.len(), 0);
+        assert!(plan.roles.is_empty());
     }
 
     #[tokio::test]
@@ -957,23 +770,19 @@ objective = "{source}:development"
     async fn test_write_plan_applies_vocabulary_mappings() {
         let storage = Arc::new(MockStorage::new());
 
-        // Create a remote configuration with vocabulary mapping
+        // Create a remote configuration with vocabulary mapping (tracker -> subject)
         let remote_toml = r#"
 id = "test-remote"
 plugin = "test"
 
 [[vocabulary_mapping]]
 source_type = "tracker"
-target_type = "intent"
+target_type = "subject"
 pattern = "^POC-(?P<id>\\d+)\\s+(?P<description>.+)$"
-alias = "POC-{id}: {description}"
-role = "customer-success"
-objective = "revenue"
-action = "drive-poc"
 subject = "poc/{description|slugify}"
         "#;
 
-        // Store the remote config (MockStorage base_dir is /faff/.faff)
+        // Store the remote config
         storage.add_file(
             PathBuf::from("/faff/remotes/test-remote.toml"),
             remote_toml.to_string(),
@@ -996,7 +805,6 @@ subject = "poc/{description|slugify}"
             vec![],
             vec![],
             trackers,
-            vec![],
         );
 
         // Write the plan (should apply vocabulary mappings)
@@ -1005,7 +813,7 @@ subject = "poc/{description|slugify}"
             .await
             .expect("Failed to write plan");
 
-        // Read back the written plan (MockStorage base_dir is /faff/.faff)
+        // Read back the written plan
         let written_plan_path = PathBuf::from("/faff/plans/test-remote.20251104.toml");
         assert!(
             storage.exists(&written_plan_path),
@@ -1019,29 +827,19 @@ subject = "poc/{description|slugify}"
         let written_plan: Plan =
             toml::from_str(&written_content).expect("Failed to parse written plan");
 
-        // Verify that intents were generated
+        // Verify that subjects were generated
         assert_eq!(
-            written_plan.intents.len(),
+            written_plan.subjects.len(),
             2,
-            "Should generate 2 intents from 2 POC trackers"
+            "Should generate 2 subjects from 2 POC trackers"
         );
 
-        // Check that POC-29 intent was created
-        let poc29 = written_plan
-            .intents
-            .iter()
-            .find(|i| {
-                i.alias
-                    .as_ref()
-                    .map(|a| a.contains("POC-29"))
-                    .unwrap_or(false)
-            })
-            .expect("Should find POC-29 intent");
-
-        assert_eq!(poc29.alias, Some("POC-29: European Commission".to_string()));
-        assert_eq!(poc29.role, Some("customer-success".to_string()));
-        assert_eq!(poc29.objective, Some("revenue".to_string()));
-        assert_eq!(poc29.action, Some("drive-poc".to_string()));
-        assert_eq!(poc29.subject, Some("poc/european-commission".to_string()));
+        // Check that subjects were created correctly
+        assert!(written_plan
+            .subjects
+            .contains(&"poc/european-commission".to_string()));
+        assert!(written_plan
+            .subjects
+            .contains(&"poc/unicredit-poc".to_string()));
     }
 }

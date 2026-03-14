@@ -17,47 +17,18 @@ def version() -> str:
 class models:
     """Core data models for time tracking."""
 
-    class Intent:
+    class Session:
         """
-        Intent represents what you're doing, classified semantically.
+        A work session with start/end times and semantic classification.
 
-        Most fields are optional except trackers which defaults to empty list.
-        If alias is not provided, it's auto-generated.
-        If intent_id is not provided, it's auto-generated with the current date.
+        Sessions are immutable - operations return new instances.
         """
-        intent_id: str
         alias: Optional[str]
         role: Optional[str]
         objective: Optional[str]
         action: Optional[str]
         subject: Optional[str]
         trackers: List[str]
-
-        def __init__(
-            self,
-            alias: Optional[str] = None,
-            role: Optional[str] = None,
-            objective: Optional[str] = None,
-            action: Optional[str] = None,
-            subject: Optional[str] = None,
-            trackers: List[str] = [],
-            intent_id: Optional[str] = None
-        ) -> None: ...
-
-        def as_dict(self) -> Dict: ...
-        def __hash__(self) -> int: ...
-        def __eq__(self, other: object) -> bool: ...
-        def __ne__(self, other: object) -> bool: ...
-        def __repr__(self) -> str: ...
-        def __str__(self) -> str: ...
-
-    class Session:
-        """
-        A work session with start/end times and intent classification.
-
-        Sessions are immutable - operations return new instances.
-        """
-        intent: models.Intent
         start: datetime.datetime
         end: Optional[datetime.datetime]
         note: Optional[str]
@@ -66,8 +37,13 @@ class models:
 
         def __init__(
             self,
-            intent: models.Intent,
             start: datetime.datetime,
+            alias: Optional[str] = None,
+            role: Optional[str] = None,
+            objective: Optional[str] = None,
+            action: Optional[str] = None,
+            subject: Optional[str] = None,
+            trackers: List[str] = [],
             end: Optional[datetime.datetime] = None,
             note: Optional[str] = None
         ) -> None: ...
@@ -204,7 +180,6 @@ class models:
         objectives: List[str]
         subjects: List[str]
         trackers: Dict[str, str]
-        intents: List[models.Intent]
 
         def __init__(
             self,
@@ -215,8 +190,7 @@ class models:
             actions: Optional[List[str]] = None,
             objectives: Optional[List[str]] = None,
             subjects: Optional[List[str]] = None,
-            trackers: Optional[Dict[str, str]] = None,
-            intents: Optional[List[models.Intent]] = None
+            trackers: Optional[Dict[str, str]] = None
         ) -> None: ...
 
         @classmethod
@@ -226,15 +200,6 @@ class models:
 
         def id(self) -> str:
             """Generate a slug ID from the source."""
-            ...
-
-        def add_intent(self, intent: models.Intent) -> models.Plan:
-            """
-            Add an intent to the plan (deduplicating if already present).
-
-            Returns:
-                New Plan instance with the intent added.
-            """
             ...
 
         def as_dict(self) -> Dict:
@@ -437,16 +402,31 @@ class LogManager:
         """Write a log to storage."""
         ...
 
-    def start_intent(self, intent: models.Intent, start_time: Optional[datetime.datetime] = None, note: Optional[str] = None) -> None:
+    def start_session(
+        self,
+        alias: Optional[str] = None,
+        role: Optional[str] = None,
+        objective: Optional[str] = None,
+        action: Optional[str] = None,
+        subject: Optional[str] = None,
+        trackers: List[str] = [],
+        start_time: Optional[datetime.datetime] = None,
+        note: Optional[str] = None
+    ) -> None:
         """
-        Start a new session with the given intent.
+        Start a new session.
 
         If there's an active session, it will be stopped at the start time.
         Validates that start_time is not in the future and doesn't conflict
         with existing sessions.
 
         Args:
-            intent: The intent to start
+            alias: Optional session alias
+            role: Optional role
+            objective: Optional objective
+            action: Optional action
+            subject: Optional subject
+            trackers: List of tracker IDs
             start_time: When to start the session (defaults to now)
             note: Optional note for the session
 
@@ -472,10 +452,6 @@ class PlanManager:
         Returns:
             Dictionary mapping source names to Plans.
         """
-        ...
-
-    def get_intents(self, date: datetime.date) -> List[models.Intent]:
-        """Get all intents from plans valid for a given date."""
         ...
 
     def get_roles(self, date: datetime.date) -> List[str]:

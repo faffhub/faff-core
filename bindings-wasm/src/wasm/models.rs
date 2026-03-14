@@ -1,22 +1,19 @@
 use chrono::{DateTime, Datelike, NaiveDate};
 use chrono_tz::Tz;
 use faff_core::models::{
-    Intent as RustIntent, Log as RustLog, Plan as RustPlan, Session as RustSession,
-    Timesheet as RustTimesheet,
+    Log as RustLog, Plan as RustPlan, Session as RustSession, Timesheet as RustTimesheet,
 };
 use wasm_bindgen::prelude::*;
 
-/// Intent represents what you're doing, classified semantically.
-///
-/// All fields are optional except trackers which defaults to empty array.
+/// A work session with start/end times and semantic classification.
 #[wasm_bindgen]
 #[derive(Clone)]
-pub struct Intent {
-    pub(crate) inner: RustIntent,
+pub struct Session {
+    inner: RustSession,
 }
 
 #[wasm_bindgen]
-impl Intent {
+impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new(
         alias: Option<String>,
@@ -25,22 +22,26 @@ impl Intent {
         action: Option<String>,
         subject: Option<String>,
         trackers: Option<Vec<String>>,
-    ) -> Self {
-        Self {
-            inner: RustIntent::new(
+        start: js_sys::Date,
+        end: Option<js_sys::Date>,
+        note: Option<String>,
+    ) -> Result<Session, JsValue> {
+        let start_dt = js_date_to_chrono(&start)?;
+        let end_dt = end.as_ref().map(js_date_to_chrono).transpose()?;
+
+        Ok(Self {
+            inner: RustSession::new(
                 alias,
                 role,
                 objective,
                 action,
                 subject,
                 trackers.unwrap_or_default(),
+                start_dt,
+                end_dt,
+                note,
             ),
-        }
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn intent_id(&self) -> String {
-        self.inner.intent_id.clone()
+        })
     }
 
     #[wasm_bindgen(getter)]
@@ -71,52 +72,6 @@ impl Intent {
     #[wasm_bindgen(getter)]
     pub fn trackers(&self) -> Vec<String> {
         self.inner.trackers.clone()
-    }
-
-    /// Convert to JSON object
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> Result<JsValue, JsValue> {
-        serde_wasm_bindgen::to_value(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
-    }
-
-    /// Create from JSON object
-    #[wasm_bindgen(js_name = fromJSON)]
-    pub fn from_json(value: &JsValue) -> Result<Intent, JsValue> {
-        let inner: RustIntent = serde_wasm_bindgen::from_value(value.clone())
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        Ok(Self { inner })
-    }
-}
-
-/// A work session with start/end times and intent classification.
-#[wasm_bindgen]
-#[derive(Clone)]
-pub struct Session {
-    inner: RustSession,
-}
-
-#[wasm_bindgen]
-impl Session {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        intent: &Intent,
-        start: js_sys::Date,
-        end: Option<js_sys::Date>,
-        note: Option<String>,
-    ) -> Result<Session, JsValue> {
-        let start_dt = js_date_to_chrono(&start)?;
-        let end_dt = end.as_ref().map(js_date_to_chrono).transpose()?;
-
-        Ok(Self {
-            inner: RustSession::new(intent.inner.clone(), start_dt, end_dt, note),
-        })
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn intent(&self) -> Intent {
-        Intent {
-            inner: self.inner.intent.clone(),
-        }
     }
 
     #[wasm_bindgen(getter)]
@@ -235,7 +190,7 @@ impl Log {
     /// now: JS Date for calculating duration of open sessions
     /// Returns an object with:
     ///   totalMinutes: number
-    ///   byIntent: Record<string, number>
+    ///   byAlias: Record<string, number>
     ///   byTracker: Record<string, number>
     ///   byTrackerSource: Record<string, number>
     ///   meanReflectionScore: number | null
@@ -248,8 +203,8 @@ impl Log {
         js_sys::Reflect::set(&obj, &"totalMinutes".into(), &summary.total_minutes.into())?;
         js_sys::Reflect::set(
             &obj,
-            &"byIntent".into(),
-            &serde_wasm_bindgen::to_value(&summary.by_intent)
+            &"byAlias".into(),
+            &serde_wasm_bindgen::to_value(&summary.by_alias)
                 .map_err(|e| JsValue::from_str(&e.to_string()))?,
         )?;
         js_sys::Reflect::set(
@@ -327,15 +282,6 @@ impl Plan {
     #[wasm_bindgen(getter)]
     pub fn subjects(&self) -> Vec<String> {
         self.inner.subjects.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn intents(&self) -> Vec<Intent> {
-        self.inner
-            .intents
-            .iter()
-            .map(|i| Intent { inner: i.clone() })
-            .collect()
     }
 
     #[wasm_bindgen(js_name = toJSON)]

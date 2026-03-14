@@ -100,10 +100,6 @@ pub trait Storage: Send + Sync {
         self.base_dir().join("plugins")
     }
 
-    fn intents_dir(&self) -> PathBuf {
-        self.base_dir().join("intents")
-    }
-
     fn config_file(&self) -> PathBuf {
         self.base_dir().join("config.toml")
     }
@@ -185,7 +181,6 @@ pub trait Storage: Send + Sync {
         self.create_dir_all(&self.timesheet_dir()).await?;
         self.create_dir_all(&self.remotes_dir()).await?;
         self.create_dir_all(&self.identity_dir()).await?;
-        self.create_dir_all(&self.intents_dir()).await?;
         self.create_dir_all(&self.plugins_dir()).await?;
         self.create_dir_all(&self.plugin_state_dir()).await?;
 
@@ -253,10 +248,6 @@ pub trait Storage {
         self.base_dir().join("plugins")
     }
 
-    fn intents_dir(&self) -> PathBuf {
-        self.base_dir().join("intents")
-    }
-
     fn config_file(&self) -> PathBuf {
         self.base_dir().join("config.toml")
     }
@@ -294,7 +285,6 @@ pub trait Storage {
         self.create_dir_all(&self.timesheet_dir()).await?;
         self.create_dir_all(&self.remotes_dir()).await?;
         self.create_dir_all(&self.identity_dir()).await?;
-        self.create_dir_all(&self.intents_dir()).await?;
         self.create_dir_all(&self.plugins_dir()).await?;
         self.create_dir_all(&self.plugin_state_dir()).await?;
 

@@ -31,32 +31,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 #[pymethods]
 impl PyLogManager {
-    // NOTE: Standalone construction is no longer supported. LogManager must be
-    // created through Workspace using the from_rust() method. The LogManager
-    // requires a workspace reference to function properly (for operations like
-    // start_intent and stop_current_session that need workspace context).
-    //
-    // #[new]
-    // fn py_new(storage: Py<PyAny>, timezone: &Bound<'_, PyAny>) -> PyResult<Self> {
-    //     // Convert timezone
-    //     let tz_str: String = timezone.call_method0("__str__")?.extract()?;
-    //     let tz: Tz = tz_str
-    //         .parse()
-    //         .map_err(|e| PyValueError::new_err(format!("Invalid timezone: {e}")))?;
-    //
-    //     // Wrap the Python storage object
-    //     let py_storage = PyStorage::new(storage);
-    //     let storage: Arc<dyn faff_core::storage::Storage> = Arc::new(py_storage);
-    //
-    //     // Create a PlanManager for the LogManager to use
-    //     let plan_manager = Arc::new(PlanManager::new(storage.clone()));
-    //
-    //     Ok(Self {
-    //         inner: RustLogManager::new(storage, tz, plan_manager),
-    //         workspace: None, // Standalone construction doesn't have workspace reference
-    //     })
-    // }
-
     /// Check if a log exists for the given date
     fn log_exists(&self, date: Bound<'_, PyDate>) -> PyResult<bool> {
         let naive_date = date_py_to_rust(date)?;
@@ -163,26 +137,32 @@ impl PyLogManager {
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
-    /// Start a new session with the given intent
+    /// Start a new session
     ///
     /// Args:
-    ///     intent: The intent for the session
+    ///     alias: Optional session alias
+    ///     role: Optional role
+    ///     objective: Optional objective
+    ///     action: Optional action
+    ///     subject: Optional subject
+    ///     trackers: List of tracker IDs
     ///     start_time: Optional start time (defaults to now)
     ///     note: Optional note for the session
     ///
     /// If there's an active session, it will be stopped at the start time.
     /// Validates that start_time is not in the future and doesn't conflict
     /// with existing sessions.
-    ///
-    /// FIXME: This method gathers context (now, trackers) from workspace before
-    /// calling the Rust core. This orchestration logic should live in Rust, not
-    /// in the bindings. See BUSINESS_LOGIC_AUDIT.md for the proposed functional
-    /// core pattern that would eliminate this.
-    #[pyo3(signature = (intent, start_time=None, note=None))]
-    fn start_intent(
+    #[pyo3(signature = (alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![], start_time=None, note=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn start_session(
         &self,
         _py: Python<'_>,
-        intent: &faff_core::plugins::models::intent::PyIntent,
+        alias: Option<String>,
+        role: Option<String>,
+        objective: Option<String>,
+        action: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
         start_time: Option<Bound<'_, PyDateTime>>,
         note: Option<String>,
     ) -> PyResult<()> {
@@ -199,8 +179,10 @@ impl PyLogManager {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
 
-        rt.block_on(self.inner.start_intent(intent.inner.clone(), start, note))
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        rt.block_on(self.inner.start_session(
+            alias, role, objective, action, subject, trackers, start, note,
+        ))
+        .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
@@ -210,47 +192,6 @@ impl PyLogManager {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         rt.block_on(self.inner.stop_current_session())
-            .map_err(|e| PyValueError::new_err(e.to_string()))
-    }
-
-    /// Find all logs that contain sessions using the given intent
-    ///
-    /// Returns: list of tuples (date, session_count)
-    fn find_logs_with_intent<'py>(
-        &self,
-        py: Python<'py>,
-        intent_id: &str,
-    ) -> PyResult<Vec<(Bound<'py, PyDate>, usize)>> {
-        let results = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.inner.find_logs_with_intent(intent_id))
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        results
-            .into_iter()
-            .map(|(date, count)| {
-                let py_date = date_rust_to_py(py, &date)?;
-                Ok((py_date, count))
-            })
-            .collect()
-    }
-
-    /// Update an intent across all log files
-    ///
-    /// Returns: total number of sessions updated
-    fn update_intent_in_logs(
-        &self,
-        intent_id: &str,
-        updated_intent: &faff_core::plugins::models::intent::PyIntent,
-        trackers: std::collections::HashMap<String, String>,
-    ) -> PyResult<usize> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.inner.update_intent_in_logs(
-                intent_id,
-                updated_intent.inner.clone(),
-                &trackers,
-            ))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
