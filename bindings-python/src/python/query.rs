@@ -17,7 +17,7 @@ impl PyFilter {
     ///
     /// Format: key=value, key~value, or key!=value
     ///
-    /// Supported keys: alias, role, objective, action, subject, note
+    /// Supported keys: title, role, impact, mode, subject, note
     /// Operators:
     ///   - = : equals
     ///   - ~ : contains (case-insensitive)
@@ -25,7 +25,7 @@ impl PyFilter {
     ///
     /// Examples:
     ///   - "role=engineer"
-    ///   - "objective~planning"
+    ///   - "impact~planning"
     ///   - "note!=standup"
     #[staticmethod]
     fn parse(filter_str: &str) -> PyResult<Self> {
@@ -38,10 +38,10 @@ impl PyFilter {
     /// Get the field name
     fn field(&self) -> String {
         match self.inner.field {
-            FilterField::Alias => "alias".to_string(),
+            FilterField::Title => "title".to_string(),
             FilterField::Role => "role".to_string(),
-            FilterField::Objective => "objective".to_string(),
-            FilterField::Action => "action".to_string(),
+            FilterField::Impact => "impact".to_string(),
+            FilterField::Mode => "mode".to_string(),
             FilterField::Subject => "subject".to_string(),
             FilterField::Note => "note".to_string(),
         }

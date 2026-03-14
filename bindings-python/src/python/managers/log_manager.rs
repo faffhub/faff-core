@@ -140,10 +140,10 @@ impl PyLogManager {
     /// Start a new session
     ///
     /// Args:
-    ///     alias: Optional session alias
+    ///     title: Optional session title
     ///     role: Optional role
-    ///     objective: Optional objective
-    ///     action: Optional action
+    ///     impact: Optional impact
+    ///     mode: Optional mode
     ///     subject: Optional subject
     ///     trackers: List of tracker IDs
     ///     start_time: Optional start time (defaults to now)
@@ -152,15 +152,15 @@ impl PyLogManager {
     /// If there's an active session, it will be stopped at the start time.
     /// Validates that start_time is not in the future and doesn't conflict
     /// with existing sessions.
-    #[pyo3(signature = (alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![], start_time=None, note=None))]
+    #[pyo3(signature = (title=None, role=None, impact=None, mode=None, subject=None, trackers=vec![], start_time=None, note=None))]
     #[allow(clippy::too_many_arguments)]
     fn start_session(
         &self,
         _py: Python<'_>,
-        alias: Option<String>,
+        title: Option<String>,
         role: Option<String>,
-        objective: Option<String>,
-        action: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
         subject: Option<String>,
         trackers: Vec<String>,
         start_time: Option<Bound<'_, PyDateTime>>,
@@ -180,7 +180,7 @@ impl PyLogManager {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         rt.block_on(self.inner.start_session(
-            alias, role, objective, action, subject, trackers, start, note,
+            title, role, impact, mode, subject, trackers, start, note,
         ))
         .map_err(|e| PyValueError::new_err(e.to_string()))
     }

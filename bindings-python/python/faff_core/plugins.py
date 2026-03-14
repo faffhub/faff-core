@@ -64,7 +64,7 @@ class PlanSource(Plugin):
             date: The date for which to fetch the plan
 
         Returns:
-            A Plan object containing roles, objectives, actions, subjects, and trackers
+            A Plan object containing roles, impacts, modes, subjects, and trackers
         """
         pass
 

@@ -23,10 +23,10 @@ class models:
 
         Sessions are immutable - operations return new instances.
         """
-        alias: Optional[str]
+        title: Optional[str]
         role: Optional[str]
-        objective: Optional[str]
-        action: Optional[str]
+        impact: Optional[str]
+        mode: Optional[str]
         subject: Optional[str]
         trackers: List[str]
         start: datetime.datetime
@@ -38,10 +38,10 @@ class models:
         def __init__(
             self,
             start: datetime.datetime,
-            alias: Optional[str] = None,
+            title: Optional[str] = None,
             role: Optional[str] = None,
-            objective: Optional[str] = None,
-            action: Optional[str] = None,
+            impact: Optional[str] = None,
+            mode: Optional[str] = None,
             subject: Optional[str] = None,
             trackers: List[str] = [],
             end: Optional[datetime.datetime] = None,
@@ -176,8 +176,8 @@ class models:
         valid_from: datetime.date
         valid_until: Optional[datetime.date]
         roles: List[str]
-        actions: List[str]
-        objectives: List[str]
+        modes: List[str]
+        impacts: List[str]
         subjects: List[str]
         trackers: Dict[str, str]
 
@@ -187,8 +187,8 @@ class models:
             valid_from: datetime.date,
             valid_until: Optional[datetime.date] = None,
             roles: Optional[List[str]] = None,
-            actions: Optional[List[str]] = None,
-            objectives: Optional[List[str]] = None,
+            modes: Optional[List[str]] = None,
+            impacts: Optional[List[str]] = None,
             subjects: Optional[List[str]] = None,
             trackers: Optional[Dict[str, str]] = None
         ) -> None: ...
@@ -404,10 +404,10 @@ class LogManager:
 
     def start_session(
         self,
-        alias: Optional[str] = None,
+        title: Optional[str] = None,
         role: Optional[str] = None,
-        objective: Optional[str] = None,
-        action: Optional[str] = None,
+        impact: Optional[str] = None,
+        mode: Optional[str] = None,
         subject: Optional[str] = None,
         trackers: List[str] = [],
         start_time: Optional[datetime.datetime] = None,
@@ -421,10 +421,10 @@ class LogManager:
         with existing sessions.
 
         Args:
-            alias: Optional session alias
+            title: Optional session title
             role: Optional role
-            objective: Optional objective
-            action: Optional action
+            impact: Optional impact
+            mode: Optional mode
             subject: Optional subject
             trackers: List of tracker IDs
             start_time: When to start the session (defaults to now)
@@ -462,12 +462,12 @@ class PlanManager:
         """
         ...
 
-    def get_objectives(self, date: datetime.date) -> List[str]:
-        """Get all objectives from plans valid for a given date."""
+    def get_impacts(self, date: datetime.date) -> List[str]:
+        """Get all impacts from plans valid for a given date."""
         ...
 
-    def get_actions(self, date: datetime.date) -> List[str]:
-        """Get all actions from plans valid for a given date."""
+    def get_modes(self, date: datetime.date) -> List[str]:
+        """Get all modes from plans valid for a given date."""
         ...
 
     def get_subjects(self, date: datetime.date) -> List[str]:

@@ -11,10 +11,10 @@ pub struct Plan {
     pub valid_until: Option<NaiveDate>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roles: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub actions: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub objectives: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "actions")]
+    pub modes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", alias = "objectives")]
+    pub impacts: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subjects: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -29,8 +29,8 @@ impl Plan {
         valid_from: NaiveDate,
         valid_until: Option<NaiveDate>,
         roles: Vec<String>,
-        actions: Vec<String>,
-        objectives: Vec<String>,
+        modes: Vec<String>,
+        impacts: Vec<String>,
         subjects: Vec<String>,
         trackers: HashMap<String, String>,
     ) -> Self {
@@ -39,8 +39,8 @@ impl Plan {
             valid_from,
             valid_until,
             roles,
-            actions,
-            objectives,
+            modes,
+            impacts,
             subjects,
             trackers,
         }
@@ -290,8 +290,8 @@ role = "engineer"
 
         // Empty collections should be omitted
         assert!(!toml_str.contains("roles = []"));
-        assert!(!toml_str.contains("actions = []"));
-        assert!(!toml_str.contains("objectives = []"));
+        assert!(!toml_str.contains("modes = []"));
+        assert!(!toml_str.contains("impacts = []"));
         assert!(!toml_str.contains("subjects = []"));
         // But source and valid_from should be present
         assert!(toml_str.contains("source"));

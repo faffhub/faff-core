@@ -49,24 +49,24 @@ class TestDateTimeConversions:
         session = Session(
             start=start_dt,
             end=end_dt,
-            alias="work",
+            title="work",
             role="engineer",
-            objective="development",
-            action="coding",
+            impact="development",
+            mode="coding",
             subject="tests",
             trackers=[],
         )
 
         assert session.start == start_dt
         assert session.end == end_dt
-        assert session.alias == "work"
+        assert session.title == "work"
 
     def test_session_with_microseconds(self):
         """Test that microseconds are preserved in datetime conversion"""
         tz = ZoneInfo("UTC")
         start_dt = datetime.datetime(2025, 3, 15, 9, 0, 0, 123456, tzinfo=tz)
 
-        session = Session(start=start_dt, alias="test")
+        session = Session(start=start_dt, title="test")
 
         assert session.start.microsecond == 123456
 
@@ -75,7 +75,7 @@ class TestDateTimeConversions:
         naive_dt = datetime.datetime(2025, 3, 15, 9, 0, 0)  # No tzinfo
 
         with pytest.raises(ValueError, match="timezone"):
-            Session(naive_dt, alias="test")
+            Session(naive_dt, title="test")
 
 
 class TestExceptionMapping:
@@ -136,12 +136,12 @@ class TestLogOperations:
         tz = ZoneInfo("UTC")
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
 
-        session = Session(start, alias="work")
+        session = Session(start, title="work")
         log = Log(date, tz, [session])
 
         assert not log.is_closed()
         assert log.active_session() is not None
-        assert log.active_session().alias == "work"
+        assert log.active_session().title == "work"
 
     def test_append_session(self):
         """Test appending a session to a log"""
@@ -152,12 +152,12 @@ class TestLogOperations:
 
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
         end = datetime.datetime(2025, 3, 15, 10, 0, 0, tzinfo=tz)
-        session = Session(start, alias="work", end=end)
+        session = Session(start, title="work", end=end)
 
         new_log = log.append_session(session)
 
         assert len(new_log.timeline) == 1
-        assert new_log.timeline[0].alias == "work"
+        assert new_log.timeline[0].title == "work"
         # Original log should be unchanged (immutability)
         assert len(log.timeline) == 0
 
@@ -167,7 +167,7 @@ class TestLogOperations:
         tz = ZoneInfo("UTC")
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
 
-        session = Session(start, alias="work")
+        session = Session(start, title="work")
         log = Log(date, tz, [session])
 
         stop_time = datetime.datetime(2025, 3, 15, 10, 30, 0, tzinfo=tz)
@@ -189,8 +189,8 @@ class TestLogOperations:
         start2 = datetime.datetime(2025, 3, 15, 14, 0, 0, tzinfo=tz)
         end2 = datetime.datetime(2025, 3, 15, 15, 30, 0, tzinfo=tz)
 
-        session1 = Session(start1, alias="work", end=end1)
-        session2 = Session(start2, alias="work", end=end2)
+        session1 = Session(start1, title="work", end=end1)
+        session2 = Session(start2, title="work", end=end2)
 
         log = Log(date, tz, [session1, session2])
 
@@ -210,18 +210,18 @@ class TestSessionModel:
 
         session = Session(
             start,
-            alias="work",
+            title="work",
             role="engineer",
-            objective="development",
-            action="coding",
+            impact="development",
+            mode="coding",
             subject="features",
             trackers=["PROJ-123", "PROJ-456"],
         )
 
-        assert session.alias == "work"
+        assert session.title == "work"
         assert session.role == "engineer"
-        assert session.objective == "development"
-        assert session.action == "coding"
+        assert session.impact == "development"
+        assert session.mode == "coding"
         assert session.subject == "features"
         assert len(session.trackers) == 2
         assert "PROJ-123" in session.trackers
@@ -231,9 +231,9 @@ class TestSessionModel:
         tz = ZoneInfo("UTC")
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
 
-        session = Session(start, alias="minimal")
+        session = Session(start, title="minimal")
 
-        assert session.alias == "minimal"
+        assert session.title == "minimal"
         assert session.role is None
         assert session.trackers == []
 
@@ -250,8 +250,8 @@ class TestPlanModel:
             valid_from=date,
             valid_until=None,
             roles=["engineer"],
-            objectives=["development"],
-            actions=["coding"],
+            impacts=["development"],
+            modes=["coding"],
             subjects=["features"],
             trackers={"PROJ-123": "Implement feature X"},
         )

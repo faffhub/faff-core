@@ -228,10 +228,10 @@ impl LogManager {
     /// Validates that start_time is not in the future and doesn't conflict
     /// with existing sessions.
     ///
-    /// alias: optional string alias
+    /// title: optional string title
     /// role: optional string role
-    /// objective: optional string objective
-    /// action: optional string action
+    /// impact: optional string impact
+    /// mode: optional string mode
     /// subject: optional string subject
     /// trackers: optional array of tracker IDs
     /// startTime: optional JS Date object (defaults to now)
@@ -240,10 +240,10 @@ impl LogManager {
     #[wasm_bindgen(js_name = startSession)]
     pub fn start_session(
         &self,
-        alias: Option<String>,
+        title: Option<String>,
         role: Option<String>,
-        objective: Option<String>,
-        action: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
         subject: Option<String>,
         trackers: Option<Vec<String>>,
         start_time: Option<js_sys::Date>,
@@ -268,10 +268,10 @@ impl LogManager {
 
             inner
                 .start_session(
-                    alias,
+                    title,
                     role,
-                    objective,
-                    action,
+                    impact,
+                    mode,
                     subject,
                     trackers.unwrap_or_default(),
                     start,
@@ -303,7 +303,7 @@ impl LogManager {
 
     /// Replace a field value across all log sessions.
     ///
-    /// field: string field name (role, objective, action, subject)
+    /// field: string field name (role, impact, mode, subject)
     /// old_value: string old value to replace
     /// new_value: string new value
     /// trackers: object (map of tracker keys to field names)
@@ -353,7 +353,7 @@ impl LogManager {
 
     /// Get usage statistics for a field across all logs.
     ///
-    /// field: string field name (role, objective, action, subject)
+    /// field: string field name (role, impact, mode, subject)
     /// Returns Promise<{sessionCount: Map<string, number>, logDates: Map<string, Date[]>}>.
     #[wasm_bindgen(js_name = getFieldUsageStats)]
     pub fn get_field_usage_stats(&self, field: &str) -> js_sys::Promise {
