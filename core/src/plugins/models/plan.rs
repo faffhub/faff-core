@@ -20,7 +20,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pymethods]
 impl PyPlan {
     #[new]
-    #[pyo3(signature = (source, valid_from, valid_until=None, roles=vec![], actions=vec![], objectives=vec![], subjects=vec![], trackers=None))]
+    #[pyo3(signature = (source, valid_from, valid_until=None, roles=vec![], modes=vec![], impacts=vec![], subjects=vec![], trackers=None, actions=vec![], objectives=vec![]))]
     /// Python constructor mirrors struct fields, so many arguments are unavoidable
     #[allow(clippy::too_many_arguments)]
     fn py_new(
@@ -28,10 +28,12 @@ impl PyPlan {
         valid_from: Bound<'_, PyDate>,
         valid_until: Option<Bound<'_, PyDate>>,
         roles: Vec<String>,
-        actions: Vec<String>,
-        objectives: Vec<String>,
+        modes: Vec<String>,
+        impacts: Vec<String>,
         subjects: Vec<String>,
         trackers: Option<HashMap<String, String>>,
+        actions: Vec<String>,
+        objectives: Vec<String>,
     ) -> PyResult<Self> {
         // Convert Python dates to NaiveDate
         let valid_from_str: String = valid_from.call_method0("isoformat")?.extract()?;
@@ -48,14 +50,20 @@ impl PyPlan {
             None
         };
 
+        // Support both old names (actions/objectives) and new names (modes/impacts)
+        let mut merged_modes = modes;
+        merged_modes.extend(actions);
+        let mut merged_impacts = impacts;
+        merged_impacts.extend(objectives);
+
         Ok(Self {
             inner: RustPlan::new(
                 source,
                 valid_from_date,
                 valid_until_date,
                 roles,
-                actions,
-                objectives,
+                merged_modes,
+                merged_impacts,
                 subjects,
                 trackers.unwrap_or_default(),
             ),
@@ -180,15 +188,31 @@ impl PyPlan {
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
-        let actions: Vec<String> = data
-            .get_item("actions")?
+        let modes: Vec<String> = data
+            .get_item("modes")
+            .ok()
+            .flatten()
             .and_then(|item| item.extract().ok())
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                data.get_item("actions")
+                    .ok()
+                    .flatten()
+                    .and_then(|item| item.extract().ok())
+                    .unwrap_or_default()
+            });
 
-        let objectives: Vec<String> = data
-            .get_item("objectives")?
+        let impacts: Vec<String> = data
+            .get_item("impacts")
+            .ok()
+            .flatten()
             .and_then(|item| item.extract().ok())
-            .unwrap_or_default();
+            .unwrap_or_else(|| {
+                data.get_item("objectives")
+                    .ok()
+                    .flatten()
+                    .and_then(|item| item.extract().ok())
+                    .unwrap_or_default()
+            });
 
         let subjects: Vec<String> = data
             .get_item("subjects")?
@@ -206,8 +230,8 @@ impl PyPlan {
                 valid_from,
                 valid_until,
                 roles,
-                actions,
-                objectives,
+                modes,
+                impacts,
                 subjects,
                 trackers,
             ),
