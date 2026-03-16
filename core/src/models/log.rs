@@ -178,9 +178,12 @@ impl Log {
             .parse()
             .map_err(|e: String| anyhow::anyhow!("Invalid timezone '{}': {}", tz_str, e))?;
 
-        // Parse timeline sessions using Session's from_toml_table method
+        // Parse sessions - support both "session" (new) and "timeline" (old) keys
         let mut sessions = Vec::new();
-        if let Some(timeline) = toml_value.get("timeline").and_then(|v| v.as_array()) {
+        let entries = toml_value.get("session")
+            .or_else(|| toml_value.get("timeline"))
+            .and_then(|v| v.as_array());
+        if let Some(timeline) = entries {
             for entry in timeline {
                 if let Some(table) = entry.as_table() {
                     sessions.push(Session::from_toml_table(table, date, timezone)?);
@@ -199,7 +202,7 @@ impl Log {
             "# This is a Faff-format log file - see faffage.com for details.".to_string(),
             "# It has been generated but can be edited manually.".to_string(),
             "# Changes to rows starting with '#' will not be saved.".to_string(),
-            "version = \"1.1\"".to_string(),
+            "version = \"1.2\"".to_string(),
         ];
 
         // Date with day of week comment
@@ -223,7 +226,7 @@ impl Log {
 
             for session in &sorted_timeline {
                 lines.push("".to_string());
-                lines.push("[[timeline]]".to_string());
+                lines.push("[[session]]".to_string());
 
                 Self::format_session_to_toml(&mut lines, session, trackers, &date_format);
             }
@@ -767,7 +770,7 @@ mod tests {
         let output = log.to_log_file(&trackers);
 
         assert!(output.contains("# This is a Faff-format log file"));
-        assert!(output.contains("version  = \"1.1\""));
+        assert!(output.contains("version  = \"1.2\""));
         assert!(output.contains("date     = \"2025-03-15\""));
         assert!(output.contains("timezone = \"UTC\""));
         assert!(output.contains("# Timeline is empty."));
@@ -787,7 +790,7 @@ mod tests {
         let trackers = HashMap::new();
         let output = log.to_log_file(&trackers);
 
-        assert!(output.contains("[[timeline]]"));
+        assert!(output.contains("[[session]]"));
         assert!(output.contains("title    = \"work\""));
         assert!(output.contains("start    = \"09:00\""));
         assert!(output.contains("end      = \"10:30\""));
