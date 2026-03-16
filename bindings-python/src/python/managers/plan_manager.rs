@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyList};
 use std::sync::Arc;
 
+use crate::python::runtime::runtime;
 use crate::python::storage::PyStorage;
 use faff_core::managers::plan_manager::PlanManager as RustPlanManager;
 use faff_core::plugins::models::plan::PyPlan;
@@ -51,8 +52,7 @@ impl PyPlanManager {
     /// Returns: dict[str, Plan] - mapping of source names to Plans
     pub fn get_plans(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let plans = tokio::runtime::Runtime::new()
-            .unwrap()
+        let plans = runtime()
             .block_on(self.manager.get_plans(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -70,8 +70,7 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_roles(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let roles = tokio::runtime::Runtime::new()
-            .unwrap()
+        let roles = runtime()
             .block_on(self.manager.get_roles(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -88,8 +87,7 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_impacts(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let impacts = tokio::runtime::Runtime::new()
-            .unwrap()
+        let impacts = runtime()
             .block_on(self.manager.get_impacts(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -106,8 +104,7 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_modes(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let modes = tokio::runtime::Runtime::new()
-            .unwrap()
+        let modes = runtime()
             .block_on(self.manager.get_modes(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -124,8 +121,7 @@ impl PyPlanManager {
     /// Returns: list[str]
     pub fn get_subjects(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let subjects = tokio::runtime::Runtime::new()
-            .unwrap()
+        let subjects = runtime()
             .block_on(self.manager.get_subjects(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -142,8 +138,7 @@ impl PyPlanManager {
     /// Returns: dict[str, str] - mapping of tracker IDs to names
     pub fn get_trackers(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let trackers = tokio::runtime::Runtime::new()
-            .unwrap()
+        let trackers = runtime()
             .block_on(self.manager.get_trackers(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -161,8 +156,7 @@ impl PyPlanManager {
         date: Bound<'_, PyDate>,
     ) -> PyResult<Option<PyPlan>> {
         let naive_date = date_py_to_rust(date)?;
-        let plan = tokio::runtime::Runtime::new()
-            .unwrap()
+        let plan = runtime()
             .block_on(self.manager.get_plan_by_tracker_id(tracker_id, naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -174,8 +168,7 @@ impl PyPlanManager {
     /// Returns: Plan or None
     pub fn get_local_plan(&self, date: Bound<'_, PyDate>) -> PyResult<Option<PyPlan>> {
         let naive_date = date_py_to_rust(date)?;
-        let plan = tokio::runtime::Runtime::new()
-            .unwrap()
+        let plan = runtime()
             .block_on(self.manager.get_local_plan(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -187,8 +180,7 @@ impl PyPlanManager {
     /// Returns: Plan
     pub fn get_local_plan_or_create(&self, date: Bound<'_, PyDate>) -> PyResult<PyPlan> {
         let naive_date = date_py_to_rust(date)?;
-        let plan = tokio::runtime::Runtime::new()
-            .unwrap()
+        let plan = runtime()
             .block_on(self.manager.get_local_plan_or_create(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
@@ -197,8 +189,7 @@ impl PyPlanManager {
 
     /// Write a plan to storage
     pub fn write_plan(&self, plan: &PyPlan) -> PyResult<()> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(self.manager.write_plan(&plan.inner))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
@@ -213,8 +204,7 @@ impl PyPlanManager {
             )
         })?;
 
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(self.manager.remotes(workspace.plugins()))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
@@ -228,8 +218,7 @@ impl PyPlanManager {
         old_value: &str,
         new_value: &str,
     ) -> PyResult<usize> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(
                 self.manager
                     .replace_field_in_all_plans(field, old_value, new_value),
@@ -237,12 +226,124 @@ impl PyPlanManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
+    /// Get session hints from plans valid for a given date
+    ///
+    /// Returns: list[dict] with keys: title, role, subject, impact, mode (Optional[str]),
+    /// trackers (list[str])
+    pub fn get_session_hints(
+        &self,
+        py: Python,
+        date: Bound<'_, PyDate>,
+    ) -> PyResult<Py<PyAny>> {
+        let naive_date = date_py_to_rust(date)?;
+        let hints = runtime()
+            .block_on(self.manager.get_session_hints(naive_date))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        let list = PyList::empty(py);
+        for hint in hints {
+            let dict = PyDict::new(py);
+            dict.set_item("title", &hint.title)?;
+            dict.set_item("role", hint.role.as_deref().into_pyobject(py)?)?;
+            dict.set_item("subject", hint.subject.as_deref().into_pyobject(py)?)?;
+            dict.set_item("impact", hint.impact.as_deref().into_pyobject(py)?)?;
+            dict.set_item("mode", hint.mode.as_deref().into_pyobject(py)?)?;
+            dict.set_item("trackers", PyList::new(py, &hint.trackers)?)?;
+            list.append(dict)?;
+        }
+        Ok(list.into())
+    }
+
+    /// Get tracker mappings for plans valid for a given date
+    ///
+    /// Returns: list[dict] with keys: tracker_id, tracker_name, hint_title, role, subject, impact, mode
+    /// Fields role/subject/impact/mode are None when not constrained by the mapping.
+    pub fn get_tracker_mappings(
+        &self,
+        py: Python,
+        date: Bound<'_, PyDate>,
+    ) -> PyResult<Py<PyAny>> {
+        let naive_date = date_py_to_rust(date)?;
+        let mappings = runtime()
+            .block_on(self.manager.get_tracker_mappings(naive_date))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        let list = PyList::empty(py);
+        for mapping in mappings {
+            let dict = PyDict::new(py);
+            dict.set_item("tracker_id", &mapping.tracker_id)?;
+            dict.set_item("tracker_name", &mapping.tracker_name)?;
+            dict.set_item("hint_title", &mapping.hint_title)?;
+            dict.set_item("role", mapping.role.as_deref().into_pyobject(py)?)?;
+            dict.set_item("subject", mapping.subject.as_deref().into_pyobject(py)?)?;
+            dict.set_item("impact", mapping.impact.as_deref().into_pyobject(py)?)?;
+            dict.set_item("mode", mapping.mode.as_deref().into_pyobject(py)?)?;
+            list.append(dict)?;
+        }
+
+        Ok(list.into())
+    }
+
+    /// Get all plan-derived data needed at session start time in a single call.
+    ///
+    /// Returns a dict with keys: roles, impacts, modes, subjects, trackers,
+    /// hints (list[dict]), tracker_mappings (list[dict])
+    pub fn get_start_data(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
+        let naive_date = date_py_to_rust(date)?;
+        let data = runtime()
+            .block_on(self.manager.get_start_data(naive_date))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        let dict = PyDict::new(py);
+
+        // Simple lists
+        dict.set_item("roles", data.roles)?;
+        dict.set_item("impacts", data.impacts)?;
+        dict.set_item("modes", data.modes)?;
+        dict.set_item("subjects", data.subjects)?;
+
+        // Trackers dict
+        let bound = pythonize::pythonize(py, &data.trackers)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        dict.set_item("trackers", bound)?;
+
+        // Hints
+        let hints_list = PyList::empty(py);
+        for hint in data.hints {
+            let h = PyDict::new(py);
+            h.set_item("title", &hint.title)?;
+            h.set_item("role", hint.role.as_deref().into_pyobject(py)?)?;
+            h.set_item("subject", hint.subject.as_deref().into_pyobject(py)?)?;
+            h.set_item("impact", hint.impact.as_deref().into_pyobject(py)?)?;
+            h.set_item("mode", hint.mode.as_deref().into_pyobject(py)?)?;
+            h.set_item("trackers", PyList::new(py, &hint.trackers)?)?;
+            hints_list.append(h)?;
+        }
+        dict.set_item("hints", hints_list)?;
+
+        // Tracker mappings
+        let mappings_list = PyList::empty(py);
+        for mapping in data.tracker_mappings {
+            let m = PyDict::new(py);
+            m.set_item("tracker_id", &mapping.tracker_id)?;
+            m.set_item("tracker_name", &mapping.tracker_name)?;
+            m.set_item("hint_title", &mapping.hint_title)?;
+            m.set_item("role", mapping.role.as_deref().into_pyobject(py)?)?;
+            m.set_item("subject", mapping.subject.as_deref().into_pyobject(py)?)?;
+            m.set_item("impact", mapping.impact.as_deref().into_pyobject(py)?)?;
+            m.set_item("mode", mapping.mode.as_deref().into_pyobject(py)?)?;
+            mappings_list.append(m)?;
+        }
+        dict.set_item("tracker_mappings", mappings_list)?;
+
+        Ok(dict.into())
+    }
+
     /// Get usage statistics for a field across all plans
     ///
     /// Returns dict of field value -> count
     pub fn get_field_usage_stats(&self, field: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let stats = tokio::runtime::Runtime::new()
-            .unwrap()
+        let stats = runtime()
             .block_on(self.manager.get_field_usage_stats(field))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 

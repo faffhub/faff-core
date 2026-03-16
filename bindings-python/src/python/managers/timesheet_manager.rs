@@ -1,3 +1,4 @@
+use crate::python::runtime::runtime;
 use faff_core::managers::TimesheetManager as RustTimesheetManager;
 use faff_core::plugins::models::timesheet::PyTimesheet;
 use faff_core::utils::type_mapping::date_py_to_rust;
@@ -32,9 +33,7 @@ impl PyTimesheetManager {
 
     /// Write a timesheet to storage
     pub fn write_timesheet(&self, timesheet: &PyTimesheet) -> PyResult<()> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.write_timesheet(&timesheet.inner))
+        runtime().block_on(self.manager.write_timesheet(&timesheet.inner))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -45,9 +44,7 @@ impl PyTimesheetManager {
         date: Bound<'_, PyDate>,
     ) -> PyResult<Option<PyTimesheet>> {
         let naive_date = date_py_to_rust(date)?;
-        let timesheet = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.get_timesheet(audience_id, naive_date))
+        let timesheet = runtime().block_on(self.manager.get_timesheet(audience_id, naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(timesheet.map(|t| PyTimesheet { inner: t }))
@@ -58,9 +55,7 @@ impl PyTimesheetManager {
     pub fn list_timesheets(&self, date: Option<Bound<'_, PyDate>>) -> PyResult<Vec<PyTimesheet>> {
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
-        let timesheets = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.list_timesheets(naive_date))
+        let timesheets = runtime().block_on(self.manager.list_timesheets(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(timesheets
@@ -72,9 +67,7 @@ impl PyTimesheetManager {
     /// Delete a timesheet for a specific audience and date
     pub fn delete_timesheet(&self, audience_id: &str, date: Bound<'_, PyDate>) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.delete_timesheet(audience_id, naive_date))
+        runtime().block_on(self.manager.delete_timesheet(audience_id, naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -82,9 +75,7 @@ impl PyTimesheetManager {
     ///
     /// Gets workspace context internally.
     pub fn audiences(&self, _py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.audiences())
+        runtime().block_on(self.manager.audiences())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -92,9 +83,7 @@ impl PyTimesheetManager {
     ///
     /// Gets workspace context internally.
     pub fn get_audience(&self, _py: Python<'_>, audience_id: &str) -> PyResult<Option<Py<PyAny>>> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.get_audience(audience_id))
+        runtime().block_on(self.manager.get_audience(audience_id))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -111,9 +100,7 @@ impl PyTimesheetManager {
         // Convert Bound to Py for the Rust API
         let plugin_py: Py<PyAny> = plugin.unbind();
 
-        let timesheet = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.compile(&log.inner, &plugin_py))
+        let timesheet = runtime().block_on(self.manager.compile(&log.inner, &plugin_py))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyTimesheet { inner: timesheet })
@@ -130,9 +117,7 @@ impl PyTimesheetManager {
     ) -> PyResult<Vec<PyTimesheet>> {
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
-        let stale = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.find_stale_timesheets(naive_date))
+        let stale = runtime().block_on(self.manager.find_stale_timesheets(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(stale
@@ -150,9 +135,7 @@ impl PyTimesheetManager {
     ) -> PyResult<Vec<PyTimesheet>> {
         let naive_date = date.map(date_py_to_rust).transpose()?;
 
-        let failed = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.find_failed_submissions(naive_date))
+        let failed = runtime().block_on(self.manager.find_failed_submissions(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(failed
@@ -184,9 +167,7 @@ impl PyTimesheetManager {
         timesheet: &PyTimesheet,
         signing_ids: Vec<String>,
     ) -> PyResult<PyTimesheet> {
-        let signed = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.sign_timesheet(&timesheet.inner, &signing_ids))
+        let signed = runtime().block_on(self.manager.sign_timesheet(&timesheet.inner, &signing_ids))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyTimesheet { inner: signed })
@@ -196,9 +177,7 @@ impl PyTimesheetManager {
     ///
     /// Gets workspace context internally.
     pub fn submit(&self, _py: Python<'_>, timesheet: &PyTimesheet) -> PyResult<()> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.submit(&timesheet.inner))
+        runtime().block_on(self.manager.submit(&timesheet.inner))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

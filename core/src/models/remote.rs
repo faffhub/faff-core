@@ -1,8 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 use slug::slugify;
+
+/// Compiled once; used in apply_template to find `{name}` / `{name|filter}` placeholders.
+static PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\{([^}|]+)(\|[^}]+)?\}").expect("PLACEHOLDER_REGEX pattern is valid")
+});
 
 /// Configuration for a remote plugin instance
 ///
@@ -85,6 +91,12 @@ pub struct VocabularyMapping {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
 
+    /// Template for the hint title (used in session start suggestions)
+    /// Defaults to the raw source value (e.g. tracker description) if not set.
+    /// Example: "Support {customer}" instead of "Support - Acme Corp"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
     /// Templates for trackers
     /// Example: ["{source_id}"]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,6 +118,7 @@ impl VocabularyMapping {
             impact: None,
             mode: None,
             subject: None,
+            title: None,
             trackers: None,
         }
     }
@@ -226,20 +239,16 @@ impl VocabularyMapping {
     /// - {name|filter1|filter2} - chain multiple filters
     /// - {original} - the original source value
     /// - {source_id} - the source/remote ID
-    fn apply_template(
+    pub(super) fn apply_template(
         template: &str,
         captures: &Captures,
         original_value: &str,
         source_id: &str,
     ) -> anyhow::Result<String> {
-        // Find all {xxx} or {xxx|filter} patterns
-        let placeholder_regex =
-            Regex::new(r"\{([^}|]+)(\|[^}]+)?\}").expect("Placeholder regex is valid");
-
         let mut result = String::new();
         let mut last_end = 0;
 
-        for cap in placeholder_regex.captures_iter(template) {
+        for cap in PLACEHOLDER_REGEX.captures_iter(template) {
             let full_match = cap.get(0).unwrap();
             let range = full_match.range();
 
@@ -294,6 +303,65 @@ impl VocabularyMapping {
         }
 
         Ok(result)
+    }
+}
+
+/// A resolved tracker mapping entry for reverse lookup
+///
+/// Maps specific session field values back to a tracker, enabling auto-derivation
+/// of trackers from session fields at start time.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrackerMapping {
+    /// Prefixed tracker ID (e.g., "element:1231232")
+    pub tracker_id: String,
+    /// Human-readable tracker name (raw tracker description)
+    pub tracker_name: String,
+    /// Hint title to use in session suggestions (may differ from tracker_name
+    /// when a `title` template is configured on the vocabulary mapping)
+    pub hint_title: String,
+    /// Required role value for this mapping (if any)
+    pub role: Option<String>,
+    /// Required impact value for this mapping (if any)
+    pub impact: Option<String>,
+    /// Required mode value for this mapping (if any)
+    pub mode: Option<String>,
+    /// Required subject value for this mapping (if any)
+    pub subject: Option<String>,
+}
+
+impl TrackerMapping {
+    /// Check if this mapping matches the given session field values
+    ///
+    /// Returns true if every non-None field on the mapping matches the corresponding
+    /// session value. None fields on the mapping are wildcards (match anything).
+    pub fn matches_session(
+        &self,
+        role: Option<&str>,
+        subject: Option<&str>,
+        impact: Option<&str>,
+        mode: Option<&str>,
+    ) -> bool {
+        if let Some(required) = &self.role {
+            if role != Some(required.as_str()) {
+                return false;
+            }
+        }
+        if let Some(required) = &self.subject {
+            if subject != Some(required.as_str()) {
+                return false;
+            }
+        }
+        if let Some(required) = &self.impact {
+            if impact != Some(required.as_str()) {
+                return false;
+            }
+        }
+        if let Some(required) = &self.mode {
+            if mode != Some(required.as_str()) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -364,6 +432,97 @@ impl Remote {
         toml::to_string(self)
     }
 
+    /// Generate tracker mappings by running all tracker-source vocabulary mappings
+    ///
+    /// For each tracker in the plan, tries all vocabulary mappings where `source_type == Tracker`.
+    /// For each match, collects all non-None output fields (role, impact, mode, subject) into a
+    /// `TrackerMapping` entry. This builds a reverse lookup index from session field values to
+    /// tracker IDs, used for auto-deriving trackers at session start time.
+    pub fn generate_tracker_mappings(
+        &self,
+        plan: &crate::models::plan::Plan,
+    ) -> anyhow::Result<Vec<TrackerMapping>> {
+        let mut mappings = Vec::new();
+
+        for mapping in &self.vocabulary_mappings {
+            if mapping.source_type != VocabularyType::Tracker {
+                continue;
+            }
+
+            // Compile regex once per mapping, not once per tracker
+            let regex = mapping.regex()?;
+
+            for (tracker_key, tracker_desc) in &plan.trackers {
+                let tracker_id = format!("{}:{}", plan.source, tracker_key);
+
+                let Some(captures) = regex.captures(tracker_desc) else {
+                    continue;
+                };
+
+                // Build result from captures (inline try_match logic to reuse captures)
+                let result = {
+                    let mut r = MappingResult {
+                        target_type: mapping.target_type.clone(),
+                        role: None,
+                        impact: None,
+                        mode: None,
+                        subject: None,
+                        trackers: None,
+                    };
+                    if let Some(t) = &mapping.role {
+                        r.role = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                    }
+                    if let Some(t) = &mapping.impact {
+                        r.impact = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                    }
+                    if let Some(t) = &mapping.mode {
+                        r.mode = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                    }
+                    if let Some(t) = &mapping.subject {
+                        r.subject = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                    }
+                    r
+                };
+
+                // Only create a TrackerMapping if there's at least one field constraint
+                if result.role.is_none()
+                    && result.impact.is_none()
+                    && result.mode.is_none()
+                    && result.subject.is_none()
+                {
+                    continue;
+                }
+
+                let qualify = |v: String| -> String {
+                    if v.contains(':') {
+                        v
+                    } else {
+                        format!("{}:{}", plan.source, v)
+                    }
+                };
+
+                // Reuse captures for hint title (no second regex.captures() call)
+                let hint_title = if let Some(title_template) = &mapping.title {
+                    VocabularyMapping::apply_template(title_template, &captures, tracker_desc, &tracker_id)?
+                } else {
+                    tracker_desc.clone()
+                };
+
+                mappings.push(TrackerMapping {
+                    tracker_id,
+                    tracker_name: tracker_desc.clone(),
+                    hint_title,
+                    role: result.role.map(&qualify),
+                    impact: result.impact.map(&qualify),
+                    mode: result.mode.map(&qualify),
+                    subject: result.subject.map(&qualify),
+                });
+            }
+        }
+
+        Ok(mappings)
+    }
+
     /// Apply vocabulary mappings to a plan, augmenting its vocabulary
     ///
     /// This method:
@@ -424,6 +583,51 @@ impl Remote {
             // Try to match each source value
             for (source_id, source_value) in source_values {
                 if let Some(result) = mapping.try_match(&source_value, &source_id)? {
+                    // For tracker-source mappings with multi-field results, generate a
+                    // SessionHint so the CLI can pre-weight field suggestions and
+                    // auto-derive the tracker. Fields are source-prefixed to match
+                    // the qualified values that session prompts use.
+                    if mapping.source_type == VocabularyType::Tracker {
+                        let qualify = |v: String| -> String {
+                            if v.contains(':') {
+                                v
+                            } else {
+                                format!("{}:{}", plan.source, v)
+                            }
+                        };
+                        let hint_role = result.role.clone().map(&qualify);
+                        let hint_impact = result.impact.clone().map(&qualify);
+                        let hint_mode = result.mode.clone().map(&qualify);
+                        let hint_subject = result.subject.clone().map(&qualify);
+
+                        if hint_role.is_some() || hint_impact.is_some() || hint_mode.is_some() || hint_subject.is_some() {
+                            if !augmented_plan.hints.iter().any(|h| h.trackers.contains(&source_id)) {
+                                // Use the title template if set, otherwise fall back to
+                                // the raw tracker description.
+                                let hint_title = if let Some(title_template) = &mapping.title {
+                                    let regex = mapping.regex()?;
+                                    regex
+                                        .captures(&source_value)
+                                        .map(|caps| {
+                                            VocabularyMapping::apply_template(title_template, &caps, &source_value, &source_id)
+                                        })
+                                        .transpose()?
+                                        .unwrap_or_else(|| source_value.clone())
+                                } else {
+                                    source_value.clone()
+                                };
+                                augmented_plan.hints.push(crate::models::plan::SessionHint {
+                                    title: hint_title,
+                                    role: hint_role,
+                                    impact: hint_impact,
+                                    mode: hint_mode,
+                                    subject: hint_subject,
+                                    trackers: vec![source_id.clone()],
+                                });
+                            }
+                        }
+                    }
+
                     // Generate new vocabulary based on target_type
                     match result.target_type {
                         VocabularyType::Role => {
@@ -741,5 +945,131 @@ mod tests {
             .subjects
             .iter()
             .any(|s| s.contains("experiment")));
+    }
+
+    #[test]
+    fn test_generate_tracker_mappings_multi_field() {
+        use crate::models::plan::Plan;
+        use chrono::NaiveDate;
+
+        let mut remote = Remote::new("element", "myhours");
+
+        // A multi-field mapping: tracker → subject, with extra role field
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Tracker,
+            VocabularyType::Subject,
+            r"^POC-(?P<id>\d+)\s+(?P<description>.+)$",
+        );
+        mapping.subject = Some("poc/{description|slugify}".to_string());
+        mapping.role = Some("element:pre-sales-engineer".to_string());
+
+        remote.vocabulary_mappings.push(mapping);
+
+        let mut trackers = std::collections::HashMap::new();
+        trackers.insert("1231232".to_string(), "POC-123 Acme Corp".to_string());
+        trackers.insert("9999".to_string(), "Support: Other".to_string());
+
+        let plan = Plan::new(
+            "element".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            trackers,
+        );
+
+        let mappings = remote.generate_tracker_mappings(&plan).unwrap();
+
+        // Only POC tracker matches
+        assert_eq!(mappings.len(), 1);
+        let m = &mappings[0];
+        assert_eq!(m.tracker_id, "element:1231232");
+        assert_eq!(m.tracker_name, "POC-123 Acme Corp");
+        // Both fields are prefixed with plan.source ("element") to match session values
+        assert_eq!(m.role, Some("element:pre-sales-engineer".to_string()));
+        assert_eq!(m.subject, Some("element:poc/acme-corp".to_string()));
+        assert!(m.impact.is_none());
+        assert!(m.mode.is_none());
+    }
+
+    #[test]
+    fn test_tracker_mapping_matches_session() {
+        let mapping = TrackerMapping {
+            tracker_id: "element:1231232".to_string(),
+            tracker_name: "POC-123 Acme Corp".to_string(),
+            hint_title: "POC-123 Acme Corp".to_string(),
+            role: Some("element:pre-sales-engineer".to_string()),
+            subject: Some("element:poc/acme-corp".to_string()),
+            impact: None,
+            mode: None,
+        };
+
+        // Exact match
+        assert!(mapping.matches_session(
+            Some("element:pre-sales-engineer"),
+            Some("element:poc/acme-corp"),
+            None,
+            None,
+        ));
+
+        // Wrong role
+        assert!(!mapping.matches_session(
+            Some("element:engineer"),
+            Some("element:poc/acme-corp"),
+            None,
+            None,
+        ));
+
+        // Wrong subject
+        assert!(!mapping.matches_session(
+            Some("element:pre-sales-engineer"),
+            Some("element:poc/other"),
+            None,
+            None,
+        ));
+
+        // Role missing (session has no role)
+        assert!(!mapping.matches_session(None, Some("element:poc/acme-corp"), None, None));
+
+        // Impact/mode don't matter (they're None on the mapping)
+        assert!(mapping.matches_session(
+            Some("element:pre-sales-engineer"),
+            Some("element:poc/acme-corp"),
+            Some("element:revenue"),
+            Some("element:meeting"),
+        ));
+    }
+
+    #[test]
+    fn test_generate_tracker_mappings_no_tracker_source() {
+        use crate::models::plan::Plan;
+        use chrono::NaiveDate;
+
+        let mut remote = Remote::new("element", "myhours");
+
+        // Non-tracker source mapping — should not generate tracker mappings
+        let mut mapping = VocabularyMapping::new(
+            VocabularyType::Role,
+            VocabularyType::Subject,
+            r"^engineer$",
+        );
+        mapping.subject = Some("engineering".to_string());
+        remote.vocabulary_mappings.push(mapping);
+
+        let plan = Plan::new(
+            "element".to_string(),
+            NaiveDate::from_ymd_opt(2025, 11, 4).unwrap(),
+            None,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            std::collections::HashMap::new(),
+        );
+
+        let mappings = remote.generate_tracker_mappings(&plan).unwrap();
+        assert!(mappings.is_empty());
     }
 }
