@@ -96,6 +96,9 @@ impl TimesheetManager {
             let meta: TimesheetMeta =
                 serde_json::from_str(&meta_data).context("Failed to parse timesheet metadata")?;
             timesheet.meta = meta;
+        } else {
+            // No meta file — infer audience_id from the directory name
+            timesheet.meta.audience_id = audience_id.to_string();
         }
 
         Ok(Some(timesheet))
