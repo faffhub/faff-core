@@ -44,8 +44,9 @@ git push origin v0.1.0
 4. Commits version update to `main`
 5. Builds wheels for all platforms
 6. Publishes to PyPI (no `.dev` suffix)
-7. Creates GitHub Release with artifacts
-8. Bumps `Cargo.toml` to next patch version `0.1.1` for future dev builds
+7. Builds WASM package via `wasm-pack` and publishes to npm
+8. Creates GitHub Release with artifacts
+9. Bumps `Cargo.toml` to next patch version `0.1.1` for future dev builds
 
 **Installation:**
 ```bash
@@ -60,6 +61,7 @@ pip install faff-core==0.1.0
 
 The following GitHub secrets must be set:
 - `PYPI_API_TOKEN`: PyPI API token with permission to publish `faff-core`
+- `NPM_TOKEN`: npm access token with permission to publish the WASM package
 
 ## Notes
 

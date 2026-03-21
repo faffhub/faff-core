@@ -8,10 +8,10 @@ This guide covers local development workflows for faff-core.
 faff-core/
 ├── core/                   # Rust core library
 │   ├── src/
-│   │   ├── models/        # Data models (Intent, Session, Log, Plan, Timesheet)
+│   │   ├── models/        # Data models (Session, Log, Plan, Timesheet, ...)
 │   │   ├── managers/      # Business logic managers
 │   │   ├── storage/       # File I/O abstraction
-│   │   └── plugins.rs     # Python plugin system
+│   │   └── plugins/       # Python plugin system
 │   └── Cargo.toml
 ├── bindings-python/       # Python bindings (PyO3)
 │   ├── python/
@@ -22,13 +22,16 @@ faff-core/
 │   ├── src/
 │   │   └── python/        # PyO3 wrapper code
 │   └── Cargo.toml
+├── bindings-wasm/         # WebAssembly bindings
+│   └── Cargo.toml
 ├── Cargo.toml             # Workspace root
 └── docs/                  # Documentation
 ```
 
-This is a **Cargo workspace** with two crates:
+This is a **Cargo workspace** with three crates:
 - `core`: Pure Rust library
 - `bindings-python`: Python bindings that depend on `core`
+- `bindings-wasm`: WebAssembly bindings that depend on `core`
 
 ## Prerequisites
 
@@ -54,7 +57,7 @@ You can now import and use it:
 
 ```python
 import faff_core
-from faff_core.models import Intent, Session, Log, Plan
+from faff_core.models import Session, Log, Plan
 ```
 
 ### Alternative: From Workspace Root
