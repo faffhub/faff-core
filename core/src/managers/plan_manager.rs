@@ -613,73 +613,49 @@ impl PlanManager {
 
             let mut plan_modified = false;
 
+            // Plans store vocabulary values WITHOUT source prefix (e.g. "engineer" not
+            // "element:engineer"). Strip the plan's source prefix from old/new values so
+            // that callers can pass prefixed values (as used in logs) and still match.
+            let source_prefix = format!("{}:", plan.source);
+            let plan_old = old_value.strip_prefix(&source_prefix).unwrap_or(old_value);
+            let plan_new = new_value.strip_prefix(&source_prefix).unwrap_or(new_value);
+
+            // Skip if the normalised old and new values are identical (no real change)
+            if plan_old == plan_new {
+                continue;
+            }
+
             // Update plan-level ASTRO collection
             match field {
                 "role" => {
-                    let mut roles = plan.roles.clone();
-                    if roles.iter().any(|v| v == old_value) {
-                        roles = roles
-                            .into_iter()
-                            .map(|v| {
-                                if v == old_value {
-                                    new_value.to_string()
-                                } else {
-                                    v
-                                }
-                            })
+                    if plan.roles.iter().any(|v| v == plan_old) {
+                        plan.roles = plan.roles.into_iter()
+                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
                             .collect();
-                        plan.roles = roles;
                         plan_modified = true;
                     }
                 }
                 "impact" => {
-                    let mut impacts = plan.impacts.clone();
-                    if impacts.iter().any(|v| v == old_value) {
-                        impacts = impacts
-                            .into_iter()
-                            .map(|v| {
-                                if v == old_value {
-                                    new_value.to_string()
-                                } else {
-                                    v
-                                }
-                            })
+                    if plan.impacts.iter().any(|v| v == plan_old) {
+                        plan.impacts = plan.impacts.into_iter()
+                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
                             .collect();
-                        plan.impacts = impacts;
                         plan_modified = true;
                     }
                 }
                 "mode" => {
-                    let mut modes = plan.modes.clone();
-                    if modes.iter().any(|v| v == old_value) {
-                        modes = modes
-                            .into_iter()
-                            .map(|v| {
-                                if v == old_value {
-                                    new_value.to_string()
-                                } else {
-                                    v
-                                }
-                            })
+                    if plan.modes.iter().any(|v| v == plan_old) {
+                        plan.modes = plan.modes.into_iter()
+                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
                             .collect();
-                        plan.modes = modes;
                         plan_modified = true;
                     }
                 }
                 "subject" => {
-                    let mut subjects = plan.subjects.clone();
-                    if subjects.iter().any(|v| v == old_value) {
-                        subjects = subjects
-                            .into_iter()
-                            .map(|v| {
-                                if v == old_value {
-                                    new_value.to_string()
-                                } else {
-                                    v
-                                }
-                            })
+                    if plan.subjects.iter().any(|v| v == plan_old) {
+                        plan.subjects = plan.subjects.into_iter()
+                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
                             .collect();
-                        plan.subjects = subjects;
                         plan_modified = true;
                     }
                 }
