@@ -330,15 +330,7 @@ impl LogManager {
 
         // Create new session
         let session = crate::models::Session::new(
-            title,
-            role,
-            impact,
-            mode,
-            subject,
-            trackers,
-            start_time,
-            None,
-            note,
+            title, role, impact, mode, subject, trackers, start_time, None, note,
         );
 
         // Append to log and write

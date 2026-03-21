@@ -230,11 +230,7 @@ impl PyPlanManager {
     ///
     /// Returns: list[dict] with keys: title, role, subject, impact, mode (Optional[str]),
     /// trackers (list[str])
-    pub fn get_session_hints(
-        &self,
-        py: Python,
-        date: Bound<'_, PyDate>,
-    ) -> PyResult<Py<PyAny>> {
+    pub fn get_session_hints(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
         let hints = runtime()
             .block_on(self.manager.get_session_hints(naive_date))
@@ -258,11 +254,7 @@ impl PyPlanManager {
     ///
     /// Returns: list[dict] with keys: tracker_id, tracker_name, hint_title, role, subject, impact, mode
     /// Fields role/subject/impact/mode are None when not constrained by the mapping.
-    pub fn get_tracker_mappings(
-        &self,
-        py: Python,
-        date: Bound<'_, PyDate>,
-    ) -> PyResult<Py<PyAny>> {
+    pub fn get_tracker_mappings(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
         let mappings = runtime()
             .block_on(self.manager.get_tracker_mappings(naive_date))

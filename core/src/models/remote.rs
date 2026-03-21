@@ -470,16 +470,36 @@ impl Remote {
                         trackers: None,
                     };
                     if let Some(t) = &mapping.role {
-                        r.role = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                        r.role = Some(VocabularyMapping::apply_template(
+                            t,
+                            &captures,
+                            tracker_desc,
+                            &tracker_id,
+                        )?);
                     }
                     if let Some(t) = &mapping.impact {
-                        r.impact = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                        r.impact = Some(VocabularyMapping::apply_template(
+                            t,
+                            &captures,
+                            tracker_desc,
+                            &tracker_id,
+                        )?);
                     }
                     if let Some(t) = &mapping.mode {
-                        r.mode = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                        r.mode = Some(VocabularyMapping::apply_template(
+                            t,
+                            &captures,
+                            tracker_desc,
+                            &tracker_id,
+                        )?);
                     }
                     if let Some(t) = &mapping.subject {
-                        r.subject = Some(VocabularyMapping::apply_template(t, &captures, tracker_desc, &tracker_id)?);
+                        r.subject = Some(VocabularyMapping::apply_template(
+                            t,
+                            &captures,
+                            tracker_desc,
+                            &tracker_id,
+                        )?);
                     }
                     r
                 };
@@ -503,7 +523,12 @@ impl Remote {
 
                 // Reuse captures for hint title (no second regex.captures() call)
                 let hint_title = if let Some(title_template) = &mapping.title {
-                    VocabularyMapping::apply_template(title_template, &captures, tracker_desc, &tracker_id)?
+                    VocabularyMapping::apply_template(
+                        title_template,
+                        &captures,
+                        tracker_desc,
+                        &tracker_id,
+                    )?
                 } else {
                     tracker_desc.clone()
                 };
@@ -600,8 +625,16 @@ impl Remote {
                         let hint_mode = result.mode.clone().map(&qualify);
                         let hint_subject = result.subject.clone().map(&qualify);
 
-                        if hint_role.is_some() || hint_impact.is_some() || hint_mode.is_some() || hint_subject.is_some() {
-                            if !augmented_plan.hints.iter().any(|h| h.trackers.contains(&source_id)) {
+                        if hint_role.is_some()
+                            || hint_impact.is_some()
+                            || hint_mode.is_some()
+                            || hint_subject.is_some()
+                        {
+                            if !augmented_plan
+                                .hints
+                                .iter()
+                                .any(|h| h.trackers.contains(&source_id))
+                            {
                                 // Use the title template if set, otherwise fall back to
                                 // the raw tracker description.
                                 let hint_title = if let Some(title_template) = &mapping.title {
@@ -609,7 +642,12 @@ impl Remote {
                                     regex
                                         .captures(&source_value)
                                         .map(|caps| {
-                                            VocabularyMapping::apply_template(title_template, &caps, &source_value, &source_id)
+                                            VocabularyMapping::apply_template(
+                                                title_template,
+                                                &caps,
+                                                &source_value,
+                                                &source_id,
+                                            )
                                         })
                                         .transpose()?
                                         .unwrap_or_else(|| source_value.clone())
@@ -937,14 +975,13 @@ mod tests {
         assert!(augmented
             .subjects
             .contains(&"poc/european-commission-poc".to_string()));
-        assert!(augmented.subjects.contains(&"poc/unicredit-poc".to_string()));
+        assert!(augmented
+            .subjects
+            .contains(&"poc/unicredit-poc".to_string()));
         assert!(augmented.subjects.contains(&"poc/eppo".to_string()));
 
         // Verify that non-POC trackers are not converted
-        assert!(!augmented
-            .subjects
-            .iter()
-            .any(|s| s.contains("experiment")));
+        assert!(!augmented.subjects.iter().any(|s| s.contains("experiment")));
     }
 
     #[test]
@@ -1050,11 +1087,8 @@ mod tests {
         let mut remote = Remote::new("element", "myhours");
 
         // Non-tracker source mapping — should not generate tracker mappings
-        let mut mapping = VocabularyMapping::new(
-            VocabularyType::Role,
-            VocabularyType::Subject,
-            r"^engineer$",
-        );
+        let mut mapping =
+            VocabularyMapping::new(VocabularyType::Role, VocabularyType::Subject, r"^engineer$");
         mapping.subject = Some("engineering".to_string());
         remote.vocabulary_mappings.push(mapping);
 

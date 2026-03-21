@@ -1,5 +1,5 @@
-use crate::python::storage::PyStorage;
 use crate::python::runtime::runtime;
+use crate::python::storage::PyStorage;
 use faff_core::managers::PluginManager as RustPluginManager;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -39,7 +39,8 @@ impl PyPluginManager {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // Ensure plugins are loaded
-        runtime().block_on(manager.load_plugins())
+        runtime()
+            .block_on(manager.load_plugins())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // Access the cache to get the plugins
@@ -86,7 +87,8 @@ impl PyPluginManager {
                 pyo3::exceptions::PyValueError::new_err(format!("Invalid defaults: {e}"))
             })?;
 
-        runtime().block_on(manager.instantiate_plugin(
+        runtime()
+            .block_on(manager.instantiate_plugin(
                 plugin_name,
                 instance_name,
                 config_map,
@@ -108,7 +110,8 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        let configs = runtime().block_on(manager.get_remote_configs())
+        let configs = runtime()
+            .block_on(manager.get_remote_configs())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // Convert Remote structs to Python objects using pythonize
@@ -132,7 +135,8 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        runtime().block_on(manager.plan_remotes())
+        runtime()
+            .block_on(manager.plan_remotes())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -146,7 +150,8 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        runtime().block_on(manager.audiences())
+        runtime()
+            .block_on(manager.audiences())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
@@ -167,7 +172,8 @@ impl PyPluginManager {
             .lock()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-        runtime().block_on(manager.get_audience_by_id(audience_id))
+        runtime()
+            .block_on(manager.get_audience_by_id(audience_id))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }
