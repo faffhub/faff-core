@@ -29,12 +29,15 @@ pip install faff-core==0.1.0.dev5
 
 ## Stable Releases (Manual)
 
-When you're ready to release a stable version, create and push a git tag:
+When you're ready to release a stable version, tag the version number that is currently in `Cargo.toml` — that is always the correct next release version:
 
 ```bash
-# Release version 0.1.0
-git tag v0.1.0
-git push origin v0.1.0
+# Check the version
+grep '^version' Cargo.toml
+
+# Tag and push
+git tag v$(grep '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+git push origin --tags
 ```
 
 **What happens:**
