@@ -134,10 +134,7 @@ impl PyPlan {
             dict.set_item("subject", hint.subject.as_deref().into_pyobject(py)?)?;
             dict.set_item("impact", hint.impact.as_deref().into_pyobject(py)?)?;
             dict.set_item("mode", hint.mode.as_deref().into_pyobject(py)?)?;
-            dict.set_item(
-                "trackers",
-                pyo3::types::PyList::new(py, &hint.trackers)?,
-            )?;
+            dict.set_item("trackers", pyo3::types::PyList::new(py, &hint.trackers)?)?;
             list.append(dict)?;
         }
         Ok(list)
@@ -255,8 +252,7 @@ impl PyPlan {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "Plan(source={:?}, valid_from={})",
-            self.inner.source,
-            self.inner.valid_from,
+            self.inner.source, self.inner.valid_from,
         ))
     }
 

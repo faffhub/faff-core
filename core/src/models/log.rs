@@ -180,7 +180,8 @@ impl Log {
 
         // Parse sessions - support both "session" (new) and "timeline" (old) keys
         let mut sessions = Vec::new();
-        let entries = toml_value.get("session")
+        let entries = toml_value
+            .get("session")
             .or_else(|| toml_value.get("timeline"))
             .and_then(|v| v.as_array());
         if let Some(timeline) = entries {

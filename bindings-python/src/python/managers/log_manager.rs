@@ -199,9 +199,10 @@ impl PyLogManager {
         };
 
         runtime()
-            .block_on(self.inner.start_session(
-                title, role, impact, mode, subject, trackers, start, note,
-            ))
+            .block_on(
+                self.inner
+                    .start_session(title, role, impact, mode, subject, trackers, start, note),
+            )
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 

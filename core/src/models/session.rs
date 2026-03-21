@@ -634,10 +634,7 @@ mod tests {
             "role".to_string(),
             ValueType::String("engineer".to_string()),
         );
-        dict.insert(
-            "mode".to_string(),
-            ValueType::String("coding".to_string()),
-        );
+        dict.insert("mode".to_string(), ValueType::String("coding".to_string()));
         dict.insert(
             "subject".to_string(),
             ValueType::String("tests".to_string()),

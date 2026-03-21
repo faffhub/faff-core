@@ -325,14 +325,12 @@ impl PlanManager {
                 format!("Failed to parse remote config: {}", remote_file.display())
             })?;
 
-            let tracker_mappings = remote
-                .generate_tracker_mappings(plan)
-                .with_context(|| {
-                    format!(
-                        "Failed to generate tracker mappings for remote '{}'",
-                        remote.id
-                    )
-                })?;
+            let tracker_mappings = remote.generate_tracker_mappings(plan).with_context(|| {
+                format!(
+                    "Failed to generate tracker mappings for remote '{}'",
+                    remote.id
+                )
+            })?;
 
             all_mappings.extend(tracker_mappings);
         }
@@ -380,13 +378,13 @@ impl PlanManager {
                 .remotes_dir()
                 .join(format!("{}.toml", plan.source));
             if self.storage.exists(&remote_file) {
-                let remote_toml = self
-                    .storage
-                    .read_string(&remote_file)
-                    .await
-                    .with_context(|| {
-                        format!("Failed to read remote config: {}", remote_file.display())
-                    })?;
+                let remote_toml =
+                    self.storage
+                        .read_string(&remote_file)
+                        .await
+                        .with_context(|| {
+                            format!("Failed to read remote config: {}", remote_file.display())
+                        })?;
                 let remote = Remote::from_toml(&remote_toml).with_context(|| {
                     format!("Failed to parse remote config: {}", remote_file.display())
                 })?;
@@ -629,32 +627,64 @@ impl PlanManager {
             match field {
                 "role" => {
                     if plan.roles.iter().any(|v| v == plan_old) {
-                        plan.roles = plan.roles.into_iter()
-                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
+                        plan.roles = plan
+                            .roles
+                            .into_iter()
+                            .map(|v| {
+                                if v == plan_old {
+                                    plan_new.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan_modified = true;
                     }
                 }
                 "impact" => {
                     if plan.impacts.iter().any(|v| v == plan_old) {
-                        plan.impacts = plan.impacts.into_iter()
-                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
+                        plan.impacts = plan
+                            .impacts
+                            .into_iter()
+                            .map(|v| {
+                                if v == plan_old {
+                                    plan_new.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan_modified = true;
                     }
                 }
                 "mode" => {
                     if plan.modes.iter().any(|v| v == plan_old) {
-                        plan.modes = plan.modes.into_iter()
-                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
+                        plan.modes = plan
+                            .modes
+                            .into_iter()
+                            .map(|v| {
+                                if v == plan_old {
+                                    plan_new.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan_modified = true;
                     }
                 }
                 "subject" => {
                     if plan.subjects.iter().any(|v| v == plan_old) {
-                        plan.subjects = plan.subjects.into_iter()
-                            .map(|v| if v == plan_old { plan_new.to_string() } else { v })
+                        plan.subjects = plan
+                            .subjects
+                            .into_iter()
+                            .map(|v| {
+                                if v == plan_old {
+                                    plan_new.to_string()
+                                } else {
+                                    v
+                                }
+                            })
                             .collect();
                         plan_modified = true;
                     }

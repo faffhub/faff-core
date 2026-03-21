@@ -72,7 +72,9 @@ impl PySession {
             None => None,
         };
         Ok(Self {
-            inner: RustSession::new(title, role, impact, mode, subject, trackers, start, end, note),
+            inner: RustSession::new(
+                title, role, impact, mode, subject, trackers, start, end, note,
+            ),
         })
     }
 
