@@ -59,10 +59,10 @@ jobs:
           - runner: ubuntu-latest
             os: linux
             target: aarch64
-          - runner: macos-13  # x86_64
+          - runner: macos-latest  # ARM64, cross-compiles x86_64
             os: macos
             target: x86_64
-          - runner: macos-14  # ARM64
+          - runner: macos-latest  # ARM64
             os: macos-arm
             target: aarch64
           - runner: windows-latest
@@ -207,7 +207,7 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ needs.prepare-release.outputs.version }}
           files: dist/*
