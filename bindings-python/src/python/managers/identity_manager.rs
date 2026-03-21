@@ -1,4 +1,5 @@
 use crate::python::storage::PyStorage;
+use crate::python::runtime::runtime;
 use faff_core::managers::IdentityManager as RustIdentityManager;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -38,9 +39,7 @@ impl PyIdentityManager {
         name: &str,
         overwrite: bool,
     ) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
-        let signing_key = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.create_identity(name, overwrite))
+        let signing_key = runtime().block_on(self.manager.create_identity(name, overwrite))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let mut result = HashMap::new();
@@ -68,9 +67,7 @@ impl PyIdentityManager {
         py: Python<'py>,
         name: &str,
     ) -> PyResult<Option<Bound<'py, PyBytes>>> {
-        let signing_key = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.get_identity(name))
+        let signing_key = runtime().block_on(self.manager.get_identity(name))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(signing_key.map(|key| PyBytes::new(py, &key.to_bytes())))
@@ -84,9 +81,7 @@ impl PyIdentityManager {
         &self,
         py: Python<'py>,
     ) -> PyResult<HashMap<String, Bound<'py, PyBytes>>> {
-        let identities = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.list_identities())
+        let identities = runtime().block_on(self.manager.list_identities())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let mut result = HashMap::new();
@@ -113,9 +108,7 @@ impl PyIdentityManager {
     /// Args:
     ///     name: Identity name
     pub fn delete_identity(&self, name: &str) -> PyResult<()> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.manager.delete_identity(name))
+        runtime().block_on(self.manager.delete_identity(name))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 }

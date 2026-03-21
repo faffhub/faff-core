@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDateTime};
 use std::sync::Arc;
 
+use crate::python::runtime::runtime;
 use faff_core::managers::LogManager as RustLogManager;
 use faff_core::utils::type_mapping::{date_py_to_rust, date_rust_to_py, datetime_py_to_rust};
 use faff_core::workspace::Workspace as RustWorkspace;
@@ -40,8 +41,7 @@ impl PyLogManager {
     /// Read raw log file contents
     fn read_log_raw(&self, date: Bound<'_, PyDate>) -> PyResult<String> {
         let naive_date = date_py_to_rust(date)?;
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(self.inner.read_log_raw(naive_date))
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
@@ -49,8 +49,7 @@ impl PyLogManager {
     /// Write raw log file contents
     fn write_log_raw(&self, date: Bound<'_, PyDate>, contents: &str) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(self.inner.write_log_raw(naive_date, contents))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -67,8 +66,7 @@ impl PyLogManager {
 
     /// List all log dates
     fn list_log_dates<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDate>>> {
-        let dates = tokio::runtime::Runtime::new()
-            .unwrap()
+        let dates = runtime()
             .block_on(self.inner.list_logs())
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
@@ -80,29 +78,54 @@ impl PyLogManager {
 
     /// List all logs (returns Log objects)
     fn list_logs(&self, _py: Python<'_>) -> PyResult<Vec<faff_core::plugins::models::log::PyLog>> {
-        let dates = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(self.inner.list_logs())
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let mut logs = Vec::new();
-        for date in dates {
-            let log = rt
-                .block_on(self.inner.get_log(date))
+        let inner = &self.inner;
+        runtime().block_on(async move {
+            let dates = inner
+                .list_logs()
+                .await
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let mut logs = Vec::with_capacity(dates.len());
+            for date in dates {
+                let log = inner
+                    .get_log(date)
+                    .await
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                logs.push(faff_core::plugins::models::log::PyLog { inner: log });
+            }
+            Ok(logs)
+        })
+    }
 
-            logs.push(faff_core::plugins::models::log::PyLog { inner: log });
-        }
-
-        Ok(logs)
+    /// List the N most recent logs (returns Log objects, sorted oldest-first)
+    fn list_logs_recent(
+        &self,
+        _py: Python<'_>,
+        n: usize,
+    ) -> PyResult<Vec<faff_core::plugins::models::log::PyLog>> {
+        let inner = &self.inner;
+        runtime().block_on(async move {
+            let mut dates = inner
+                .list_logs()
+                .await
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            dates.sort();
+            let recent: Vec<_> = dates.into_iter().rev().take(n).collect();
+            let mut logs = Vec::with_capacity(recent.len());
+            for date in recent.into_iter().rev() {
+                let log = inner
+                    .get_log(date)
+                    .await
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                logs.push(faff_core::plugins::models::log::PyLog { inner: log });
+            }
+            Ok(logs)
+        })
     }
 
     /// Delete a log for a given date
     fn delete_log(&self, date: Bound<'_, PyDate>) -> PyResult<()> {
         let naive_date = date_py_to_rust(date)?;
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(self.inner.delete_log(naive_date))
             .map_err(|e| PyFileNotFoundError::new_err(e.to_string()))
     }
@@ -117,8 +140,7 @@ impl PyLogManager {
     /// Get a log for a given date (returns empty log if file doesn't exist)
     fn get_log(&self, date: Bound<'_, PyDate>) -> PyResult<faff_core::plugins::models::log::PyLog> {
         let naive_date = date_py_to_rust(date)?;
-        let log = tokio::runtime::Runtime::new()
-            .unwrap()
+        let log = runtime()
             .block_on(self.inner.get_log(naive_date))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
@@ -131,8 +153,7 @@ impl PyLogManager {
         log: &faff_core::plugins::models::log::PyLog,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<()> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(self.inner.write_log(&log.inner, &trackers))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
@@ -177,21 +198,19 @@ impl PyLogManager {
             None => workspace.now(),
         };
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-
-        rt.block_on(self.inner.start_session(
-            title, role, impact, mode, subject, trackers, start, note,
-        ))
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+        runtime()
+            .block_on(self.inner.start_session(
+                title, role, impact, mode, subject, trackers, start, note,
+            ))
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Stop the currently active session
     ///
     /// Gets current date, time, and trackers from workspace internally.
     fn stop_current_session(&self, _py: Python<'_>) -> PyResult<()> {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-
-        rt.block_on(self.inner.stop_current_session())
+        runtime()
+            .block_on(self.inner.stop_current_session())
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -205,8 +224,7 @@ impl PyLogManager {
         new_value: &str,
         trackers: std::collections::HashMap<String, String>,
     ) -> PyResult<(usize, usize)> {
-        tokio::runtime::Runtime::new()
-            .unwrap()
+        runtime()
             .block_on(
                 self.inner
                     .replace_field_in_all_logs(field, old_value, new_value, &trackers),
@@ -226,8 +244,7 @@ impl PyLogManager {
     ) -> PyResult<(Py<pyo3::types::PyDict>, Py<pyo3::types::PyDict>)> {
         use pyo3::types::{PyDate, PyDict, PyList};
 
-        let (session_count, log_dates) = tokio::runtime::Runtime::new()
-            .unwrap()
+        let (session_count, log_dates) = runtime()
             .block_on(self.inner.get_field_usage_stats(field))
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
 

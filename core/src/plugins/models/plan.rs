@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyType};
 use std::collections::HashMap;
 
-use crate::models::plan::Plan as RustPlan;
+use crate::models::plan::{Plan as RustPlan, SessionHint};
 
 #[pyclass(name = "Plan")]
 #[derive(Clone)]
@@ -114,6 +114,42 @@ impl PyPlan {
     #[getter]
     fn trackers(&self) -> HashMap<String, String> {
         self.inner.trackers.clone()
+    }
+
+    #[getter]
+    fn hints<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyList>> {
+        let list = pyo3::types::PyList::empty(py);
+        for hint in &self.inner.hints {
+            let dict = pyo3::types::PyDict::new(py);
+            dict.set_item("title", &hint.title)?;
+            dict.set_item("role", hint.role.as_deref().into_pyobject(py)?)?;
+            dict.set_item("subject", hint.subject.as_deref().into_pyobject(py)?)?;
+            dict.set_item("impact", hint.impact.as_deref().into_pyobject(py)?)?;
+            dict.set_item("mode", hint.mode.as_deref().into_pyobject(py)?)?;
+            dict.set_item(
+                "trackers",
+                pyo3::types::PyList::new(py, &hint.trackers)?,
+            )?;
+            list.append(dict)?;
+        }
+        Ok(list)
+    }
+
+    /// Return a new Plan with the given hints attached.
+    ///
+    /// Each hint is a dict with keys: title (str), role, subject, impact, mode
+    /// (all Optional[str]), trackers (list[str]).
+    fn with_hints(&self, py: Python, hints: Vec<Py<PyAny>>) -> PyResult<PyPlan> {
+        let parsed: Vec<SessionHint> = hints
+            .iter()
+            .map(|h| {
+                pythonize::depythonize(h.bind(py))
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+            })
+            .collect::<PyResult<_>>()?;
+        let mut new_inner = self.inner.clone();
+        new_inner.hints = parsed;
+        Ok(PyPlan { inner: new_inner })
     }
 
     #[classmethod]
