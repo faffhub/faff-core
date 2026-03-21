@@ -86,4 +86,4 @@ jobs:
       - name: Smoke test import
         run: |
           cd /tmp
-          python -c "import faff_core; from faff_core.models import Intent, Log; from faff_core.plugins import PlanSource; print('✓ All imports successful')"
+          python -c "import faff_core; from faff_core.models import Log, Session, Plan; from faff_core.plugins import PlanSource; print('✓ All imports successful')"
