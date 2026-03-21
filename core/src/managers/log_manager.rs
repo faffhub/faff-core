@@ -173,10 +173,10 @@ impl LogManager {
             .context("Failed to create start of day timestamp")?;
 
         let continuation_session = crate::models::Session::new(
-            unclosed_session.alias.clone(),
+            unclosed_session.title.clone(),
             unclosed_session.role.clone(),
-            unclosed_session.objective.clone(),
-            unclosed_session.action.clone(),
+            unclosed_session.impact.clone(),
+            unclosed_session.mode.clone(),
             unclosed_session.subject.clone(),
             unclosed_session.trackers.clone(),
             start_of_day,
@@ -258,10 +258,10 @@ impl LogManager {
     /// starting the new session.
     pub async fn start_session(
         &self,
-        alias: Option<String>,
+        title: Option<String>,
         role: Option<String>,
-        objective: Option<String>,
-        action: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
         subject: Option<String>,
         trackers: Vec<String>,
         start_time: chrono::DateTime<Tz>,
@@ -330,10 +330,10 @@ impl LogManager {
 
         // Create new session
         let session = crate::models::Session::new(
-            alias,
+            title,
             role,
-            objective,
-            action,
+            impact,
+            mode,
             subject,
             trackers,
             start_time,
@@ -378,7 +378,7 @@ impl LogManager {
     /// Updates all sessions' embedded fields
     ///
     /// # Arguments
-    /// * `field` - The field to update (role, objective, action, subject)
+    /// * `field` - The field to update (role, impact, mode, subject)
     /// * `old_value` - The value to replace
     /// * `new_value` - The new value
     /// * `trackers` - Tracker mappings for reformatting
@@ -408,8 +408,8 @@ impl LogManager {
             for session in &log.timeline {
                 let session_field_value = match field {
                     "role" => &session.role,
-                    "objective" => &session.objective,
-                    "action" => &session.action,
+                    "impact" => &session.impact,
+                    "mode" => &session.mode,
                     "subject" => &session.subject,
                     _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
                 };
@@ -417,21 +417,21 @@ impl LogManager {
                 if session_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
                     // Create updated session with new field value
                     let updated_session = crate::models::Session::new(
-                        session.alias.clone(),
+                        session.title.clone(),
                         if field == "role" {
                             Some(new_value.to_string())
                         } else {
                             session.role.clone()
                         },
-                        if field == "objective" {
+                        if field == "impact" {
                             Some(new_value.to_string())
                         } else {
-                            session.objective.clone()
+                            session.impact.clone()
                         },
-                        if field == "action" {
+                        if field == "mode" {
                             Some(new_value.to_string())
                         } else {
-                            session.action.clone()
+                            session.mode.clone()
                         },
                         if field == "subject" {
                             Some(new_value.to_string())
@@ -490,8 +490,8 @@ impl LogManager {
             for session in &log.timeline {
                 let session_field_value = match field {
                     "role" => &session.role,
-                    "objective" => &session.objective,
-                    "action" => &session.action,
+                    "impact" => &session.impact,
+                    "mode" => &session.mode,
                     "subject" => &session.subject,
                     "tracker" => {
                         // Trackers are a list, count each one
@@ -591,10 +591,10 @@ timezone = "UTC"
 version = "0.3.0"
 
 [[timeline]]
-alias = "work"
+title = "work"
 role = "dev"
-objective = "feature"
-action = "implement"
+impact = "feature"
+mode = "implement"
 subject = "api"
 trackers = ["PROJECT-123"]
 start = "09:00"
@@ -610,7 +610,7 @@ note = "Morning session"
         assert_eq!(log.timeline.len(), 1);
 
         let session = &log.timeline[0];
-        assert_eq!(session.alias.as_ref().unwrap(), "work");
+        assert_eq!(session.title.as_ref().unwrap(), "work");
         assert_eq!(session.role.as_ref().unwrap(), "dev");
         assert_eq!(session.note.as_ref().unwrap(), "Morning session");
     }
@@ -678,7 +678,7 @@ note = "Morning session"
         // Verify today's log has one session starting at 00:00
         assert_eq!(today_log.timeline.len(), 1);
         let today_session = &today_log.timeline[0];
-        assert_eq!(today_session.alias, Some("work".to_string()));
+        assert_eq!(today_session.title, Some("work".to_string()));
         assert_eq!(today_session.start.hour(), 0);
         assert_eq!(today_session.start.minute(), 0);
         assert!(
@@ -888,12 +888,12 @@ note = "Morning session"
         assert_eq!(log.timeline.len(), 2);
 
         // First session should be closed at 11:00
-        assert_eq!(log.timeline[0].alias, Some("existing".to_string()));
+        assert_eq!(log.timeline[0].title, Some("existing".to_string()));
         assert!(log.timeline[0].end.is_some());
         assert_eq!(log.timeline[0].end.unwrap().hour(), 11);
 
         // Second session should be active
-        assert_eq!(log.timeline[1].alias, Some("new".to_string()));
+        assert_eq!(log.timeline[1].title, Some("new".to_string()));
         assert!(log.timeline[1].end.is_none());
     }
 }

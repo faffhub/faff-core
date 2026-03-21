@@ -36,10 +36,10 @@ impl FilterOperator {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterField {
-    Alias,
+    Title,
     Role,
-    Objective,
-    Action,
+    Impact,
+    Mode,
     Subject,
     Note,
 }
@@ -49,10 +49,10 @@ impl FromStr for FilterField {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "alias" => Ok(FilterField::Alias),
+            "title" | "alias" => Ok(FilterField::Title),
             "role" => Ok(FilterField::Role),
-            "objective" => Ok(FilterField::Objective),
-            "action" => Ok(FilterField::Action),
+            "impact" | "objective" => Ok(FilterField::Impact),
+            "mode" | "action" => Ok(FilterField::Mode),
             "subject" => Ok(FilterField::Subject),
             "note" => Ok(FilterField::Note),
             _ => Err(FilterError::InvalidField(s.to_string())),
@@ -63,10 +63,10 @@ impl FromStr for FilterField {
 impl FilterField {
     fn get_value<'a>(&self, session: &'a Session) -> Option<&'a str> {
         match self {
-            FilterField::Alias => session.alias.as_deref(),
+            FilterField::Title => session.title.as_deref(),
             FilterField::Role => session.role.as_deref(),
-            FilterField::Objective => session.objective.as_deref(),
-            FilterField::Action => session.action.as_deref(),
+            FilterField::Impact => session.impact.as_deref(),
+            FilterField::Mode => session.mode.as_deref(),
             FilterField::Subject => session.subject.as_deref(),
             FilterField::Note => session.note.as_deref(),
         }
@@ -199,9 +199,9 @@ mod tests {
     use chrono_tz::America::New_York;
 
     fn create_test_session(
-        alias: Option<&str>,
+        title: Option<&str>,
         role: Option<&str>,
-        objective: Option<&str>,
+        impact: Option<&str>,
         note: Option<&str>,
     ) -> Session {
         let start = Utc
@@ -214,10 +214,10 @@ mod tests {
             .with_timezone(&New_York);
 
         Session::new(
-            alias.map(String::from),
+            title.map(String::from),
             role.map(String::from),
-            objective.map(String::from),
-            None,
+            impact.map(String::from),
+            None, // mode
             None,
             vec![],
             start,
@@ -233,8 +233,8 @@ mod tests {
         assert_eq!(filter.operator, FilterOperator::Equals);
         assert_eq!(filter.value, "developer");
 
-        let filter: Filter = "objective~planning".parse().unwrap();
-        assert_eq!(filter.field, FilterField::Objective);
+        let filter: Filter = "impact~planning".parse().unwrap();
+        assert_eq!(filter.field, FilterField::Impact);
         assert_eq!(filter.operator, FilterOperator::Contains);
         assert_eq!(filter.value, "planning");
 
@@ -261,10 +261,10 @@ mod tests {
         assert!(!filter.matches(&session));
 
         // Contains operator
-        let filter: Filter = "objective~development".parse().unwrap();
+        let filter: Filter = "impact~development".parse().unwrap();
         assert!(filter.matches(&session));
 
-        let filter: Filter = "objective~planning".parse().unwrap();
+        let filter: Filter = "impact~planning".parse().unwrap();
         assert!(!filter.matches(&session));
 
         // Not equals operator

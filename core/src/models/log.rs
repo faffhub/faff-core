@@ -29,8 +29,8 @@ pub enum LogError {
 pub struct LogSummary {
     /// Total recorded time in minutes
     pub total_minutes: i64,
-    /// Time by session alias in minutes
-    pub by_alias: HashMap<String, i64>,
+    /// Time by session title in minutes
+    pub by_title: HashMap<String, i64>,
     /// Time by tracker in minutes
     pub by_tracker: HashMap<String, i64>,
     /// Time by tracker source (prefix before ':') in minutes
@@ -242,20 +242,20 @@ impl Log {
         trackers: &HashMap<String, String>,
         date_format: &str,
     ) {
-        // Alias
-        if let Some(alias) = &session.alias {
-            lines.push(format!("alias = \"{alias}\""));
+        // Title
+        if let Some(title) = &session.title {
+            lines.push(format!("title = \"{title}\""));
         }
 
         // Optional session fields
         if let Some(role) = &session.role {
             lines.push(format!("role = \"{role}\""));
         }
-        if let Some(objective) = &session.objective {
-            lines.push(format!("objective = \"{objective}\""));
+        if let Some(impact) = &session.impact {
+            lines.push(format!("impact = \"{impact}\""));
         }
-        if let Some(action) = &session.action {
-            lines.push(format!("action = \"{action}\""));
+        if let Some(mode) = &session.mode {
+            lines.push(format!("mode = \"{mode}\""));
         }
         if let Some(subject) = &session.subject {
             lines.push(format!("subject = \"{subject}\""));
@@ -432,7 +432,7 @@ impl Log {
     /// For open sessions on past dates, caps at end-of-day (23:59).
     /// All durations are in minutes (faff's base unit).
     pub fn summary(&self, now: DateTime<Tz>) -> LogSummary {
-        let mut by_alias: HashMap<String, i64> = HashMap::new();
+        let mut by_title: HashMap<String, i64> = HashMap::new();
         let mut by_tracker: HashMap<String, i64> = HashMap::new();
         let mut by_tracker_source: HashMap<String, i64> = HashMap::new();
         let mut total_minutes: i64 = 0;
@@ -465,9 +465,9 @@ impl Log {
 
             total_minutes += duration_minutes;
 
-            // Aggregate by session alias
-            let alias = session.alias.clone().unwrap_or_default();
-            *by_alias.entry(alias).or_insert(0) += duration_minutes;
+            // Aggregate by session title
+            let title = session.title.clone().unwrap_or_default();
+            *by_title.entry(title).or_insert(0) += duration_minutes;
 
             // Aggregate by tracker and tracker source
             for tracker in &session.trackers {
@@ -494,7 +494,7 @@ impl Log {
 
         LogSummary {
             total_minutes,
-            by_alias,
+            by_title,
             by_tracker,
             by_tracker_source,
             mean_reflection_score,
@@ -788,9 +788,9 @@ mod tests {
         let output = log.to_log_file(&trackers);
 
         assert!(output.contains("[[timeline]]"));
-        assert!(output.contains("alias     = \"work\""));
-        assert!(output.contains("start     = \"09:00\""));
-        assert!(output.contains("end       = \"10:30\""));
+        assert!(output.contains("title    = \"work\""));
+        assert!(output.contains("start    = \"09:00\""));
+        assert!(output.contains("end      = \"10:30\""));
         assert!(output.contains("# duration = \"1 hour and 30 minutes\""));
     }
 
@@ -849,8 +849,8 @@ mod tests {
         let summary = log.summary(now);
 
         assert_eq!(summary.total_minutes, 150);
-        assert_eq!(summary.by_alias.get("coding"), Some(&90));
-        assert_eq!(summary.by_alias.get("meeting"), Some(&60));
+        assert_eq!(summary.by_title.get("coding"), Some(&90));
+        assert_eq!(summary.by_title.get("meeting"), Some(&60));
         assert_eq!(summary.by_tracker.get("element:123"), Some(&90));
         assert_eq!(summary.by_tracker.get("element:456"), Some(&60));
         assert_eq!(summary.by_tracker.get("jira:ABC-1"), Some(&60));

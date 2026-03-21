@@ -192,7 +192,7 @@ subjects = ["api"]
     let retrieved_log = ws.logs().get_log(date).await.unwrap();
     assert_eq!(retrieved_log.timeline.len(), 1);
     assert_eq!(
-        retrieved_log.timeline[0].alias.as_ref().unwrap(),
+        retrieved_log.timeline[0].title.as_ref().unwrap(),
         "auth-work"
     );
 }
@@ -258,7 +258,7 @@ async fn test_log_and_timesheet_integration() {
 
     assert_eq!(retrieved.date, date);
     assert_eq!(retrieved.timeline.len(), 1);
-    assert_eq!(retrieved.timeline[0].alias.as_ref().unwrap(), "work");
+    assert_eq!(retrieved.timeline[0].title.as_ref().unwrap(), "work");
     assert_eq!(retrieved.timeline[0].note.as_ref().unwrap(), "Morning work");
 }
 

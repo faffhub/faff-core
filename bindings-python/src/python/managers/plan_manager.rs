@@ -83,37 +83,37 @@ impl PyPlanManager {
         Ok(list.into())
     }
 
-    /// Get all objectives from plans valid for a given date
+    /// Get all impacts from plans valid for a given date
     ///
     /// Returns: list[str]
-    pub fn get_objectives(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
+    pub fn get_impacts(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let objectives = tokio::runtime::Runtime::new()
+        let impacts = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.get_objectives(naive_date))
+            .block_on(self.manager.get_impacts(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
-        for objective in objectives {
-            list.append(objective)?;
+        for impact in impacts {
+            list.append(impact)?;
         }
 
         Ok(list.into())
     }
 
-    /// Get all actions from plans valid for a given date
+    /// Get all modes from plans valid for a given date
     ///
     /// Returns: list[str]
-    pub fn get_actions(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
+    pub fn get_modes(&self, py: Python, date: Bound<'_, PyDate>) -> PyResult<Py<PyAny>> {
         let naive_date = date_py_to_rust(date)?;
-        let actions = tokio::runtime::Runtime::new()
+        let modes = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(self.manager.get_actions(naive_date))
+            .block_on(self.manager.get_modes(naive_date))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let list = PyList::empty(py);
-        for action in actions {
-            list.append(action)?;
+        for mode in modes {
+            list.append(mode)?;
         }
 
         Ok(list.into())

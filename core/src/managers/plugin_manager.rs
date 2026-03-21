@@ -331,26 +331,26 @@ impl PluginManager {
                     ),
                 );
             }
-            if !remote.vocabulary.objectives.is_empty() {
+            if !remote.vocabulary.impacts.is_empty() {
                 defaults.insert(
-                    "objectives".to_string(),
+                    "impacts".to_string(),
                     toml::Value::Array(
                         remote
                             .vocabulary
-                            .objectives
+                            .impacts
                             .iter()
                             .map(|s| toml::Value::String(s.clone()))
                             .collect(),
                     ),
                 );
             }
-            if !remote.vocabulary.actions.is_empty() {
+            if !remote.vocabulary.modes.is_empty() {
                 defaults.insert(
-                    "actions".to_string(),
+                    "modes".to_string(),
                     toml::Value::Array(
                         remote
                             .vocabulary
-                            .actions
+                            .modes
                             .iter()
                             .map(|s| toml::Value::String(s.clone()))
                             .collect(),

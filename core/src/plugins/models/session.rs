@@ -53,14 +53,14 @@ pub(crate) fn session_from_dict_internal(
 #[pymethods]
 impl PySession {
     #[new]
-    #[pyo3(signature = (start, alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![], end=None, note=None))]
+    #[pyo3(signature = (start, title=None, role=None, impact=None, mode=None, subject=None, trackers=vec![], end=None, note=None))]
     #[allow(clippy::too_many_arguments)]
     fn py_new<'py>(
         start: Bound<'py, PyDateTime>,
-        alias: Option<String>,
+        title: Option<String>,
         role: Option<String>,
-        objective: Option<String>,
-        action: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
         subject: Option<String>,
         trackers: Vec<String>,
         end: Option<Bound<'py, PyDateTime>>,
@@ -72,24 +72,24 @@ impl PySession {
             None => None,
         };
         Ok(Self {
-            inner: RustSession::new(alias, role, objective, action, subject, trackers, start, end, note),
+            inner: RustSession::new(title, role, impact, mode, subject, trackers, start, end, note),
         })
     }
 
     fn __getstate__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
 
-        if let Some(alias) = &self.inner.alias {
-            dict.set_item("alias", alias)?;
+        if let Some(title) = &self.inner.title {
+            dict.set_item("title", title)?;
         }
         if let Some(role) = &self.inner.role {
             dict.set_item("role", role)?;
         }
-        if let Some(objective) = &self.inner.objective {
-            dict.set_item("objective", objective)?;
+        if let Some(impact) = &self.inner.impact {
+            dict.set_item("impact", impact)?;
         }
-        if let Some(action) = &self.inner.action {
-            dict.set_item("action", action)?;
+        if let Some(mode) = &self.inner.mode {
+            dict.set_item("mode", mode)?;
         }
         if let Some(subject) = &self.inner.subject {
             dict.set_item("subject", subject)?;
@@ -115,8 +115,8 @@ impl PySession {
     }
 
     #[getter]
-    fn alias(&self) -> Option<String> {
-        self.inner.alias.clone()
+    fn title(&self) -> Option<String> {
+        self.inner.title.clone()
     }
 
     #[getter]
@@ -125,13 +125,13 @@ impl PySession {
     }
 
     #[getter]
-    fn objective(&self) -> Option<String> {
-        self.inner.objective.clone()
+    fn impact(&self) -> Option<String> {
+        self.inner.impact.clone()
     }
 
     #[getter]
-    fn action(&self) -> Option<String> {
-        self.inner.action.clone()
+    fn mode(&self) -> Option<String> {
+        self.inner.mode.clone()
     }
 
     #[getter]
@@ -280,17 +280,17 @@ impl PySession {
         Python::attach(|py| {
             let d = PyDict::new(py);
 
-            if let Some(alias) = &self.inner.alias {
-                d.set_item("alias", alias)?;
+            if let Some(title) = &self.inner.title {
+                d.set_item("title", title)?;
             }
             if let Some(role) = &self.inner.role {
                 d.set_item("role", role)?;
             }
-            if let Some(objective) = &self.inner.objective {
-                d.set_item("objective", objective)?;
+            if let Some(impact) = &self.inner.impact {
+                d.set_item("impact", impact)?;
             }
-            if let Some(action) = &self.inner.action {
-                d.set_item("action", action)?;
+            if let Some(mode) = &self.inner.mode {
+                d.set_item("mode", mode)?;
             }
             if let Some(subject) = &self.inner.subject {
                 d.set_item("subject", subject)?;
@@ -320,8 +320,8 @@ impl PySession {
 
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "Session(alias={:?}, role={:?}, start={:?}, end={:?}, note={:?})",
-            self.inner.alias, self.inner.role, self.inner.start, self.inner.end, self.inner.note,
+            "Session(title={:?}, role={:?}, start={:?}, end={:?}, note={:?})",
+            self.inner.title, self.inner.role, self.inner.start, self.inner.end, self.inner.note,
         ))
     }
 

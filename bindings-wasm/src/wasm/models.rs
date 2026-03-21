@@ -16,10 +16,10 @@ pub struct Session {
 impl Session {
     #[wasm_bindgen(constructor)]
     pub fn new(
-        alias: Option<String>,
+        title: Option<String>,
         role: Option<String>,
-        objective: Option<String>,
-        action: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
         subject: Option<String>,
         trackers: Option<Vec<String>>,
         start: js_sys::Date,
@@ -31,10 +31,10 @@ impl Session {
 
         Ok(Self {
             inner: RustSession::new(
-                alias,
+                title,
                 role,
-                objective,
-                action,
+                impact,
+                mode,
                 subject,
                 trackers.unwrap_or_default(),
                 start_dt,
@@ -45,8 +45,8 @@ impl Session {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn alias(&self) -> Option<String> {
-        self.inner.alias.clone()
+    pub fn title(&self) -> Option<String> {
+        self.inner.title.clone()
     }
 
     #[wasm_bindgen(getter)]
@@ -55,13 +55,13 @@ impl Session {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn objective(&self) -> Option<String> {
-        self.inner.objective.clone()
+    pub fn impact(&self) -> Option<String> {
+        self.inner.impact.clone()
     }
 
     #[wasm_bindgen(getter)]
-    pub fn action(&self) -> Option<String> {
-        self.inner.action.clone()
+    pub fn mode(&self) -> Option<String> {
+        self.inner.mode.clone()
     }
 
     #[wasm_bindgen(getter)]
@@ -190,7 +190,7 @@ impl Log {
     /// now: JS Date for calculating duration of open sessions
     /// Returns an object with:
     ///   totalMinutes: number
-    ///   byAlias: Record<string, number>
+    ///   byTitle: Record<string, number>
     ///   byTracker: Record<string, number>
     ///   byTrackerSource: Record<string, number>
     ///   meanReflectionScore: number | null
@@ -203,8 +203,8 @@ impl Log {
         js_sys::Reflect::set(&obj, &"totalMinutes".into(), &summary.total_minutes.into())?;
         js_sys::Reflect::set(
             &obj,
-            &"byAlias".into(),
-            &serde_wasm_bindgen::to_value(&summary.by_alias)
+            &"byTitle".into(),
+            &serde_wasm_bindgen::to_value(&summary.by_title)
                 .map_err(|e| JsValue::from_str(&e.to_string()))?,
         )?;
         js_sys::Reflect::set(
@@ -270,13 +270,13 @@ impl Plan {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn actions(&self) -> Vec<String> {
-        self.inner.actions.clone()
+    pub fn modes(&self) -> Vec<String> {
+        self.inner.modes.clone()
     }
 
     #[wasm_bindgen(getter)]
-    pub fn objectives(&self) -> Vec<String> {
-        self.inner.objectives.clone()
+    pub fn impacts(&self) -> Vec<String> {
+        self.inner.impacts.clone()
     }
 
     #[wasm_bindgen(getter)]

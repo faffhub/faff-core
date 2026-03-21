@@ -97,13 +97,13 @@ impl PyPlan {
     }
 
     #[getter]
-    fn actions(&self) -> Vec<String> {
-        self.inner.actions.clone()
+    fn modes(&self) -> Vec<String> {
+        self.inner.modes.clone()
     }
 
     #[getter]
-    fn objectives(&self) -> Vec<String> {
-        self.inner.objectives.clone()
+    fn impacts(&self) -> Vec<String> {
+        self.inner.impacts.clone()
     }
 
     #[getter]

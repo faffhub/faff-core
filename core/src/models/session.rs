@@ -137,10 +137,13 @@ fn combine_date_time(date: NaiveDate, tz: Tz, time_str: &str) -> Result<DateTime
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Session {
-    pub alias: Option<String>,
+    #[serde(alias = "alias")]
+    pub title: Option<String>,
     pub role: Option<String>,
-    pub objective: Option<String>,
-    pub action: Option<String>,
+    #[serde(alias = "objective")]
+    pub impact: Option<String>,
+    #[serde(alias = "action")]
+    pub mode: Option<String>,
     pub subject: Option<String>,
     #[serde(default, deserialize_with = "deserialize_trackers")]
     pub trackers: Vec<String>,
@@ -166,10 +169,10 @@ pub struct Session {
 impl Session {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        alias: Option<String>,
+        title: Option<String>,
         role: Option<String>,
-        objective: Option<String>,
-        action: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
         subject: Option<String>,
         trackers: Vec<String>,
         start: DateTime<Tz>,
@@ -177,10 +180,10 @@ impl Session {
         note: Option<String>,
     ) -> Self {
         Self {
-            alias,
+            title,
             role,
-            objective,
-            action,
+            impact,
+            mode,
             subject,
             trackers,
             start,
@@ -197,13 +200,25 @@ impl Session {
         date: chrono::NaiveDate,
         timezone: chrono_tz::Tz,
     ) -> Result<Self, String> {
-        let alias = dict.get("alias").and_then(|v| v.as_string()).cloned();
+        let title = dict
+            .get("title")
+            .or_else(|| dict.get("alias"))
+            .and_then(|v| v.as_string())
+            .cloned();
 
         let role = dict.get("role").and_then(|v| v.as_string()).cloned();
 
-        let objective = dict.get("objective").and_then(|v| v.as_string()).cloned();
+        let impact = dict
+            .get("impact")
+            .or_else(|| dict.get("objective"))
+            .and_then(|v| v.as_string())
+            .cloned();
 
-        let action = dict.get("action").and_then(|v| v.as_string()).cloned();
+        let mode = dict
+            .get("mode")
+            .or_else(|| dict.get("action"))
+            .and_then(|v| v.as_string())
+            .cloned();
 
         let subject = dict.get("subject").and_then(|v| v.as_string()).cloned();
 
@@ -246,10 +261,10 @@ impl Session {
         let reflection = dict.get("reflection").and_then(|v| v.as_string()).cloned();
 
         Ok(Self {
-            alias,
+            title,
             role,
-            objective,
-            action,
+            impact,
+            mode,
             subject,
             trackers,
             start,
@@ -309,9 +324,10 @@ impl Session {
         date: NaiveDate,
         timezone: Tz,
     ) -> anyhow::Result<Self> {
-        // Extract intent fields directly from the TOML table
-        let alias = table
-            .get("alias")
+        // Extract fields directly from the TOML table (try new names first, fall back to old)
+        let title = table
+            .get("title")
+            .or_else(|| table.get("alias"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -320,13 +336,15 @@ impl Session {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let objective = table
-            .get("objective")
+        let impact = table
+            .get("impact")
+            .or_else(|| table.get("objective"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let action = table
-            .get("action")
+        let mode = table
+            .get("mode")
+            .or_else(|| table.get("action"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -374,10 +392,10 @@ impl Session {
             .map(|s| s.to_string());
 
         Ok(Session {
-            alias,
+            title,
             role,
-            objective,
-            action,
+            impact,
+            mode,
             subject,
             trackers,
             start,
@@ -429,7 +447,7 @@ mod tests {
             Some("work".to_string()),
             Some("engineer".to_string()),
             Some("development".to_string()),
-            Some("coding".to_string()),
+            Some("coding".to_string()), // mode
             Some("features".to_string()),
             vec![],
             start,
@@ -455,7 +473,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(session.alias, Some("work".to_string()));
+        assert_eq!(session.title, Some("work".to_string()));
         assert_eq!(session.role, Some("engineer".to_string()));
         assert_eq!(session.start, start);
         assert_eq!(session.end, Some(end));
@@ -545,7 +563,7 @@ mod tests {
 
         let closed_session = open_session.with_end(end);
         assert_eq!(closed_session.end, Some(end));
-        assert_eq!(closed_session.alias, Some("work".to_string()));
+        assert_eq!(closed_session.title, Some("work".to_string()));
         assert_eq!(closed_session.start, start);
     }
 
@@ -617,7 +635,7 @@ mod tests {
             ValueType::String("engineer".to_string()),
         );
         dict.insert(
-            "action".to_string(),
+            "mode".to_string(),
             ValueType::String("coding".to_string()),
         );
         dict.insert(
@@ -633,7 +651,7 @@ mod tests {
         let session = Session::from_dict_with_tz(dict, date, tz).unwrap();
 
         assert_eq!(session.role, Some("engineer".to_string()));
-        assert_eq!(session.action, Some("coding".to_string()));
+        assert_eq!(session.mode, Some("coding".to_string()));
         assert_eq!(session.subject, Some("tests".to_string()));
         assert_eq!(session.start.hour(), 9);
         assert_eq!(session.end.unwrap().hour(), 10);

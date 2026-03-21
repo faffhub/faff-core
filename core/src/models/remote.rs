@@ -41,8 +41,10 @@ pub struct Remote {
 pub enum VocabularyType {
     Tracker,
     Role,
-    Objective,
-    Action,
+    #[serde(alias = "objective")]
+    Impact,
+    #[serde(alias = "action")]
+    Mode,
     Subject,
 }
 
@@ -70,13 +72,13 @@ pub struct VocabularyMapping {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
 
-    /// Template for objective (required if target_type is Objective)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub objective: Option<String>,
+    /// Template for impact (required if target_type is Impact)
+    #[serde(skip_serializing_if = "Option::is_none", alias = "objective")]
+    pub impact: Option<String>,
 
-    /// Template for action (required if target_type is Action)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
+    /// Template for mode (required if target_type is Mode)
+    #[serde(skip_serializing_if = "Option::is_none", alias = "action")]
+    pub mode: Option<String>,
 
     /// Template for subject (required if target_type is Subject)
     /// Supports filters: "customer/{customer|slugify}"
@@ -101,8 +103,8 @@ impl VocabularyMapping {
             target_type,
             pattern: pattern.into(),
             role: None,
-            objective: None,
-            action: None,
+            impact: None,
+            mode: None,
             subject: None,
             trackers: None,
         }
@@ -122,14 +124,14 @@ impl VocabularyMapping {
                     anyhow::bail!("Role mapping requires 'role' field");
                 }
             }
-            VocabularyType::Objective => {
-                if self.objective.is_none() {
-                    anyhow::bail!("Objective mapping requires 'objective' field");
+            VocabularyType::Impact => {
+                if self.impact.is_none() {
+                    anyhow::bail!("Impact mapping requires 'impact' field");
                 }
             }
-            VocabularyType::Action => {
-                if self.action.is_none() {
-                    anyhow::bail!("Action mapping requires 'action' field");
+            VocabularyType::Mode => {
+                if self.mode.is_none() {
+                    anyhow::bail!("Mode mapping requires 'mode' field");
                 }
             }
             VocabularyType::Subject => {
@@ -158,8 +160,8 @@ impl VocabularyMapping {
             let mut result = MappingResult {
                 target_type: self.target_type.clone(),
                 role: None,
-                objective: None,
-                action: None,
+                impact: None,
+                mode: None,
                 subject: None,
                 trackers: None,
             };
@@ -173,16 +175,16 @@ impl VocabularyMapping {
                     source_id,
                 )?);
             }
-            if let Some(template) = &self.objective {
-                result.objective = Some(Self::apply_template(
+            if let Some(template) = &self.impact {
+                result.impact = Some(Self::apply_template(
                     template,
                     &captures,
                     source_value,
                     source_id,
                 )?);
             }
-            if let Some(template) = &self.action {
-                result.action = Some(Self::apply_template(
+            if let Some(template) = &self.mode {
+                result.mode = Some(Self::apply_template(
                     template,
                     &captures,
                     source_value,
@@ -304,11 +306,11 @@ pub struct MappingResult {
     /// Generated role
     pub role: Option<String>,
 
-    /// Generated objective
-    pub objective: Option<String>,
+    /// Generated impact
+    pub impact: Option<String>,
 
-    /// Generated action
-    pub action: Option<String>,
+    /// Generated mode
+    pub mode: Option<String>,
 
     /// Generated subject
     pub subject: Option<String>,
@@ -327,13 +329,13 @@ pub struct RemoteVocabulary {
     #[serde(default)]
     pub roles: Vec<String>,
 
-    /// Objective identifiers (e.g., ["mycompany:feature-dev"])
-    #[serde(default)]
-    pub objectives: Vec<String>,
+    /// Impact identifiers (e.g., ["mycompany:feature-dev"])
+    #[serde(default, alias = "objectives")]
+    pub impacts: Vec<String>,
 
-    /// Action identifiers (e.g., ["mycompany:coding"])
-    #[serde(default)]
-    pub actions: Vec<String>,
+    /// Mode identifiers (e.g., ["mycompany:coding"])
+    #[serde(default, alias = "actions")]
+    pub modes: Vec<String>,
 
     /// Subject identifiers (e.g., ["mycompany:api"])
     #[serde(default)]
@@ -402,13 +404,13 @@ impl Remote {
                         .map(|r| (format!("{}:{}", plan.source, r), r.clone()))
                         .collect()
                 }
-                VocabularyType::Objective => plan
-                    .objectives
+                VocabularyType::Impact => plan
+                    .impacts
                     .iter()
                     .map(|o| (format!("{}:{}", plan.source, o), o.clone()))
                     .collect(),
-                VocabularyType::Action => plan
-                    .actions
+                VocabularyType::Mode => plan
+                    .modes
                     .iter()
                     .map(|a| (format!("{}:{}", plan.source, a), a.clone()))
                     .collect(),
@@ -432,20 +434,20 @@ impl Remote {
                                 augmented_plan.roles.push(role);
                             }
                         }
-                        VocabularyType::Objective => {
-                            let objective = result.objective.ok_or_else(|| {
-                                anyhow::anyhow!("Objective mapping must produce an objective")
+                        VocabularyType::Impact => {
+                            let impact = result.impact.ok_or_else(|| {
+                                anyhow::anyhow!("Impact mapping must produce an impact")
                             })?;
-                            if !augmented_plan.objectives.contains(&objective) {
-                                augmented_plan.objectives.push(objective);
+                            if !augmented_plan.impacts.contains(&impact) {
+                                augmented_plan.impacts.push(impact);
                             }
                         }
-                        VocabularyType::Action => {
-                            let action = result.action.ok_or_else(|| {
-                                anyhow::anyhow!("Action mapping must produce an action")
+                        VocabularyType::Mode => {
+                            let mode = result.mode.ok_or_else(|| {
+                                anyhow::anyhow!("Mode mapping must produce a mode")
                             })?;
-                            if !augmented_plan.actions.contains(&action) {
-                                augmented_plan.actions.push(action);
+                            if !augmented_plan.modes.contains(&mode) {
+                                augmented_plan.modes.push(mode);
                             }
                         }
                         VocabularyType::Subject => {
@@ -515,7 +517,7 @@ mod tests {
         );
         assert_eq!(remote.vocabulary.roles.len(), 2);
         assert_eq!(remote.vocabulary.roles[0], "mycompany:engineer");
-        assert_eq!(remote.vocabulary.objectives.len(), 2);
+        assert_eq!(remote.vocabulary.impacts.len(), 2);
     }
 
     #[test]

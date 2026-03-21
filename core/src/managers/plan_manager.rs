@@ -148,40 +148,40 @@ impl PlanManager {
         Ok(roles)
     }
 
-    /// Get all objectives from plans valid for a given date
-    pub async fn get_objectives(&self, date: NaiveDate) -> Result<Vec<String>> {
+    /// Get all impacts from plans valid for a given date
+    pub async fn get_impacts(&self, date: NaiveDate) -> Result<Vec<String>> {
         let plans = self.get_plans(date).await?;
-        let mut objectives = Vec::new();
+        let mut impacts = Vec::new();
 
         for plan in plans.values() {
-            for objective in &plan.objectives {
-                objectives.push(format!("{}:{}", plan.source, objective));
+            for impact in &plan.impacts {
+                impacts.push(format!("{}:{}", plan.source, impact));
             }
         }
 
         // Deduplicate and sort
-        objectives.sort();
-        objectives.dedup();
+        impacts.sort();
+        impacts.dedup();
 
-        Ok(objectives)
+        Ok(impacts)
     }
 
-    /// Get all actions from plans valid for a given date
-    pub async fn get_actions(&self, date: NaiveDate) -> Result<Vec<String>> {
+    /// Get all modes from plans valid for a given date
+    pub async fn get_modes(&self, date: NaiveDate) -> Result<Vec<String>> {
         let plans = self.get_plans(date).await?;
-        let mut actions = Vec::new();
+        let mut modes = Vec::new();
 
         for plan in plans.values() {
-            for action in &plan.actions {
-                actions.push(format!("{}:{}", plan.source, action));
+            for mode in &plan.modes {
+                modes.push(format!("{}:{}", plan.source, mode));
             }
         }
 
         // Deduplicate and sort
-        actions.sort();
-        actions.dedup();
+        modes.sort();
+        modes.dedup();
 
-        Ok(actions)
+        Ok(modes)
     }
 
     /// Get all subjects from plans valid for a given date
@@ -430,7 +430,7 @@ impl PlanManager {
     /// Updates plan-level ASTRO collections
     ///
     /// # Arguments
-    /// * `field` - The field to update (role, objective, action, subject)
+    /// * `field` - The field to update (role, impact, mode, subject)
     /// * `old_value` - The value to replace
     /// * `new_value` - The new value
     ///
@@ -482,10 +482,10 @@ impl PlanManager {
                         plan_modified = true;
                     }
                 }
-                "objective" => {
-                    let mut objectives = plan.objectives.clone();
-                    if objectives.iter().any(|v| v == old_value) {
-                        objectives = objectives
+                "impact" => {
+                    let mut impacts = plan.impacts.clone();
+                    if impacts.iter().any(|v| v == old_value) {
+                        impacts = impacts
                             .into_iter()
                             .map(|v| {
                                 if v == old_value {
@@ -495,14 +495,14 @@ impl PlanManager {
                                 }
                             })
                             .collect();
-                        plan.objectives = objectives;
+                        plan.impacts = impacts;
                         plan_modified = true;
                     }
                 }
-                "action" => {
-                    let mut actions = plan.actions.clone();
-                    if actions.iter().any(|v| v == old_value) {
-                        actions = actions
+                "mode" => {
+                    let mut modes = plan.modes.clone();
+                    if modes.iter().any(|v| v == old_value) {
+                        modes = modes
                             .into_iter()
                             .map(|v| {
                                 if v == old_value {
@@ -512,7 +512,7 @@ impl PlanManager {
                                 }
                             })
                             .collect();
-                        plan.actions = actions;
+                        plan.modes = modes;
                         plan_modified = true;
                     }
                 }
@@ -571,8 +571,8 @@ impl PlanManager {
             // Count vocabulary usage in this plan
             let values: Vec<&String> = match field {
                 "role" => plan.roles.iter().collect(),
-                "objective" => plan.objectives.iter().collect(),
-                "action" => plan.actions.iter().collect(),
+                "impact" => plan.impacts.iter().collect(),
+                "mode" => plan.modes.iter().collect(),
                 "subject" => plan.subjects.iter().collect(),
                 "tracker" => {
                     for tracker in plan.trackers.keys() {

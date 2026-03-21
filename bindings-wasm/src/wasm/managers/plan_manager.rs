@@ -9,7 +9,7 @@ use wasm_bindgen_futures::future_to_promise;
 
 /// PlanManager handles reading and writing work plans and vocabularies.
 ///
-/// Plans define the vocabulary (roles, actions, objectives, subjects) and
+/// Plans define the vocabulary (roles, modes, impacts, subjects) and
 /// predefined intents that can be used in logs.
 #[wasm_bindgen]
 pub struct PlanManager {
@@ -98,50 +98,50 @@ impl PlanManager {
         })
     }
 
-    /// Get all objectives from plans valid for a given date.
+    /// Get all impacts from plans valid for a given date.
     ///
     /// date: JS Date object
     /// Returns Promise<string[]>.
-    #[wasm_bindgen(js_name = getObjectives)]
-    pub fn get_objectives(&self, date: js_sys::Date) -> js_sys::Promise {
+    #[wasm_bindgen(js_name = getImpacts)]
+    pub fn get_impacts(&self, date: js_sys::Date) -> js_sys::Promise {
         let inner = self.inner.clone();
 
         future_to_promise(async move {
             let naive_date = js_date_to_naive_date(&date)?;
 
-            let objectives = inner
-                .get_objectives(naive_date)
+            let impacts = inner
+                .get_impacts(naive_date)
                 .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get objectives: {}", e)))?;
+                .map_err(|e| JsValue::from_str(&format!("Failed to get impacts: {}", e)))?;
 
             let array = js_sys::Array::new();
-            for objective in objectives {
-                array.push(&JsValue::from_str(&objective));
+            for impact in impacts {
+                array.push(&JsValue::from_str(&impact));
             }
 
             Ok(JsValue::from(array))
         })
     }
 
-    /// Get all actions from plans valid for a given date.
+    /// Get all modes from plans valid for a given date.
     ///
     /// date: JS Date object
     /// Returns Promise<string[]>.
-    #[wasm_bindgen(js_name = getActions)]
-    pub fn get_actions(&self, date: js_sys::Date) -> js_sys::Promise {
+    #[wasm_bindgen(js_name = getModes)]
+    pub fn get_modes(&self, date: js_sys::Date) -> js_sys::Promise {
         let inner = self.inner.clone();
 
         future_to_promise(async move {
             let naive_date = js_date_to_naive_date(&date)?;
 
-            let actions = inner
-                .get_actions(naive_date)
+            let modes = inner
+                .get_modes(naive_date)
                 .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get actions: {}", e)))?;
+                .map_err(|e| JsValue::from_str(&format!("Failed to get modes: {}", e)))?;
 
             let array = js_sys::Array::new();
-            for action in actions {
-                array.push(&JsValue::from_str(&action));
+            for mode in modes {
+                array.push(&JsValue::from_str(&mode));
             }
 
             Ok(JsValue::from(array))
@@ -288,7 +288,7 @@ impl PlanManager {
 
     /// Replace a field value across all plans.
     ///
-    /// field: string field name (role, objective, action, subject)
+    /// field: string field name (role, impact, mode, subject)
     /// old_value: string old value to replace
     /// new_value: string new value
     /// Returns Promise<number> - number of plans updated.
@@ -316,7 +316,7 @@ impl PlanManager {
 
     /// Get usage statistics for a field across all plans.
     ///
-    /// field: string field name (role, objective, action, subject)
+    /// field: string field name (role, impact, mode, subject)
     /// Returns Promise<Map<string, number>> - field value -> intent count.
     #[wasm_bindgen(js_name = getFieldUsageStats)]
     pub fn get_field_usage_stats(&self, field: &str) -> js_sys::Promise {
