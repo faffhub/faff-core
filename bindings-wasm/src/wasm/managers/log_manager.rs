@@ -222,20 +222,30 @@ impl LogManager {
         })
     }
 
-    /// Start a new session with the given intent.
+    /// Start a new session.
     ///
     /// If there's an active session, it will be stopped at the start time.
     /// Validates that start_time is not in the future and doesn't conflict
     /// with existing sessions.
     ///
-    /// intent: Intent object
+    /// alias: optional string alias
+    /// role: optional string role
+    /// objective: optional string objective
+    /// action: optional string action
+    /// subject: optional string subject
+    /// trackers: optional array of tracker IDs
     /// startTime: optional JS Date object (defaults to now)
     /// note: optional string note
     /// Returns Promise<void>.
-    #[wasm_bindgen(js_name = startIntent)]
-    pub fn start_intent(
+    #[wasm_bindgen(js_name = startSession)]
+    pub fn start_session(
         &self,
-        intent: &super::super::models::Intent,
+        alias: Option<String>,
+        role: Option<String>,
+        objective: Option<String>,
+        action: Option<String>,
+        subject: Option<String>,
+        trackers: Option<Vec<String>>,
         start_time: Option<js_sys::Date>,
         note: Option<String>,
     ) -> js_sys::Promise {
@@ -249,7 +259,6 @@ impl LogManager {
         };
 
         let inner = self.inner.clone();
-        let intent_inner = intent.inner.clone();
 
         future_to_promise(async move {
             let start = match start_time {
@@ -258,7 +267,16 @@ impl LogManager {
             };
 
             inner
-                .start_intent(intent_inner, start, note)
+                .start_session(
+                    alias,
+                    role,
+                    objective,
+                    action,
+                    subject,
+                    trackers.unwrap_or_default(),
+                    start,
+                    note,
+                )
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to start session: {}", e)))?;
 
@@ -280,76 +298,6 @@ impl LogManager {
                 .map_err(|e| JsValue::from_str(&format!("Failed to stop session: {}", e)))?;
 
             Ok(JsValue::undefined())
-        })
-    }
-
-    /// Find all logs that contain sessions using the given intent.
-    ///
-    /// intent_id: string intent ID
-    /// Returns Promise<Array<{date: Date, sessionCount: number}>>.
-    #[wasm_bindgen(js_name = findLogsWithIntent)]
-    pub fn find_logs_with_intent(&self, intent_id: &str) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let intent_id = intent_id.to_string();
-
-        future_to_promise(async move {
-            let results = inner
-                .find_logs_with_intent(&intent_id)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to find logs: {}", e)))?;
-
-            let array = js_sys::Array::new();
-            for (date, session_count) in results {
-                let obj = js_sys::Object::new();
-                js_sys::Reflect::set(
-                    &obj,
-                    &JsValue::from_str("date"),
-                    &naive_date_to_js_date(&date),
-                )?;
-                js_sys::Reflect::set(
-                    &obj,
-                    &JsValue::from_str("sessionCount"),
-                    &JsValue::from_f64(session_count as f64),
-                )?;
-                array.push(&obj);
-            }
-
-            Ok(JsValue::from(array))
-        })
-    }
-
-    /// Update an intent across all log files.
-    ///
-    /// intent_id: string intent ID
-    /// updated_intent: Intent object with new values
-    /// trackers: object (map of tracker keys to field names)
-    /// Returns Promise<number> - total number of sessions updated.
-    #[wasm_bindgen(js_name = updateIntentInLogs)]
-    pub fn update_intent_in_logs(
-        &self,
-        intent_id: &str,
-        updated_intent: &super::super::models::Intent,
-        trackers: JsValue,
-    ) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let intent_id = intent_id.to_string();
-        let updated_intent = updated_intent.inner.clone();
-
-        future_to_promise(async move {
-            // Convert JsValue to HashMap<String, String>
-            let trackers_map: HashMap<String, String> = if trackers.is_object() {
-                serde_wasm_bindgen::from_value(trackers)
-                    .map_err(|e| JsValue::from_str(&format!("Invalid trackers object: {}", e)))?
-            } else {
-                HashMap::new()
-            };
-
-            let count = inner
-                .update_intent_in_logs(&intent_id, updated_intent, &trackers_map)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to update intent: {}", e)))?;
-
-            Ok(JsValue::from_f64(count as f64))
         })
     }
 

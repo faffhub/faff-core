@@ -11,7 +11,6 @@ pub mod workspace;
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let models_mod = PyModule::new(m.py(), "models")?;
     faff_core::plugins::models::config::register(&models_mod)?;
-    faff_core::plugins::models::intent::register(&models_mod)?;
     faff_core::plugins::models::session::register(&models_mod)?;
     faff_core::plugins::models::log::register(&models_mod)?;
     faff_core::plugins::models::plan::register(&models_mod)?;

@@ -173,7 +173,12 @@ impl LogManager {
             .context("Failed to create start of day timestamp")?;
 
         let continuation_session = crate::models::Session::new(
-            unclosed_session.intent.clone(),
+            unclosed_session.alias.clone(),
+            unclosed_session.role.clone(),
+            unclosed_session.objective.clone(),
+            unclosed_session.action.clone(),
+            unclosed_session.subject.clone(),
+            unclosed_session.trackers.clone(),
             start_of_day,
             None, // Unclosed
             unclosed_session.note.clone(),
@@ -243,7 +248,7 @@ impl LogManager {
             .with_context(|| format!("Failed to delete log for {date}"))
     }
 
-    /// Start a new session with the given intent at a specific time
+    /// Start a new session at a specific time
     ///
     /// Validates that:
     /// - start_time is not in the future (relative to `now`)
@@ -251,9 +256,14 @@ impl LogManager {
     ///
     /// If there's an active session, it will be stopped at `start_time` before
     /// starting the new session.
-    pub async fn start_intent(
+    pub async fn start_session(
         &self,
-        intent: crate::models::Intent,
+        alias: Option<String>,
+        role: Option<String>,
+        objective: Option<String>,
+        action: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
         start_time: chrono::DateTime<Tz>,
         note: Option<String>,
     ) -> Result<()> {
@@ -265,7 +275,7 @@ impl LogManager {
 
         let current_date = start_time.date_naive();
         let now = ws.now();
-        let trackers = ws.plans().get_trackers(current_date).await?;
+        let plan_trackers = ws.plans().get_trackers(current_date).await?;
         // Get today's log (returns empty log if file doesn't exist)
         let mut log = self.get_log(current_date).await?;
 
@@ -305,12 +315,12 @@ impl LogManager {
         }
 
         // Validate trackers if any are specified
-        if !intent.trackers.is_empty() {
-            let tracker_ids: std::collections::HashSet<_> = trackers.keys().collect();
-            let intent_tracker_set: std::collections::HashSet<_> = intent.trackers.iter().collect();
+        if !trackers.is_empty() {
+            let tracker_ids: std::collections::HashSet<_> = plan_trackers.keys().collect();
+            let session_tracker_set: std::collections::HashSet<_> = trackers.iter().collect();
 
-            if !intent_tracker_set.is_subset(&tracker_ids) {
-                let missing: Vec<_> = intent_tracker_set
+            if !session_tracker_set.is_subset(&tracker_ids) {
+                let missing: Vec<_> = session_tracker_set
                     .difference(&tracker_ids)
                     .map(|s| s.as_str())
                     .collect();
@@ -319,11 +329,21 @@ impl LogManager {
         }
 
         // Create new session
-        let session = crate::models::Session::new(intent, start_time, None, note);
+        let session = crate::models::Session::new(
+            alias,
+            role,
+            objective,
+            action,
+            subject,
+            trackers,
+            start_time,
+            None,
+            note,
+        );
 
         // Append to log and write
         let updated_log = log.append_session(session)?;
-        self.write_log(&updated_log, &trackers).await?;
+        self.write_log(&updated_log, &plan_trackers).await?;
 
         Ok(())
     }
@@ -353,59 +373,9 @@ impl LogManager {
         }
     }
 
-    /// Find all logs that contain sessions using the given intent
-    ///
-    /// Returns a list of (date, session_count) tuples
-    pub async fn find_logs_with_intent(&self, intent_id: &str) -> Result<Vec<(NaiveDate, usize)>> {
-        let all_dates = self.list_logs().await?;
-        let mut logs_with_intent = Vec::new();
-
-        for date in all_dates {
-            if let Ok(log) = self.get_log(date).await {
-                let count = log
-                    .timeline
-                    .iter()
-                    .filter(|s| s.intent.intent_id == intent_id)
-                    .count();
-
-                if count > 0 {
-                    logs_with_intent.push((date, count));
-                }
-            }
-        }
-
-        Ok(logs_with_intent)
-    }
-
-    /// Update an intent across all log files
-    ///
-    /// Returns the total number of sessions updated
-    pub async fn update_intent_in_logs(
-        &self,
-        intent_id: &str,
-        updated_intent: crate::models::Intent,
-        trackers: &std::collections::HashMap<String, String>,
-    ) -> Result<usize> {
-        let logs_with_intent = self.find_logs_with_intent(intent_id).await?;
-        let mut total_updated = 0;
-
-        for (date, _) in logs_with_intent {
-            if let Ok(log) = self.get_log(date).await {
-                let (updated_log, count) = log.update_intent(intent_id, updated_intent.clone());
-
-                if count > 0 {
-                    self.write_log(&updated_log, trackers).await?;
-                    total_updated += count;
-                }
-            }
-        }
-
-        Ok(total_updated)
-    }
-
     /// Replace a field value across all log sessions
     ///
-    /// Updates all sessions' embedded intent fields
+    /// Updates all sessions' embedded fields
     ///
     /// # Arguments
     /// * `field` - The field to update (role, objective, action, subject)
@@ -436,50 +406,43 @@ impl LogManager {
 
             // Update sessions
             for session in &log.timeline {
-                let intent_field_value = match field {
-                    "role" => &session.intent.role,
-                    "objective" => &session.intent.objective,
-                    "action" => &session.intent.action,
-                    "subject" => &session.intent.subject,
+                let session_field_value = match field {
+                    "role" => &session.role,
+                    "objective" => &session.objective,
+                    "action" => &session.action,
+                    "subject" => &session.subject,
                     _ => return Err(anyhow::anyhow!("Unsupported field: {}", field)),
                 };
 
-                if intent_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
-                    // Create updated intent
-                    let updated_intent = crate::models::intent::Intent::new(
-                        session.intent.alias.clone(),
+                if session_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
+                    // Create updated session with new field value
+                    let updated_session = crate::models::Session::new(
+                        session.alias.clone(),
                         if field == "role" {
                             Some(new_value.to_string())
                         } else {
-                            session.intent.role.clone()
+                            session.role.clone()
                         },
                         if field == "objective" {
                             Some(new_value.to_string())
                         } else {
-                            session.intent.objective.clone()
+                            session.objective.clone()
                         },
                         if field == "action" {
                             Some(new_value.to_string())
                         } else {
-                            session.intent.action.clone()
+                            session.action.clone()
                         },
                         if field == "subject" {
                             Some(new_value.to_string())
                         } else {
-                            session.intent.subject.clone()
+                            session.subject.clone()
                         },
-                        session.intent.trackers.clone(),
+                        session.trackers.clone(),
+                        session.start,
+                        session.end,
+                        session.note.clone(),
                     );
-
-                    // Create updated session
-                    let updated_session = crate::models::session::Session {
-                        intent: updated_intent,
-                        start: session.start,
-                        end: session.end,
-                        note: session.note.clone(),
-                        reflection_score: session.reflection_score,
-                        reflection: session.reflection.clone(),
-                    };
 
                     updated_timeline.push(updated_session);
                     sessions_updated += 1;
@@ -526,13 +489,13 @@ impl LogManager {
             // Count sessions
             for session in &log.timeline {
                 let session_field_value = match field {
-                    "role" => &session.intent.role,
-                    "objective" => &session.intent.objective,
-                    "action" => &session.intent.action,
-                    "subject" => &session.intent.subject,
+                    "role" => &session.role,
+                    "objective" => &session.objective,
+                    "action" => &session.action,
+                    "subject" => &session.subject,
                     "tracker" => {
                         // Trackers are a list, count each one
-                        for tracker in &session.intent.trackers {
+                        for tracker in &session.trackers {
                             *session_count.entry(tracker.clone()).or_insert(0) += 1;
                             log_dates.entry(tracker.clone()).or_default().insert(date);
                         }
@@ -647,8 +610,8 @@ note = "Morning session"
         assert_eq!(log.timeline.len(), 1);
 
         let session = &log.timeline[0];
-        assert_eq!(session.intent.alias.as_ref().unwrap(), "work");
-        assert_eq!(session.intent.role.as_ref().unwrap(), "dev");
+        assert_eq!(session.alias.as_ref().unwrap(), "work");
+        assert_eq!(session.role.as_ref().unwrap(), "dev");
         assert_eq!(session.note.as_ref().unwrap(), "Morning session");
     }
 
@@ -667,7 +630,7 @@ note = "Morning session"
 
     #[tokio::test]
     async fn test_midnight_crossing_continuation() {
-        use crate::models::{Intent, Session};
+        use crate::models::Session;
         use chrono::{TimeZone, Timelike};
 
         let storage = Arc::new(MockStorage::new());
@@ -677,20 +640,16 @@ note = "Morning session"
         let today = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
 
         // Create an unclosed session yesterday at 23:30
-        let intent = Intent::new(
+        let session_start = chrono_tz::UTC
+            .with_ymd_and_hms(2025, 3, 14, 23, 30, 0)
+            .unwrap();
+        let unclosed_session = Session::new(
             Some("work".to_string()),
             Some("dev".to_string()),
             Some("project".to_string()),
             Some("coding".to_string()),
             Some("api".to_string()),
             vec![],
-        );
-
-        let session_start = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 14, 23, 30, 0)
-            .unwrap();
-        let unclosed_session = Session::new(
-            intent.clone(),
             session_start,
             None,
             Some("late night coding".to_string()),
@@ -719,7 +678,7 @@ note = "Morning session"
         // Verify today's log has one session starting at 00:00
         assert_eq!(today_log.timeline.len(), 1);
         let today_session = &today_log.timeline[0];
-        assert_eq!(today_session.intent.alias, Some("work".to_string()));
+        assert_eq!(today_session.alias, Some("work".to_string()));
         assert_eq!(today_session.start.hour(), 0);
         assert_eq!(today_session.start.minute(), 0);
         assert!(
@@ -742,8 +701,7 @@ note = "Morning session"
     }
 
     #[tokio::test]
-    async fn test_start_intent_validation_future_time() {
-        use crate::models::Intent;
+    async fn test_start_session_validation_future_time() {
         use chrono::{Duration, Utc};
 
         let storage = Arc::new(MockStorage::new());
@@ -752,17 +710,27 @@ note = "Morning session"
         // Create a time that is definitely in the future (1 hour from now)
         let future = Utc::now().with_timezone(&chrono_tz::UTC) + Duration::hours(1);
 
-        let intent = Intent::new(Some("work".to_string()), None, None, None, None, vec![]);
-
-        let result = ws.logs().start_intent(intent, future, None).await;
+        let result = ws
+            .logs()
+            .start_session(
+                Some("work".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                future,
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("future"));
     }
 
     #[tokio::test]
-    async fn test_start_intent_validation_overlap_active_session() {
-        use crate::models::{Intent, Session};
+    async fn test_start_session_validation_overlap_active_session() {
+        use crate::models::Session;
         use chrono::TimeZone;
 
         let storage = Arc::new(MockStorage::new());
@@ -771,29 +739,49 @@ note = "Morning session"
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
 
         // Create a log with an active session starting at 10:00
-        let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
         let session_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
             .unwrap();
-        let session = Session::new(intent, session_start, None, None);
+        let session = Session::new(
+            Some("existing".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            session_start,
+            None,
+            None,
+        );
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
         // Try to start a new session at 09:00 (before active session started)
-        let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
         let bad_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
             .unwrap();
 
-        let result = ws.logs().start_intent(new_intent, bad_start, None).await;
+        let result = ws
+            .logs()
+            .start_session(
+                Some("new".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                bad_start,
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Active session"));
     }
 
     #[tokio::test]
-    async fn test_start_intent_validation_overlap_completed_session() {
-        use crate::models::{Intent, Session};
+    async fn test_start_session_validation_overlap_completed_session() {
+        use crate::models::Session;
         use chrono::TimeZone;
 
         let storage = Arc::new(MockStorage::new());
@@ -802,24 +790,44 @@ note = "Morning session"
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
 
         // Create a log with a completed session from 09:00 to 10:00
-        let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
         let session_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
             .unwrap();
         let session_end = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
             .unwrap();
-        let session = Session::new(intent, session_start, Some(session_end), None);
+        let session = Session::new(
+            Some("existing".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            session_start,
+            Some(session_end),
+            None,
+        );
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
         // Try to start at 09:30 (overlapping completed session)
-        let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
         let bad_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 9, 30, 0)
             .unwrap();
 
-        let result = ws.logs().start_intent(new_intent, bad_start, None).await;
+        let result = ws
+            .logs()
+            .start_session(
+                Some("new".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                bad_start,
+                None,
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(result
@@ -829,8 +837,8 @@ note = "Morning session"
     }
 
     #[tokio::test]
-    async fn test_start_intent_stops_active_session() {
-        use crate::models::{Intent, Session};
+    async fn test_start_session_stops_active_session() {
+        use crate::models::Session;
         use chrono::{TimeZone, Timelike};
 
         let storage = Arc::new(MockStorage::new());
@@ -839,22 +847,39 @@ note = "Morning session"
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
 
         // Create a log with an active session starting at 09:00
-        let intent = Intent::new(Some("existing".to_string()), None, None, None, None, vec![]);
         let session_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
             .unwrap();
-        let session = Session::new(intent, session_start, None, None);
+        let session = Session::new(
+            Some("existing".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            session_start,
+            None,
+            None,
+        );
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
         // Start a new session at 11:00 (after active session started)
-        let new_intent = Intent::new(Some("new".to_string()), None, None, None, None, vec![]);
         let new_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
             .unwrap();
 
         ws.logs()
-            .start_intent(new_intent, new_start, None)
+            .start_session(
+                Some("new".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                new_start,
+                None,
+            )
             .await
             .unwrap();
 
@@ -863,12 +888,12 @@ note = "Morning session"
         assert_eq!(log.timeline.len(), 2);
 
         // First session should be closed at 11:00
-        assert_eq!(log.timeline[0].intent.alias, Some("existing".to_string()));
+        assert_eq!(log.timeline[0].alias, Some("existing".to_string()));
         assert!(log.timeline[0].end.is_some());
         assert_eq!(log.timeline[0].end.unwrap().hour(), 11);
 
         // Second session should be active
-        assert_eq!(log.timeline[1].intent.alias, Some("new".to_string()));
+        assert_eq!(log.timeline[1].alias, Some("new".to_string()));
         assert!(log.timeline[1].end.is_none());
     }
 }

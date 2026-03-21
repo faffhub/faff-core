@@ -1,4 +1,4 @@
-use super::super::models::{Intent, Plan};
+use super::super::models::Plan;
 use super::super::storage::JsStorageAdapter;
 use chrono::Datelike;
 use faff_core::managers::PlanManager as RustPlanManager;
@@ -70,31 +70,6 @@ impl PlanManager {
             }
 
             Ok(JsValue::from(map))
-        })
-    }
-
-    /// Get all intents from plans valid for a given date.
-    ///
-    /// date: JS Date object
-    /// Returns Promise<Intent[]>.
-    #[wasm_bindgen(js_name = getIntents)]
-    pub fn get_intents(&self, date: js_sys::Date) -> js_sys::Promise {
-        let inner = self.inner.clone();
-
-        future_to_promise(async move {
-            let naive_date = js_date_to_naive_date(&date)?;
-
-            let intents = inner
-                .get_intents(naive_date)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to get intents: {}", e)))?;
-
-            let array = js_sys::Array::new();
-            for intent in intents {
-                array.push(&JsValue::from(Intent { inner: intent }));
-            }
-
-            Ok(JsValue::from(array))
         })
     }
 
@@ -311,76 +286,12 @@ impl PlanManager {
         })
     }
 
-    /// Find an intent by ID across all plan files.
-    ///
-    /// intent_id: string
-    /// Returns Promise<{source: string, intent: Intent, planFilePath: string} | null>.
-    #[wasm_bindgen(js_name = findIntentById)]
-    pub fn find_intent_by_id(&self, intent_id: &str) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let intent_id = intent_id.to_string();
-
-        future_to_promise(async move {
-            let result = inner
-                .find_intent_by_id(&intent_id)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to find intent: {}", e)))?;
-
-            match result {
-                Some((source, intent, path)) => {
-                    let obj = js_sys::Object::new();
-                    js_sys::Reflect::set(
-                        &obj,
-                        &JsValue::from_str("source"),
-                        &JsValue::from_str(&source),
-                    )?;
-                    js_sys::Reflect::set(
-                        &obj,
-                        &JsValue::from_str("intent"),
-                        &JsValue::from(Intent { inner: intent }),
-                    )?;
-                    js_sys::Reflect::set(
-                        &obj,
-                        &JsValue::from_str("planFilePath"),
-                        &JsValue::from_str(&path.to_string_lossy()),
-                    )?;
-                    Ok(JsValue::from(obj))
-                }
-                None => Ok(JsValue::null()),
-            }
-        })
-    }
-
-    /// Update an intent by ID across all plan files.
-    ///
-    /// intent_id: string
-    /// updated_intent: Intent object
-    /// Returns Promise<Plan | null> - updated Plan or null if intent not found.
-    #[wasm_bindgen(js_name = updateIntentById)]
-    pub fn update_intent_by_id(&self, intent_id: &str, updated_intent: &Intent) -> js_sys::Promise {
-        let inner = self.inner.clone();
-        let intent_id = intent_id.to_string();
-        let updated_intent = updated_intent.inner.clone();
-
-        future_to_promise(async move {
-            let result = inner
-                .update_intent_by_id(&intent_id, updated_intent)
-                .await
-                .map_err(|e| JsValue::from_str(&format!("Failed to update intent: {}", e)))?;
-
-            match result {
-                Some(inner) => Ok(JsValue::from(Plan { inner })),
-                None => Ok(JsValue::null()),
-            }
-        })
-    }
-
     /// Replace a field value across all plans.
     ///
     /// field: string field name (role, objective, action, subject)
     /// old_value: string old value to replace
     /// new_value: string new value
-    /// Returns Promise<{plansUpdated: number, intentsUpdated: number}>.
+    /// Returns Promise<number> - number of plans updated.
     #[wasm_bindgen(js_name = replaceFieldInAllPlans)]
     pub fn replace_field_in_all_plans(
         &self,
@@ -394,24 +305,12 @@ impl PlanManager {
         let new_value = new_value.to_string();
 
         future_to_promise(async move {
-            let (plans_updated, intents_updated) = inner
+            let plans_updated = inner
                 .replace_field_in_all_plans(&field, &old_value, &new_value)
                 .await
                 .map_err(|e| JsValue::from_str(&format!("Failed to replace field: {}", e)))?;
 
-            let obj = js_sys::Object::new();
-            js_sys::Reflect::set(
-                &obj,
-                &JsValue::from_str("plansUpdated"),
-                &JsValue::from_f64(plans_updated as f64),
-            )?;
-            js_sys::Reflect::set(
-                &obj,
-                &JsValue::from_str("intentsUpdated"),
-                &JsValue::from_f64(intents_updated as f64),
-            )?;
-
-            Ok(JsValue::from(obj))
+            Ok(JsValue::from_f64(plans_updated as f64))
         })
     }
 

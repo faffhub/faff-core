@@ -1,11 +1,10 @@
 use chrono::{Datelike, NaiveDate};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDate, PyDict, PyList, PyType};
+use pyo3::types::{PyDate, PyDict, PyType};
 use std::collections::HashMap;
 
 use crate::models::plan::Plan as RustPlan;
-use crate::plugins::models::intent::PyIntent;
 
 #[pyclass(name = "Plan")]
 #[derive(Clone)]
@@ -21,7 +20,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pymethods]
 impl PyPlan {
     #[new]
-    #[pyo3(signature = (source, valid_from, valid_until=None, roles=vec![], actions=vec![], objectives=vec![], subjects=vec![], trackers=None, intents=vec![]))]
+    #[pyo3(signature = (source, valid_from, valid_until=None, roles=vec![], actions=vec![], objectives=vec![], subjects=vec![], trackers=None))]
     /// Python constructor mirrors struct fields, so many arguments are unavoidable
     #[allow(clippy::too_many_arguments)]
     fn py_new(
@@ -33,7 +32,6 @@ impl PyPlan {
         objectives: Vec<String>,
         subjects: Vec<String>,
         trackers: Option<HashMap<String, String>>,
-        intents: Vec<PyIntent>,
     ) -> PyResult<Self> {
         // Convert Python dates to NaiveDate
         let valid_from_str: String = valid_from.call_method0("isoformat")?.extract()?;
@@ -50,8 +48,6 @@ impl PyPlan {
             None
         };
 
-        let rust_intents: Vec<_> = intents.into_iter().map(|i| i.inner).collect();
-
         Ok(Self {
             inner: RustPlan::new(
                 source,
@@ -62,7 +58,6 @@ impl PyPlan {
                 objectives,
                 subjects,
                 trackers.unwrap_or_default(),
-                rust_intents,
             ),
         })
     }
@@ -121,15 +116,6 @@ impl PyPlan {
         self.inner.trackers.clone()
     }
 
-    #[getter]
-    fn intents(&self) -> Vec<PyIntent> {
-        self.inner
-            .intents
-            .iter()
-            .map(|i| PyIntent { inner: i.clone() })
-            .collect()
-    }
-
     #[classmethod]
     fn from_dict(_cls: &Bound<'_, PyType>, data: &Bound<'_, PyDict>) -> PyResult<Self> {
         // Extract source
@@ -178,22 +164,6 @@ impl PyPlan {
             .and_then(|item| item.extract().ok())
             .unwrap_or_default();
 
-        // Extract intents
-        let intents = match data.get_item("intents")? {
-            Some(intents_item) => {
-                let intents_list = intents_item.downcast::<PyList>()?;
-                let mut rust_intents = Vec::new();
-                for item in intents_list.iter() {
-                    let intent_dict = item.downcast::<PyDict>()?;
-                    let py_intent =
-                        crate::plugins::models::intent::intent_from_dict_internal(intent_dict)?;
-                    rust_intents.push(py_intent.inner);
-                }
-                rust_intents
-            }
-            None => vec![],
-        };
-
         Ok(Self {
             inner: RustPlan::new(
                 source,
@@ -204,19 +174,12 @@ impl PyPlan {
                 objectives,
                 subjects,
                 trackers,
-                intents,
             ),
         })
     }
 
     fn id(&self) -> String {
         self.inner.id()
-    }
-
-    fn add_intent(&self, intent: PyIntent) -> PyPlan {
-        PyPlan {
-            inner: self.inner.add_intent(intent.inner),
-        }
     }
 
     fn to_toml(&self) -> PyResult<String> {
@@ -231,10 +194,9 @@ impl PyPlan {
 
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "Plan(source={:?}, valid_from={}, intents=[{} intents])",
+            "Plan(source={:?}, valid_from={})",
             self.inner.source,
             self.inner.valid_from,
-            self.inner.intents.len()
         ))
     }
 

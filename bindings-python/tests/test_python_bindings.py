@@ -13,7 +13,7 @@ import tempfile
 
 import faff_core
 from faff_core import Workspace, UninitializedLedgerError
-from faff_core.models import Log, Session, Intent, Plan, Timesheet
+from faff_core.models import Log, Session, Plan, Timesheet
 
 
 class TestDateTimeConversions:
@@ -46,28 +46,27 @@ class TestDateTimeConversions:
         start_dt = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
         end_dt = datetime.datetime(2025, 3, 15, 10, 30, 0, tzinfo=tz)
 
-        intent = Intent(
+        session = Session(
+            start=start_dt,
+            end=end_dt,
             alias="work",
             role="engineer",
             objective="development",
             action="coding",
             subject="tests",
-            trackers=[]
+            trackers=[],
         )
-
-        session = Session(intent, start_dt, end_dt, None)
 
         assert session.start == start_dt
         assert session.end == end_dt
-        assert session.intent.alias == "work"
+        assert session.alias == "work"
 
     def test_session_with_microseconds(self):
         """Test that microseconds are preserved in datetime conversion"""
         tz = ZoneInfo("UTC")
         start_dt = datetime.datetime(2025, 3, 15, 9, 0, 0, 123456, tzinfo=tz)
 
-        intent = Intent(alias="test", role=None, objective=None, action=None, subject=None, trackers=[])
-        session = Session(intent, start_dt, None, None)
+        session = Session(start=start_dt, alias="test")
 
         assert session.start.microsecond == 123456
 
@@ -75,10 +74,8 @@ class TestDateTimeConversions:
         """Test that naive (timezone-unaware) datetime raises an error"""
         naive_dt = datetime.datetime(2025, 3, 15, 9, 0, 0)  # No tzinfo
 
-        intent = Intent(alias="test", role=None, objective=None, action=None, subject=None, trackers=[])
-
         with pytest.raises(ValueError, match="timezone"):
-            Session(intent, naive_dt, None, None)
+            Session(naive_dt, alias="test")
 
 
 class TestExceptionMapping:
@@ -139,13 +136,12 @@ class TestLogOperations:
         tz = ZoneInfo("UTC")
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
 
-        intent = Intent(alias="work", role=None, objective=None, action=None, subject=None, trackers=[])
-        session = Session(intent, start, None, None)
+        session = Session(start, alias="work")
         log = Log(date, tz, [session])
 
         assert not log.is_closed()
         assert log.active_session() is not None
-        assert log.active_session().intent.alias == "work"
+        assert log.active_session().alias == "work"
 
     def test_append_session(self):
         """Test appending a session to a log"""
@@ -156,13 +152,12 @@ class TestLogOperations:
 
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
         end = datetime.datetime(2025, 3, 15, 10, 0, 0, tzinfo=tz)
-        intent = Intent(alias="work", role=None, objective=None, action=None, subject=None, trackers=[])
-        session = Session(intent, start, end, None)
+        session = Session(start, alias="work", end=end)
 
         new_log = log.append_session(session)
 
         assert len(new_log.timeline) == 1
-        assert new_log.timeline[0].intent.alias == "work"
+        assert new_log.timeline[0].alias == "work"
         # Original log should be unchanged (immutability)
         assert len(log.timeline) == 0
 
@@ -172,8 +167,7 @@ class TestLogOperations:
         tz = ZoneInfo("UTC")
         start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
 
-        intent = Intent(alias="work", role=None, objective=None, action=None, subject=None, trackers=[])
-        session = Session(intent, start, None, None)
+        session = Session(start, alias="work")
         log = Log(date, tz, [session])
 
         stop_time = datetime.datetime(2025, 3, 15, 10, 30, 0, tzinfo=tz)
@@ -195,9 +189,8 @@ class TestLogOperations:
         start2 = datetime.datetime(2025, 3, 15, 14, 0, 0, tzinfo=tz)
         end2 = datetime.datetime(2025, 3, 15, 15, 30, 0, tzinfo=tz)
 
-        intent = Intent(alias="work", role=None, objective=None, action=None, subject=None, trackers=[])
-        session1 = Session(intent, start1, end1, None)
-        session2 = Session(intent, start2, end2, None)
+        session1 = Session(start1, alias="work", end=end1)
+        session2 = Session(start2, alias="work", end=end2)
 
         log = Log(date, tz, [session1, session2])
 
@@ -207,42 +200,42 @@ class TestLogOperations:
         assert total == datetime.timedelta(hours=2, minutes=30)
 
 
-class TestIntentModel:
-    """Test Intent model through Python bindings"""
+class TestSessionModel:
+    """Test Session model through Python bindings"""
 
-    def test_create_full_intent(self):
-        """Test creating an intent with all fields"""
-        intent = Intent(
+    def test_create_full_session(self):
+        """Test creating a session with all fields"""
+        tz = ZoneInfo("UTC")
+        start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
+
+        session = Session(
+            start,
             alias="work",
             role="engineer",
             objective="development",
             action="coding",
             subject="features",
-            trackers=["PROJ-123", "PROJ-456"]
+            trackers=["PROJ-123", "PROJ-456"],
         )
 
-        assert intent.alias == "work"
-        assert intent.role == "engineer"
-        assert intent.objective == "development"
-        assert intent.action == "coding"
-        assert intent.subject == "features"
-        assert len(intent.trackers) == 2
-        assert "PROJ-123" in intent.trackers
+        assert session.alias == "work"
+        assert session.role == "engineer"
+        assert session.objective == "development"
+        assert session.action == "coding"
+        assert session.subject == "features"
+        assert len(session.trackers) == 2
+        assert "PROJ-123" in session.trackers
 
-    def test_create_minimal_intent(self):
-        """Test creating an intent with minimal fields"""
-        intent = Intent(alias="minimal", role=None, objective=None, action=None, subject=None, trackers=[])
+    def test_create_minimal_session(self):
+        """Test creating a session with minimal fields"""
+        tz = ZoneInfo("UTC")
+        start = datetime.datetime(2025, 3, 15, 9, 0, 0, tzinfo=tz)
 
-        assert intent.alias == "minimal"
-        assert intent.role is None
-        assert intent.trackers == []
+        session = Session(start, alias="minimal")
 
-    def test_intent_equality(self):
-        """Test that two intents with same values are equal"""
-        intent1 = Intent(alias="work", role="engineer", objective=None, action=None, subject=None, trackers=[])
-        intent2 = Intent(alias="work", role="engineer", objective=None, action=None, subject=None, trackers=[])
-
-        assert intent1 == intent2
+        assert session.alias == "minimal"
+        assert session.role is None
+        assert session.trackers == []
 
 
 class TestPlanModel:
@@ -261,7 +254,6 @@ class TestPlanModel:
             actions=["coding"],
             subjects=["features"],
             trackers={"PROJ-123": "Implement feature X"},
-            intents=[]
         )
 
         assert plan.source == "local"

@@ -1,8 +1,8 @@
+use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use std::collections::HashMap;
 
-use crate::models::intent::Intent;
 use crate::models::valuetype::ValueType;
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone};
@@ -72,6 +72,42 @@ where
     }
 }
 
+/// Custom deserializer for trackers that handles both string and array formats
+fn deserialize_trackers<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct TrackersVisitor;
+
+    impl<'de> Visitor<'de> for TrackersVisitor {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or array of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Vec<String>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![value.to_string()])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Vec<String>, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut trackers = Vec::new();
+            while let Some(value) = seq.next_element()? {
+                trackers.push(value);
+            }
+            Ok(trackers)
+        }
+    }
+
+    deserializer.deserialize_any(TrackersVisitor)
+}
+
 #[derive(Error, Debug)]
 pub enum SessionError {
     #[error("Cannot compute duration: session has no end time")]
@@ -101,7 +137,13 @@ fn combine_date_time(date: NaiveDate, tz: Tz, time_str: &str) -> Result<DateTime
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Session {
-    pub intent: Intent,
+    pub alias: Option<String>,
+    pub role: Option<String>,
+    pub objective: Option<String>,
+    pub action: Option<String>,
+    pub subject: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_trackers")]
+    pub trackers: Vec<String>,
     #[serde(
         serialize_with = "serialize_datetime",
         deserialize_with = "deserialize_datetime"
@@ -122,14 +164,25 @@ pub struct Session {
 }
 
 impl Session {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        intent: Intent,
+        alias: Option<String>,
+        role: Option<String>,
+        objective: Option<String>,
+        action: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
         start: DateTime<Tz>,
         end: Option<DateTime<Tz>>,
         note: Option<String>,
     ) -> Self {
         Self {
-            intent,
+            alias,
+            role,
+            objective,
+            action,
+            subject,
+            trackers,
             start,
             end,
             note,
@@ -168,8 +221,6 @@ impl Session {
             })
             .unwrap_or_default();
 
-        let intent: Intent = Intent::new(alias, role, objective, action, subject, trackers);
-
         let start: String = dict
             .get("start")
             .and_then(|v| v.as_string())
@@ -195,7 +246,12 @@ impl Session {
         let reflection = dict.get("reflection").and_then(|v| v.as_string()).cloned();
 
         Ok(Self {
-            intent,
+            alias,
+            role,
+            objective,
+            action,
+            subject,
+            trackers,
             start,
             end,
             note,
@@ -253,8 +309,41 @@ impl Session {
         date: NaiveDate,
         timezone: Tz,
     ) -> anyhow::Result<Self> {
-        // Deserialize Intent fields
-        let intent: Intent = toml::from_str(&toml::to_string(table)?)?;
+        // Extract intent fields directly from the TOML table
+        let alias = table
+            .get("alias")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let role = table
+            .get("role")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let objective = table
+            .get("objective")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let action = table
+            .get("action")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let subject = table
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // Handle trackers as either a string or array
+        let trackers = match table.get("trackers") {
+            Some(toml::Value::String(s)) => vec![s.clone()],
+            Some(toml::Value::Array(arr)) => arr
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            _ => vec![],
+        };
 
         // Parse start/end times
         let start_str = table
@@ -285,7 +374,12 @@ impl Session {
             .map(|s| s.to_string());
 
         Ok(Session {
-            intent,
+            alias,
+            role,
+            objective,
+            action,
+            subject,
+            trackers,
             start,
             end,
             note,
@@ -330,26 +424,39 @@ mod tests {
     use super::*;
     use chrono::{NaiveDate, Timelike};
 
-    fn sample_intent() -> Intent {
-        Intent::new(
+    fn sample_session(start: DateTime<Tz>) -> Session {
+        Session::new(
             Some("work".to_string()),
             Some("engineer".to_string()),
             Some("development".to_string()),
             Some("coding".to_string()),
             Some("features".to_string()),
             vec![],
+            start,
+            None,
+            None,
         )
     }
 
     #[test]
     fn test_session_creation() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
 
-        let session = Session::new(intent.clone(), start, Some(end), None);
+        let session = Session::new(
+            Some("work".to_string()),
+            Some("engineer".to_string()),
+            Some("development".to_string()),
+            Some("coding".to_string()),
+            Some("features".to_string()),
+            vec![],
+            start,
+            Some(end),
+            None,
+        );
 
-        assert_eq!(session.intent, intent);
+        assert_eq!(session.alias, Some("work".to_string()));
+        assert_eq!(session.role, Some("engineer".to_string()));
         assert_eq!(session.start, start);
         assert_eq!(session.end, Some(end));
         assert_eq!(session.note, None);
@@ -357,21 +464,29 @@ mod tests {
 
     #[test]
     fn test_session_with_note() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
 
-        let session = Session::new(intent, start, None, Some("Working on tests".to_string()));
+        let session = Session::new(
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            None,
+            Some("Working on tests".to_string()),
+        );
 
         assert_eq!(session.note, Some("Working on tests".to_string()));
     }
 
     #[test]
     fn test_duration_completed_session() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
 
-        let session = Session::new(intent, start, Some(end), None);
+        let session = Session::new(None, None, None, None, None, vec![], start, Some(end), None);
         let duration = session.duration().unwrap();
 
         assert_eq!(duration, Duration::minutes(90));
@@ -379,10 +494,9 @@ mod tests {
 
     #[test]
     fn test_duration_open_session_error() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
 
-        let session = Session::new(intent, start, None, None);
+        let session = Session::new(None, None, None, None, None, vec![], start, None, None);
         let result = session.duration();
 
         assert!(matches!(result, Err(SessionError::MissingEnd)));
@@ -390,11 +504,10 @@ mod tests {
 
     #[test]
     fn test_elapsed_open_session() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let now = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
 
-        let session = Session::new(intent, start, None, None);
+        let session = Session::new(None, None, None, None, None, vec![], start, None, None);
         let elapsed = session.elapsed(now);
 
         assert_eq!(elapsed, Duration::minutes(90));
@@ -403,22 +516,20 @@ mod tests {
     #[test]
     #[should_panic(expected = "elapsed() called on closed session")]
     fn test_elapsed_closed_session_panics() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
         let now = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
 
-        let session = Session::new(intent, start, Some(end), None);
+        let session = Session::new(None, None, None, None, None, vec![], start, Some(end), None);
         session.elapsed(now); // should panic
     }
 
     #[test]
     fn test_duration_end_before_start_error() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
 
-        let session = Session::new(intent, start, Some(end), None);
+        let session = Session::new(None, None, None, None, None, vec![], start, Some(end), None);
         let result = session.duration();
 
         assert!(matches!(result, Err(SessionError::EndBeforeStart)));
@@ -426,26 +537,24 @@ mod tests {
 
     #[test]
     fn test_with_end() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
 
-        let open_session = Session::new(intent.clone(), start, None, None);
+        let open_session = sample_session(start);
         assert_eq!(open_session.end, None);
 
         let closed_session = open_session.with_end(end);
         assert_eq!(closed_session.end, Some(end));
-        assert_eq!(closed_session.intent, intent);
+        assert_eq!(closed_session.alias, Some("work".to_string()));
         assert_eq!(closed_session.start, start);
     }
 
     #[test]
     fn test_with_end_immutability() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 30, 0).unwrap();
 
-        let open_session = Session::new(intent, start, None, None);
+        let open_session = sample_session(start);
         let _closed_session = open_session.with_end(end);
 
         // Original should be unchanged
@@ -523,9 +632,9 @@ mod tests {
 
         let session = Session::from_dict_with_tz(dict, date, tz).unwrap();
 
-        assert_eq!(session.intent.role, Some("engineer".to_string()));
-        assert_eq!(session.intent.action, Some("coding".to_string()));
-        assert_eq!(session.intent.subject, Some("tests".to_string()));
+        assert_eq!(session.role, Some("engineer".to_string()));
+        assert_eq!(session.action, Some("coding".to_string()));
+        assert_eq!(session.subject, Some("tests".to_string()));
         assert_eq!(session.start.hour(), 9);
         assert_eq!(session.end.unwrap().hour(), 10);
         assert_eq!(session.end.unwrap().minute(), 30);
@@ -592,7 +701,7 @@ mod tests {
 
         let session = Session::from_dict_with_tz(dict, date, tz).unwrap();
 
-        assert_eq!(session.intent.trackers, vec!["work:admin".to_string()]);
+        assert_eq!(session.trackers, vec!["work:admin".to_string()]);
     }
 
     #[test]
@@ -609,32 +718,57 @@ mod tests {
 
         let session = Session::from_dict_with_tz(dict, date, tz).unwrap();
 
-        assert_eq!(session.intent.trackers.len(), 2);
-        assert!(session.intent.trackers.contains(&"work:admin".to_string()));
-        assert!(session
-            .intent
-            .trackers
-            .contains(&"personal:study".to_string()));
+        assert_eq!(session.trackers.len(), 2);
+        assert!(session.trackers.contains(&"work:admin".to_string()));
+        assert!(session.trackers.contains(&"personal:study".to_string()));
     }
 
     #[test]
     fn test_session_equality() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
 
-        let session1 = Session::new(intent.clone(), start, Some(end), None);
-        let session2 = Session::new(intent, start, Some(end), None);
+        let session1 = Session::new(
+            Some("work".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            Some(end),
+            None,
+        );
+        let session2 = Session::new(
+            Some("work".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            Some(end),
+            None,
+        );
 
         assert_eq!(session1, session2);
     }
 
     #[test]
     fn test_session_clone() {
-        let intent = sample_intent();
         let start = Tz::UTC.with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
 
-        let session1 = Session::new(intent, start, None, Some("note".to_string()));
+        let session1 = Session::new(
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            None,
+            Some("note".to_string()),
+        );
         let session2 = session1.clone();
 
         assert_eq!(session1, session2);

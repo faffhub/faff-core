@@ -1,7 +1,6 @@
 use crate::models::session::SessionError;
 use crate::models::valuetype::ValueType;
 use crate::models::Session as RustSession;
-use crate::plugins::models::intent::PyIntent;
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use pyo3::exceptions::PyValueError;
@@ -30,63 +29,7 @@ pub(crate) fn session_from_dict_internal(
     date: NaiveDate,
     tz: Tz,
 ) -> PyResult<PySession> {
-    // Check if there's a nested intent dict (from saved JSON format)
-    if let Some(intent_item) = dict.get_item("intent")? {
-        if let Ok(intent_dict) = intent_item.downcast::<PyDict>() {
-            // Parse the intent first
-            let py_intent = crate::plugins::models::intent::intent_from_dict_internal(intent_dict)?;
-
-            // Extract start/end/note from the session dict
-            // Parse RFC3339 datetime (includes offset) and convert to semantic timezone
-            let start_str: String = dict.get_item("start")?.unwrap().extract()?;
-            let start = chrono::DateTime::parse_from_rfc3339(&start_str)
-                .map_err(|e| PyValueError::new_err(format!("Invalid start datetime: {e}")))?
-                .with_timezone(&tz);
-
-            let end = dict
-                .get_item("end")?
-                .and_then(|v| if v.is_none() { None } else { Some(v) })
-                .map(|v| v.extract::<String>())
-                .transpose()?
-                .map(|s| {
-                    chrono::DateTime::parse_from_rfc3339(&s)
-                        .map(|dt| dt.with_timezone(&tz))
-                        .map_err(|e| PyValueError::new_err(format!("Invalid end datetime: {e}")))
-                })
-                .transpose()?;
-
-            let note = dict
-                .get_item("note")?
-                .and_then(|v| if v.is_none() { None } else { Some(v) })
-                .map(|v| v.extract::<String>())
-                .transpose()?;
-
-            let reflection_score = dict
-                .get_item("reflection_score")?
-                .and_then(|v| if v.is_none() { None } else { Some(v) })
-                .map(|v| v.extract::<i32>())
-                .transpose()?;
-
-            let reflection = dict
-                .get_item("reflection")?
-                .and_then(|v| if v.is_none() { None } else { Some(v) })
-                .map(|v| v.extract::<String>())
-                .transpose()?;
-
-            return Ok(PySession {
-                inner: RustSession {
-                    intent: py_intent.inner,
-                    start,
-                    end,
-                    note,
-                    reflection_score,
-                    reflection,
-                },
-            });
-        }
-    }
-
-    // Otherwise, use the flat format (for backwards compatibility)
+    // Use the flat format (new format without nested intent dict)
     let mut data = HashMap::new();
 
     for (k, v) in dict.iter() {
@@ -110,10 +53,16 @@ pub(crate) fn session_from_dict_internal(
 #[pymethods]
 impl PySession {
     #[new]
-    #[pyo3(signature = (intent, start, end=None, note=None))]
+    #[pyo3(signature = (start, alias=None, role=None, objective=None, action=None, subject=None, trackers=vec![], end=None, note=None))]
+    #[allow(clippy::too_many_arguments)]
     fn py_new<'py>(
-        intent: PyIntent,
         start: Bound<'py, PyDateTime>,
+        alias: Option<String>,
+        role: Option<String>,
+        objective: Option<String>,
+        action: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
         end: Option<Bound<'py, PyDateTime>>,
         note: Option<String>,
     ) -> PyResult<Self> {
@@ -123,22 +72,31 @@ impl PySession {
             None => None,
         };
         Ok(Self {
-            inner: RustSession::new(intent.inner, start, end, note),
+            inner: RustSession::new(alias, role, objective, action, subject, trackers, start, end, note),
         })
     }
 
     fn __getstate__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
 
-        dict.set_item(
-            "intent",
-            Py::new(
-                py,
-                PyIntent {
-                    inner: self.inner.intent.clone(),
-                },
-            )?,
-        )?;
+        if let Some(alias) = &self.inner.alias {
+            dict.set_item("alias", alias)?;
+        }
+        if let Some(role) = &self.inner.role {
+            dict.set_item("role", role)?;
+        }
+        if let Some(objective) = &self.inner.objective {
+            dict.set_item("objective", objective)?;
+        }
+        if let Some(action) = &self.inner.action {
+            dict.set_item("action", action)?;
+        }
+        if let Some(subject) = &self.inner.subject {
+            dict.set_item("subject", subject)?;
+        }
+        if !self.inner.trackers.is_empty() {
+            dict.set_item("trackers", self.inner.trackers.clone())?;
+        }
         dict.set_item("start", self.inner.start.to_rfc3339())?;
         if let Some(end) = &self.inner.end {
             dict.set_item("end", end.to_rfc3339())?;
@@ -157,10 +115,33 @@ impl PySession {
     }
 
     #[getter]
-    fn intent(&self) -> PyIntent {
-        PyIntent {
-            inner: self.inner.intent.clone(),
-        }
+    fn alias(&self) -> Option<String> {
+        self.inner.alias.clone()
+    }
+
+    #[getter]
+    fn role(&self) -> Option<String> {
+        self.inner.role.clone()
+    }
+
+    #[getter]
+    fn objective(&self) -> Option<String> {
+        self.inner.objective.clone()
+    }
+
+    #[getter]
+    fn action(&self) -> Option<String> {
+        self.inner.action.clone()
+    }
+
+    #[getter]
+    fn subject(&self) -> Option<String> {
+        self.inner.subject.clone()
+    }
+
+    #[getter]
+    fn trackers(&self) -> Vec<String> {
+        self.inner.trackers.clone()
     }
 
     #[getter]
@@ -299,13 +280,24 @@ impl PySession {
         Python::attach(|py| {
             let d = PyDict::new(py);
 
-            let intent = &self.inner.intent;
-            d.set_item(
-                "intent",
-                PyIntent {
-                    inner: intent.clone(),
-                },
-            )?;
+            if let Some(alias) = &self.inner.alias {
+                d.set_item("alias", alias)?;
+            }
+            if let Some(role) = &self.inner.role {
+                d.set_item("role", role)?;
+            }
+            if let Some(objective) = &self.inner.objective {
+                d.set_item("objective", objective)?;
+            }
+            if let Some(action) = &self.inner.action {
+                d.set_item("action", action)?;
+            }
+            if let Some(subject) = &self.inner.subject {
+                d.set_item("subject", subject)?;
+            }
+            if !self.inner.trackers.is_empty() {
+                d.set_item("trackers", self.inner.trackers.clone())?;
+            }
 
             let start = &self.inner.start;
             d.set_item("start", type_mapping::datetime_rust_to_py(py, start)?)?;
@@ -328,8 +320,8 @@ impl PySession {
 
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "Session(intent={:?}, start={:?}, end={:?}, note={:?})",
-            self.inner.intent, self.inner.start, self.inner.end, self.inner.note,
+            "Session(alias={:?}, role={:?}, start={:?}, end={:?}, note={:?})",
+            self.inner.alias, self.inner.role, self.inner.start, self.inner.end, self.inner.note,
         ))
     }
 
