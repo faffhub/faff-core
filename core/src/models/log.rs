@@ -16,8 +16,10 @@ static DERIVED_VALUE_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
 
 #[derive(Error, Debug)]
 pub enum LogError {
-    #[error("No timeline entries to stop")]
-    NoTimelineEntries,
+    #[error("No active session to stop")]
+    NoActiveSession,
+    #[error("Session not found: no open session with id starting '{0}'")]
+    SessionNotFound(String),
     #[error("Invalid time value: {0}")]
     InvalidTime(String),
     #[error("Ambiguous datetime during DST transition: {0}")]
@@ -27,7 +29,7 @@ pub enum LogError {
 /// Summary statistics for a log
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogSummary {
-    /// Total recorded time in minutes
+    /// Total recorded time in minutes (raw sum; double-counts overlapping sessions)
     pub total_minutes: i64,
     /// Time by session title in minutes
     pub by_title: HashMap<String, i64>,
@@ -37,6 +39,8 @@ pub struct LogSummary {
     pub by_tracker_source: HashMap<String, i64>,
     /// Weighted mean reflection score (if any sessions have scores)
     pub mean_reflection_score: Option<f64>,
+    /// True if any two sessions in this log have overlapping time ranges
+    pub has_concurrent_sessions: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -71,43 +75,71 @@ impl Log {
         Self::calculate_hash(&toml_content)
     }
 
-    /// Returns the active (open) session if one exists
-    pub fn active_session(&self) -> Option<&Session> {
-        if self.timeline.is_empty() {
-            return None;
-        }
-
-        let latest = self.timeline.last()?;
-        if latest.end.is_none() {
-            Some(latest)
-        } else {
-            None
-        }
+    /// Returns all open (no end time) sessions
+    pub fn active_sessions(&self) -> Vec<&Session> {
+        self.timeline.iter().filter(|s| s.end.is_none()).collect()
     }
 
-    /// Append a session to the timeline, automatically stopping any active session
-    pub fn append_session(&self, session: Session) -> Result<Log, LogError> {
-        if self.active_session().is_some() {
-            let stopped_log = self.stop_active_session(session.start)?;
-            stopped_log.append_session(session)
-        } else {
-            let mut new_timeline = self.timeline.clone();
-            new_timeline.push(session);
-            Ok(Log::new(self.date, self.timezone, new_timeline))
-        }
+    /// Append a session to the timeline without closing any existing open sessions
+    ///
+    /// The caller is responsible for closing sessions beforehand if sequential behaviour
+    /// is desired. For `faff start` (sequential), call `stop_all_active_sessions` first.
+    pub fn start_session(&self, session: Session) -> Log {
+        let mut new_timeline = self.timeline.clone();
+        new_timeline.push(session);
+        Log::new(self.date, self.timezone, new_timeline)
     }
 
-    /// Stop the active session at the given time
-    pub fn stop_active_session(&self, stop_time: DateTime<Tz>) -> Result<Log, LogError> {
-        if self.timeline.is_empty() {
-            return Err(LogError::NoTimelineEntries);
-        }
+    /// Stop the open session whose id starts with `id_prefix`
+    pub fn stop_session(&self, id_prefix: &str, stop_time: DateTime<Tz>) -> Result<Log, LogError> {
+        let idx = self
+            .timeline
+            .iter()
+            .position(|s| s.end.is_none() && s.id().starts_with(id_prefix))
+            .ok_or_else(|| LogError::SessionNotFound(id_prefix.to_string()))?;
 
         let mut new_timeline = self.timeline.clone();
-        let last_idx = new_timeline.len() - 1;
-        new_timeline[last_idx] = new_timeline[last_idx].with_end(stop_time);
-
+        new_timeline[idx] = new_timeline[idx].with_end(stop_time);
         Ok(Log::new(self.date, self.timezone, new_timeline))
+    }
+
+    /// Stop all open sessions at the given time
+    pub fn stop_all_active_sessions(&self, stop_time: DateTime<Tz>) -> Result<Log, LogError> {
+        if self.active_sessions().is_empty() {
+            return Err(LogError::NoActiveSession);
+        }
+        let mut new_timeline = self.timeline.clone();
+        for session in &mut new_timeline {
+            if session.end.is_none() {
+                *session = session.with_end(stop_time);
+            }
+        }
+        Ok(Log::new(self.date, self.timezone, new_timeline))
+    }
+
+    /// Returns all pairwise combinations of sessions whose time ranges overlap.
+    ///
+    /// If sessions A, B, and C all overlap, returns (A,B), (A,C), (B,C).
+    /// Open sessions (no end) are treated as extending to infinity.
+    pub fn session_overlaps(&self) -> Vec<(&Session, &Session)> {
+        let mut overlaps = Vec::new();
+        for i in 0..self.timeline.len() {
+            for j in (i + 1)..self.timeline.len() {
+                let a = &self.timeline[i];
+                let b = &self.timeline[j];
+                let a_reaches_b = a.end.map_or(true, |e| e > b.start);
+                let b_reaches_a = b.end.map_or(true, |e| e > a.start);
+                if a_reaches_b && b_reaches_a {
+                    overlaps.push((a, b));
+                }
+            }
+        }
+        overlaps
+    }
+
+    /// Returns true if any two sessions in this log have overlapping time ranges
+    pub fn has_concurrent_sessions(&self) -> bool {
+        !self.session_overlaps().is_empty()
     }
 
     /// Check if all sessions in the log are closed (have end times)
@@ -246,6 +278,9 @@ impl Log {
         trackers: &HashMap<String, String>,
         date_format: &str,
     ) {
+        // ID first — stable identity, semi-optional, prefix-addressable like git
+        lines.push(format!("id = \"{}\"", session.id()));
+
         // Title
         if let Some(title) = &session.title {
             lines.push(format!("title = \"{title}\""));
@@ -502,6 +537,7 @@ impl Log {
             by_tracker,
             by_tracker_source,
             mean_reflection_score,
+            has_concurrent_sessions: self.has_concurrent_sessions(),
         }
     }
 }
@@ -556,118 +592,70 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_log_has_no_active_session() {
+    fn test_empty_log_has_no_active_sessions() {
         let log = Log::new(sample_date(), london_tz(), vec![]);
-        assert!(log.active_session().is_none());
+        assert!(log.active_sessions().is_empty());
     }
 
     #[test]
-    fn test_log_with_completed_session_has_no_active_session() {
+    fn test_log_with_completed_session_has_no_active_sessions() {
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
         let end = london_tz()
             .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
             .unwrap();
         let session = sample_session(start, Some(end));
-
         let log = Log::new(sample_date(), london_tz(), vec![session]);
-
-        assert!(log.active_session().is_none());
+        assert!(log.active_sessions().is_empty());
     }
 
     #[test]
     fn test_log_with_open_session_returns_it() {
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
         let session = sample_session(start, None);
-
         let log = Log::new(sample_date(), london_tz(), vec![session.clone()]);
-
-        let active = log.active_session();
-        assert!(active.is_some());
-        assert_eq!(active.unwrap().end, None);
+        let active = log.active_sessions();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].end, None);
     }
 
     #[test]
-    fn test_only_last_session_matters_for_active() {
+    fn test_multiple_open_sessions_all_returned() {
         let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end1 = london_tz()
-            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
-            .unwrap();
-        let session1 = sample_session(start1, Some(end1));
-
-        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
+        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 30, 0).unwrap();
+        let session1 = sample_session(start1, None);
         let session2 = sample_session(start2, None);
-
-        let log = Log::new(sample_date(), london_tz(), vec![session1, session2.clone()]);
-
-        let active = log.active_session();
-        assert_eq!(active.unwrap(), &session2);
+        let log = Log::new(sample_date(), london_tz(), vec![session1, session2]);
+        assert_eq!(log.active_sessions().len(), 2);
     }
 
     #[test]
-    fn test_append_to_empty_log() {
-        let start = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end = london_tz()
-            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
-            .unwrap();
-        let session = sample_session(start, Some(end));
-
-        let log = Log::new(sample_date(), london_tz(), vec![]);
-        let new_log = log.append_session(session.clone()).unwrap();
-
-        assert_eq!(new_log.timeline.len(), 1);
-        assert_eq!(new_log.timeline[0], session);
-        // Original unchanged
-        assert_eq!(log.timeline.len(), 0);
-    }
-
-    #[test]
-    fn test_append_to_log_with_completed_sessions() {
+    fn test_start_session_appends_without_closing() {
         let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
-        let end1 = london_tz()
-            .with_ymd_and_hms(2025, 3, 15, 10, 30, 0)
-            .unwrap();
-        let session1 = sample_session(start1, Some(end1));
-
-        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
-        let end2 = london_tz().with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
-        let session2 = sample_session(start2, Some(end2));
-
-        let log = Log::new(sample_date(), london_tz(), vec![session1]);
-        let new_log = log.append_session(session2.clone()).unwrap();
-
-        assert_eq!(new_log.timeline.len(), 2);
-        assert_eq!(new_log.timeline[1], session2);
-    }
-
-    #[test]
-    fn test_append_automatically_stops_active_session() {
-        let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
         let open_session = sample_session(start1, None);
-
-        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 15, 0, 0).unwrap();
-        let end2 = london_tz().with_ymd_and_hms(2025, 3, 15, 16, 0, 0).unwrap();
-        let new_session = sample_session(start2, Some(end2));
+        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 30, 0).unwrap();
+        let new_session = sample_session(start2, None);
 
         let log = Log::new(sample_date(), london_tz(), vec![open_session]);
-        let new_log = log.append_session(new_session.clone()).unwrap();
+        let new_log = log.start_session(new_session);
 
+        // Both sessions remain open
         assert_eq!(new_log.timeline.len(), 2);
-        // First session should be stopped at start2
-        assert_eq!(new_log.timeline[0].end, Some(start2));
-        assert_eq!(new_log.timeline[1], new_session);
+        assert_eq!(new_log.active_sessions().len(), 2);
+        // Original unchanged
+        assert_eq!(log.timeline.len(), 1);
     }
 
     #[test]
-    fn test_stop_active_session() {
+    fn test_stop_session_by_id() {
         let start = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
         let open_session = sample_session(start, None);
-
+        let id = open_session.id();
         let log = Log::new(sample_date(), london_tz(), vec![open_session]);
 
         let stop_time = london_tz()
             .with_ymd_and_hms(2025, 3, 15, 16, 30, 0)
             .unwrap();
-        let stopped_log = log.stop_active_session(stop_time).unwrap();
+        let stopped_log = log.stop_session(&id[..8], stop_time).unwrap();
 
         assert_eq!(stopped_log.timeline[0].end, Some(stop_time));
         // Original unchanged
@@ -675,14 +663,79 @@ mod tests {
     }
 
     #[test]
-    fn test_stop_empty_log_raises_error() {
+    fn test_stop_session_unknown_id_errors() {
+        let start = london_tz().with_ymd_and_hms(2025, 3, 15, 14, 0, 0).unwrap();
+        let open_session = sample_session(start, None);
+        let log = Log::new(sample_date(), london_tz(), vec![open_session]);
+        let stop_time = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 16, 30, 0)
+            .unwrap();
+        let result = log.stop_session("deadbeef", stop_time);
+        assert!(matches!(result, Err(LogError::SessionNotFound(_))));
+    }
+
+    #[test]
+    fn test_stop_all_active_sessions() {
+        let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 30, 0).unwrap();
+        let log = Log::new(
+            sample_date(),
+            london_tz(),
+            vec![sample_session(start1, None), sample_session(start2, None)],
+        );
+        let stop_time = london_tz()
+            .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
+            .unwrap();
+        let stopped = log.stop_all_active_sessions(stop_time).unwrap();
+        assert!(stopped.active_sessions().is_empty());
+        assert_eq!(stopped.timeline[0].end, Some(stop_time));
+        assert_eq!(stopped.timeline[1].end, Some(stop_time));
+    }
+
+    #[test]
+    fn test_stop_all_active_sessions_no_active_errors() {
         let log = Log::new(sample_date(), london_tz(), vec![]);
         let stop_time = london_tz()
             .with_ymd_and_hms(2025, 3, 15, 16, 30, 0)
             .unwrap();
+        let result = log.stop_all_active_sessions(stop_time);
+        assert!(matches!(result, Err(LogError::NoActiveSession)));
+    }
 
-        let result = log.stop_active_session(stop_time);
-        assert!(matches!(result, Err(LogError::NoTimelineEntries)));
+    #[test]
+    fn test_session_overlaps_none_when_sequential() {
+        let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let end1 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let end2 = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+        let log = Log::new(
+            sample_date(),
+            london_tz(),
+            vec![
+                sample_session(start1, Some(end1)),
+                sample_session(start2, Some(end2)),
+            ],
+        );
+        assert!(log.session_overlaps().is_empty());
+        assert!(!log.has_concurrent_sessions());
+    }
+
+    #[test]
+    fn test_session_overlaps_detected() {
+        let start1 = london_tz().with_ymd_and_hms(2025, 3, 15, 9, 0, 0).unwrap();
+        let end1 = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
+        let start2 = london_tz().with_ymd_and_hms(2025, 3, 15, 10, 0, 0).unwrap();
+        let end2 = london_tz().with_ymd_and_hms(2025, 3, 15, 12, 0, 0).unwrap();
+        let log = Log::new(
+            sample_date(),
+            london_tz(),
+            vec![
+                sample_session(start1, Some(end1)),
+                sample_session(start2, Some(end2)),
+            ],
+        );
+        assert_eq!(log.session_overlaps().len(), 1);
+        assert!(log.has_concurrent_sessions());
     }
 
     #[test]

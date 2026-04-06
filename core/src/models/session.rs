@@ -9,6 +9,7 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 
 use anyhow::{bail, Result};
+use sha2::{Digest, Sha256};
 
 use thiserror::Error;
 
@@ -137,6 +138,10 @@ fn combine_date_time(date: NaiveDate, tz: Tz, time_str: &str) -> Result<DateTime
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Session {
+    /// Stable identity computed from creation-time fields; semi-optional in TOML.
+    /// If absent on read, `id()` computes it from current fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(alias = "alias")]
     pub title: Option<String>,
     pub role: Option<String>,
@@ -167,6 +172,54 @@ pub struct Session {
 }
 
 impl Session {
+    /// Compute a session id from creation-time fields.
+    ///
+    /// Input is a newline-delimited string of: start (UTC unix timestamp), title, role,
+    /// impact, mode, subject — in that fixed order, with absent optionals as empty strings.
+    /// Returns the full SHA256 hex digest (64 chars), addressable by prefix like git.
+    pub fn compute_id(
+        start: &DateTime<Tz>,
+        title: &Option<String>,
+        role: &Option<String>,
+        impact: &Option<String>,
+        mode: &Option<String>,
+        subject: &Option<String>,
+    ) -> String {
+        let input = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            start.timestamp(),
+            title.as_deref().unwrap_or(""),
+            role.as_deref().unwrap_or(""),
+            impact.as_deref().unwrap_or(""),
+            mode.as_deref().unwrap_or(""),
+            subject.as_deref().unwrap_or(""),
+        );
+        let mut hasher = Sha256::new();
+        hasher.update(input.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    /// Return this session's id.
+    ///
+    /// Uses the stored `id` field if present (authoritative); otherwise computes from the
+    /// current creation-time fields. The stored id is stable through edits to other fields
+    /// (e.g. note, trackers); the computed fallback is used for hand-written sessions that
+    /// omit the field.
+    pub fn id(&self) -> String {
+        self.id.clone().unwrap_or_else(|| {
+            Self::compute_id(
+                &self.start,
+                &self.title,
+                &self.role,
+                &self.impact,
+                &self.mode,
+                &self.subject,
+            )
+        })
+    }
+}
+
+impl Session {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         title: Option<String>,
@@ -179,7 +232,9 @@ impl Session {
         end: Option<DateTime<Tz>>,
         note: Option<String>,
     ) -> Self {
+        let id = Some(Self::compute_id(&start, &title, &role, &impact, &mode, &subject));
         Self {
+            id,
             title,
             role,
             impact,
@@ -260,7 +315,12 @@ impl Session {
         let reflection_score = dict.get("reflection_score").and_then(|v| v.as_integer());
         let reflection = dict.get("reflection").and_then(|v| v.as_string()).cloned();
 
+        let id = dict.get("id").and_then(|v| v.as_string()).cloned().or_else(|| {
+            Some(Self::compute_id(&start, &title, &role, &impact, &mode, &subject))
+        });
+
         Ok(Self {
+            id,
             title,
             role,
             impact,
@@ -391,7 +451,13 @@ impl Session {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        let id = table
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         Ok(Session {
+            id,
             title,
             role,
             impact,

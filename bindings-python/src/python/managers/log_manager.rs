@@ -206,12 +206,22 @@ impl PyLogManager {
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
-    /// Stop the currently active session
+    /// Stop all currently active sessions
     ///
     /// Gets current date, time, and trackers from workspace internally.
-    fn stop_current_session(&self, _py: Python<'_>) -> PyResult<()> {
+    fn stop_all_active_sessions(&self, _py: Python<'_>) -> PyResult<()> {
         runtime()
-            .block_on(self.inner.stop_current_session())
+            .block_on(self.inner.stop_all_active_sessions())
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Stop the open session identified by id_prefix
+    ///
+    /// id_prefix is matched against the start of each open session's id,
+    /// exactly like git short SHAs. Errors if no matching open session is found.
+    fn stop_session(&self, _py: Python<'_>, id_prefix: &str) -> PyResult<()> {
+        runtime()
+            .block_on(self.inner.stop_session(id_prefix))
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 

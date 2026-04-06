@@ -125,32 +125,34 @@ impl PyLog {
         })
     }
 
-    fn append_session(&self, session: PySession) -> PyResult<PyLog> {
-        let inner = self
-            .inner
-            .append_session(session.inner)
-            .map_err(|e| PyValueError::new_err(format!("Failed to append session: {e}")))?;
-        Ok(PyLog { inner })
-    }
-
-    fn active_session(&self) -> Option<PySession> {
+    fn active_sessions(&self) -> Vec<PySession> {
         self.inner
-            .active_session()
+            .active_sessions()
+            .into_iter()
             .map(|s| PySession { inner: s.clone() })
+            .collect()
     }
 
-    fn stop_active_session(
+    fn start_session(&self, session: PySession) -> PyLog {
+        PyLog {
+            inner: self.inner.start_session(session.inner),
+        }
+    }
+
+    fn stop_session(
         &self,
+        id_prefix: &str,
         stop_time: Bound<'_, pyo3::types::PyDateTime>,
     ) -> PyResult<PyLog> {
         use crate::utils::type_mapping;
-
         let dt_tz = type_mapping::datetime_py_to_rust(stop_time)?;
-
-        match self.inner.stop_active_session(dt_tz) {
+        match self.inner.stop_session(id_prefix, dt_tz) {
             Ok(log) => Ok(PyLog { inner: log }),
-            Err(LogError::NoTimelineEntries) => {
-                Err(PyValueError::new_err("No timeline entries to stop."))
+            Err(LogError::SessionNotFound(msg)) => {
+                Err(PyValueError::new_err(format!("Session not found: {msg}")))
+            }
+            Err(LogError::NoActiveSession) => {
+                Err(PyValueError::new_err("No active session to stop."))
             }
             Err(LogError::InvalidTime(msg)) => {
                 Err(PyValueError::new_err(format!("Invalid time: {msg}")))
@@ -159,6 +161,31 @@ impl PyLog {
                 Err(PyValueError::new_err(format!("Ambiguous datetime: {msg}")))
             }
         }
+    }
+
+    fn stop_all_active_sessions(
+        &self,
+        stop_time: Bound<'_, pyo3::types::PyDateTime>,
+    ) -> PyResult<PyLog> {
+        use crate::utils::type_mapping;
+        let dt_tz = type_mapping::datetime_py_to_rust(stop_time)?;
+        match self.inner.stop_all_active_sessions(dt_tz) {
+            Ok(log) => Ok(PyLog { inner: log }),
+            Err(LogError::NoActiveSession) => {
+                Err(PyValueError::new_err("No active session to stop."))
+            }
+            Err(LogError::InvalidTime(msg)) => {
+                Err(PyValueError::new_err(format!("Invalid time: {msg}")))
+            }
+            Err(LogError::AmbiguousDatetime(msg)) => {
+                Err(PyValueError::new_err(format!("Ambiguous datetime: {msg}")))
+            }
+            Err(e) => Err(PyValueError::new_err(e.to_string())),
+        }
+    }
+
+    fn has_concurrent_sessions(&self) -> bool {
+        self.inner.has_concurrent_sessions()
     }
 
     fn is_closed(&self) -> bool {
@@ -218,6 +245,7 @@ impl PyLog {
             summary.by_tracker_source.into_py_dict(py)?,
         )?;
         result.set_item("mean_reflection_score", summary.mean_reflection_score)?;
+        result.set_item("has_concurrent_sessions", summary.has_concurrent_sessions)?;
 
         Ok(result)
     }

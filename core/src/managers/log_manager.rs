@@ -99,20 +99,14 @@ impl LogManager {
                 let yesterday_path = self.storage.log_file_path(yesterday);
 
                 if self.storage.exists(&yesterday_path) {
-                    // Yesterday's file exists - check for unclosed session
+                    // Yesterday's file exists - check for unclosed sessions
                     let yesterday_toml = self.storage.read_string(&yesterday_path).await?;
                     let yesterday_log = Log::from_log_file(&yesterday_toml)?;
 
-                    if let Some(unclosed_session) = yesterday_log.active_session() {
-                        // Found an unclosed session in yesterday's log - materialize the continuation
-                        let unclosed_session_clone = unclosed_session.clone();
-                        self.materialize_continuation(
-                            date,
-                            yesterday,
-                            yesterday_log,
-                            &unclosed_session_clone,
-                        )
-                        .await?;
+                    if !yesterday_log.active_sessions().is_empty() {
+                        // Found unclosed sessions in yesterday's log - materialize continuations
+                        self.materialize_continuation(date, yesterday, yesterday_log)
+                            .await?;
 
                         // Now read the materialized log for today
                         let toml_str = self.storage.read_string(&log_path).await?;
@@ -127,10 +121,11 @@ impl LogManager {
         }
     }
 
-    /// Materialize a continuation session from yesterday to today
+    /// Materialize continuation sessions from yesterday to today
     ///
-    /// This closes yesterday's unclosed session at 23:59 and creates today's log
-    /// with a continuation session starting at 00:00.
+    /// Closes all of yesterday's unclosed sessions at 23:59 and creates today's log
+    /// with a continuation session for each, starting at 00:00. If yesterday had
+    /// concurrent sessions, today begins with concurrent sessions.
     ///
     /// Normally called automatically by get_log() when the date is today.
     /// Public for testing purposes.
@@ -139,7 +134,6 @@ impl LogManager {
         today: NaiveDate,
         yesterday: NaiveDate,
         yesterday_log: Log,
-        unclosed_session: &crate::models::Session,
     ) -> Result<()> {
         // Get workspace and trackers from plan manager for proper TOML formatting
         let ws = self
@@ -149,7 +143,14 @@ impl LogManager {
         let yesterday_trackers = ws.plans().get_trackers(yesterday).await?;
         let today_trackers = ws.plans().get_trackers(today).await?;
 
-        // Close yesterday's session at 23:59
+        // Snapshot unclosed sessions before closing
+        let unclosed: Vec<crate::models::Session> = yesterday_log
+            .active_sessions()
+            .into_iter()
+            .cloned()
+            .collect();
+
+        // Close all yesterday's open sessions at 23:59
         let end_of_day = self
             .timezone
             .with_ymd_and_hms(
@@ -163,28 +164,30 @@ impl LogManager {
             .single()
             .context("Failed to create end of day timestamp")?;
 
-        let closed_yesterday_log = yesterday_log.stop_active_session(end_of_day)?;
+        let closed_yesterday_log = yesterday_log.stop_all_active_sessions(end_of_day)?;
 
-        // Create today's log with continuation session at 00:00
+        // Create today's log with a continuation session for each unclosed session
         let start_of_day = self
             .timezone
             .with_ymd_and_hms(today.year(), today.month(), today.day(), 0, 0, 0)
             .single()
             .context("Failed to create start of day timestamp")?;
 
-        let continuation_session = crate::models::Session::new(
-            unclosed_session.title.clone(),
-            unclosed_session.role.clone(),
-            unclosed_session.impact.clone(),
-            unclosed_session.mode.clone(),
-            unclosed_session.subject.clone(),
-            unclosed_session.trackers.clone(),
-            start_of_day,
-            None, // Unclosed
-            unclosed_session.note.clone(),
-        );
-
-        let today_log = Log::new(today, self.timezone, vec![continuation_session]);
+        let mut today_log = Log::new(today, self.timezone, vec![]);
+        for s in &unclosed {
+            let continuation = crate::models::Session::new(
+                s.title.clone(),
+                s.role.clone(),
+                s.impact.clone(),
+                s.mode.clone(),
+                s.subject.clone(),
+                s.trackers.clone(),
+                start_of_day,
+                None,
+                s.note.clone(),
+            );
+            today_log = today_log.start_session(continuation);
+        }
 
         // Write both files
         self.write_log(&closed_yesterday_log, &yesterday_trackers)
@@ -277,7 +280,7 @@ impl LogManager {
         let now = ws.now();
         let plan_trackers = ws.plans().get_trackers(current_date).await?;
         // Get today's log (returns empty log if file doesn't exist)
-        let mut log = self.get_log(current_date).await?;
+        let log = self.get_log(current_date).await?;
 
         // Validate start time is not in the future
         if start_time > now {
@@ -286,32 +289,6 @@ impl LogManager {
                 start_time.format("%H:%M:%S"),
                 now.format("%H:%M:%S")
             );
-        }
-
-        // Validate against existing timeline
-        if let Some(last_session) = log.timeline.last() {
-            if last_session.end.is_none() {
-                // Active session - start_time must be after its start
-                if start_time < last_session.start {
-                    anyhow::bail!(
-                        "Cannot start at {}. Active session started at {}. Start time must be after the current session started.",
-                        start_time.format("%H:%M:%S"),
-                        last_session.start.format("%H:%M:%S")
-                    );
-                }
-                // Stop the active session at start_time
-                log = log.stop_active_session(start_time)?;
-            } else {
-                // No active session - start_time must be after the last session's end
-                let last_end = last_session.end.unwrap();
-                if start_time < last_end {
-                    anyhow::bail!(
-                        "Cannot start at {}. Previous session ended at {}.",
-                        start_time.format("%H:%M:%S"),
-                        last_end.format("%H:%M:%S")
-                    );
-                }
-            }
         }
 
         // Validate trackers if any are specified
@@ -334,17 +311,16 @@ impl LogManager {
         );
 
         // Append to log and write
-        let updated_log = log.append_session(session)?;
+        let updated_log = log.start_session(session);
         self.write_log(&updated_log, &plan_trackers).await?;
 
         Ok(())
     }
 
-    /// Stop the currently active session
+    /// Stop all currently active sessions
     ///
-    /// Returns Ok(()) if a session was stopped, or an error if no active session exists
-    pub async fn stop_current_session(&self) -> Result<()> {
-        // Get workspace context
+    /// Returns Ok(()) if sessions were stopped, or an error if no active sessions exist.
+    pub async fn stop_all_active_sessions(&self) -> Result<()> {
         let ws = self
             .workspace
             .upgrade()
@@ -353,16 +329,34 @@ impl LogManager {
         let current_date = ws.today();
         let current_time = ws.now();
         let trackers = ws.plans().get_trackers(current_date).await?;
-
         let log = self.get_log(current_date).await?;
 
-        if log.active_session().is_some() {
-            let updated_log = log.stop_active_session(current_time)?;
-            self.write_log(&updated_log, &trackers).await?;
-            Ok(())
-        } else {
+        if log.active_sessions().is_empty() {
             anyhow::bail!("No active session to stop")
         }
+        let updated_log = log.stop_all_active_sessions(current_time)?;
+        self.write_log(&updated_log, &trackers).await?;
+        Ok(())
+    }
+
+    /// Stop the open session identified by `id_prefix`
+    ///
+    /// `id_prefix` is matched against the start of each open session's id, exactly like
+    /// git short SHAs. Errors if no matching open session is found.
+    pub async fn stop_session(&self, id_prefix: &str) -> Result<()> {
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+
+        let current_date = ws.today();
+        let current_time = ws.now();
+        let trackers = ws.plans().get_trackers(current_date).await?;
+        let log = self.get_log(current_date).await?;
+
+        let updated_log = log.stop_session(id_prefix, current_time)?;
+        self.write_log(&updated_log, &trackers).await?;
+        Ok(())
     }
 
     /// Replace a field value across all log sessions
@@ -407,35 +401,15 @@ impl LogManager {
                 };
 
                 if session_field_value.as_ref().map(|s| s.as_str()) == Some(old_value) {
-                    // Create updated session with new field value
-                    let updated_session = crate::models::Session::new(
-                        session.title.clone(),
-                        if field == "role" {
-                            Some(new_value.to_string())
-                        } else {
-                            session.role.clone()
-                        },
-                        if field == "impact" {
-                            Some(new_value.to_string())
-                        } else {
-                            session.impact.clone()
-                        },
-                        if field == "mode" {
-                            Some(new_value.to_string())
-                        } else {
-                            session.mode.clone()
-                        },
-                        if field == "subject" {
-                            Some(new_value.to_string())
-                        } else {
-                            session.subject.clone()
-                        },
-                        session.trackers.clone(),
-                        session.start,
-                        session.end,
-                        session.note.clone(),
-                    );
-
+                    // Clone the session and update just the changed field, preserving id
+                    let mut updated_session = session.clone();
+                    match field {
+                        "role" => updated_session.role = Some(new_value.to_string()),
+                        "impact" => updated_session.impact = Some(new_value.to_string()),
+                        "mode" => updated_session.mode = Some(new_value.to_string()),
+                        "subject" => updated_session.subject = Some(new_value.to_string()),
+                        _ => {}
+                    }
                     updated_timeline.push(updated_session);
                     sessions_updated += 1;
                     log_modified = true;
@@ -658,9 +632,8 @@ note = "Morning session"
 
         // Manually call materialize_continuation for testing
         // (normally this only happens when date == workspace.today())
-        let unclosed = yesterday_log.active_session().unwrap().clone();
         ws.logs()
-            .materialize_continuation(today, yesterday, yesterday_log, &unclosed)
+            .materialize_continuation(today, yesterday, yesterday_log)
             .await
             .unwrap();
 
@@ -721,7 +694,7 @@ note = "Morning session"
     }
 
     #[tokio::test]
-    async fn test_start_session_validation_overlap_active_session() {
+    async fn test_start_session_allows_concurrent() {
         use crate::models::Session;
         use chrono::TimeZone;
 
@@ -730,162 +703,81 @@ note = "Morning session"
 
         let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
 
-        // Create a log with an active session starting at 10:00
         let session_start = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
+            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
             .unwrap();
         let session = Session::new(
             Some("existing".to_string()),
-            None,
-            None,
-            None,
-            None,
-            vec![],
-            session_start,
-            None,
-            None,
+            None, None, None, None, vec![], session_start, None, None,
         );
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
-        // Try to start a new session at 09:00 (before active session started)
-        let bad_start = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
-            .unwrap();
-
-        let result = ws
-            .logs()
-            .start_session(
-                Some("new".to_string()),
-                None,
-                None,
-                None,
-                None,
-                vec![],
-                bad_start,
-                None,
-            )
-            .await;
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Active session"));
-    }
-
-    #[tokio::test]
-    async fn test_start_session_validation_overlap_completed_session() {
-        use crate::models::Session;
-        use chrono::TimeZone;
-
-        let storage = Arc::new(MockStorage::new());
-        let ws = create_test_workspace(storage.clone()).await;
-
-        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-
-        // Create a log with a completed session from 09:00 to 10:00
-        let session_start = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
-            .unwrap();
-        let session_end = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 10, 0, 0)
-            .unwrap();
-        let session = Session::new(
-            Some("existing".to_string()),
-            None,
-            None,
-            None,
-            None,
-            vec![],
-            session_start,
-            Some(session_end),
-            None,
-        );
-        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
-        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
-
-        // Try to start at 09:30 (overlapping completed session)
-        let bad_start = chrono_tz::UTC
+        // Starting a second session does not close the first
+        let new_start = chrono_tz::UTC
             .with_ymd_and_hms(2025, 3, 15, 9, 30, 0)
             .unwrap();
-
-        let result = ws
-            .logs()
-            .start_session(
-                Some("new".to_string()),
-                None,
-                None,
-                None,
-                None,
-                vec![],
-                bad_start,
-                None,
-            )
-            .await;
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Previous session ended"));
-    }
-
-    #[tokio::test]
-    async fn test_start_session_stops_active_session() {
-        use crate::models::Session;
-        use chrono::{TimeZone, Timelike};
-
-        let storage = Arc::new(MockStorage::new());
-        let ws = create_test_workspace(storage.clone()).await;
-
-        let date = NaiveDate::from_ymd_opt(2025, 3, 15).unwrap();
-
-        // Create a log with an active session starting at 09:00
-        let session_start = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 9, 0, 0)
-            .unwrap();
-        let session = Session::new(
-            Some("existing".to_string()),
-            None,
-            None,
-            None,
-            None,
-            vec![],
-            session_start,
-            None,
-            None,
-        );
-        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
-        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
-
-        // Start a new session at 11:00 (after active session started)
-        let new_start = chrono_tz::UTC
-            .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
-            .unwrap();
-
         ws.logs()
             .start_session(
-                Some("new".to_string()),
-                None,
-                None,
-                None,
-                None,
-                vec![],
-                new_start,
-                None,
+                Some("concurrent".to_string()),
+                None, None, None, None, vec![], new_start, None,
             )
             .await
             .unwrap();
 
-        // Verify the first session was stopped and second started
         let log = ws.logs().get_log(date).await.unwrap();
         assert_eq!(log.timeline.len(), 2);
+        assert_eq!(log.active_sessions().len(), 2);
+    }
 
-        // First session should be closed at 11:00
-        assert_eq!(log.timeline[0].title, Some("existing".to_string()));
-        assert!(log.timeline[0].end.is_some());
-        assert_eq!(log.timeline[0].end.unwrap().hour(), 11);
+    #[tokio::test]
+    async fn test_stop_all_active_sessions() {
+        use crate::models::Session;
+        use chrono::Utc;
 
-        // Second session should be active
-        assert_eq!(log.timeline[1].title, Some("new".to_string()));
-        assert!(log.timeline[1].end.is_none());
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        // Write sessions to today so stop_all_active_sessions (which uses ws.today()) finds them
+        let today = ws.today();
+        let now = Utc::now().with_timezone(&chrono_tz::UTC);
+        let start1 = now - chrono::Duration::hours(2);
+        let start2 = now - chrono::Duration::hours(1);
+
+        let s1 = Session::new(Some("a".to_string()), None, None, None, None, vec![], start1, None, None);
+        let s2 = Session::new(Some("b".to_string()), None, None, None, None, vec![], start2, None, None);
+        let log = crate::models::Log::new(today, chrono_tz::UTC, vec![s1, s2]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        ws.logs().stop_all_active_sessions().await.unwrap();
+
+        let log = ws.logs().get_log(today).await.unwrap();
+        assert!(log.active_sessions().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_stop_session_by_id() {
+        use crate::models::Session;
+        use chrono::Utc;
+
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let today = ws.today();
+        let now = Utc::now().with_timezone(&chrono_tz::UTC);
+        let start1 = now - chrono::Duration::hours(2);
+        let start2 = now - chrono::Duration::hours(1);
+
+        let s1 = Session::new(Some("alpha".to_string()), None, None, None, None, vec![], start1, None, None);
+        let s2 = Session::new(Some("beta".to_string()), None, None, None, None, vec![], start2, None, None);
+        let s1_id = s1.id();
+        let log = crate::models::Log::new(today, chrono_tz::UTC, vec![s1, s2]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        ws.logs().stop_session(&s1_id[..8]).await.unwrap();
+
+        let log = ws.logs().get_log(today).await.unwrap();
+        assert_eq!(log.active_sessions().len(), 1);
+        assert_eq!(log.active_sessions()[0].title, Some("beta".to_string()));
     }
 }

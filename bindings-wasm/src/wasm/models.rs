@@ -166,12 +166,20 @@ impl Log {
             .collect()
     }
 
-    /// Get currently active (open) session if any
-    #[wasm_bindgen(js_name = activeSession)]
-    pub fn active_session(&self) -> Option<Session> {
+    /// Get all currently active (open) sessions
+    #[wasm_bindgen(js_name = activeSessions)]
+    pub fn active_sessions(&self) -> Vec<Session> {
         self.inner
-            .active_session()
+            .active_sessions()
+            .into_iter()
             .map(|s| Session { inner: s.clone() })
+            .collect()
+    }
+
+    /// Returns true if any two sessions have overlapping time ranges
+    #[wasm_bindgen(js_name = hasConcurrentSessions)]
+    pub fn has_concurrent_sessions(&self) -> bool {
+        self.inner.has_concurrent_sessions()
     }
 
     /// Check if all sessions are closed
@@ -189,11 +197,12 @@ impl Log {
     ///
     /// now: JS Date for calculating duration of open sessions
     /// Returns an object with:
-    ///   totalMinutes: number
+    ///   totalMinutes: number (raw sum; double-counts overlapping sessions)
     ///   byTitle: Record<string, number>
     ///   byTracker: Record<string, number>
     ///   byTrackerSource: Record<string, number>
     ///   meanReflectionScore: number | null
+    ///   hasConcurrentSessions: boolean
     pub fn summary(&self, now: js_sys::Date) -> Result<JsValue, JsValue> {
         let now_dt = js_date_to_chrono(&now)?;
         let summary = self.inner.summary(now_dt);
@@ -226,6 +235,11 @@ impl Log {
                 Some(score) => JsValue::from_f64(score),
                 None => JsValue::NULL,
             },
+        )?;
+        js_sys::Reflect::set(
+            &obj,
+            &"hasConcurrentSessions".into(),
+            &JsValue::from_bool(summary.has_concurrent_sessions),
         )?;
 
         Ok(obj.into())
