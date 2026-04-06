@@ -117,6 +117,11 @@ impl PySession {
     }
 
     #[getter]
+    fn id(&self) -> String {
+        self.inner.id()
+    }
+
+    #[getter]
     fn title(&self) -> Option<String> {
         self.inner.title.clone()
     }
