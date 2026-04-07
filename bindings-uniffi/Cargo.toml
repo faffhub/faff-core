@@ -1,0 +1,24 @@
+[package]
+name = "faff-core-uniffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+# `name` controls the resulting library file name. uniffi-bindgen-go expects
+# the cdylib (libfaff_core_uniffi.so) to be in LD_LIBRARY_PATH at runtime.
+name = "faff_core_uniffi"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+faff-core = { path = "../core" }
+uniffi = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+
+[build-dependencies]
+uniffi = { workspace = true, features = ["build"] }

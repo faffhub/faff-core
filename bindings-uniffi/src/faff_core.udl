@@ -1,0 +1,130 @@
+namespace faff_core {};
+
+[Error]
+enum FaffError {
+  "WorkspaceInit",
+  "InvalidDate",
+  "Other",
+};
+
+// A single tracked work session, mirroring faff_core::models::Session.
+// Time fields are RFC3339 strings so we don't have to teach UniFFI about
+// chrono::DateTime<Tz>. `end` is None for an active (currently running)
+// session.
+dictionary Session {
+  string? title;
+  string? role;
+  string? impact;
+  string? mode;
+  string? subject;
+  sequence<string> trackers;
+  string start;
+  string? end;
+  string? note;
+};
+
+// One day's log, mirroring faff_core::models::Log. `date` is YYYY-MM-DD,
+// `timezone` is an IANA tz name.
+dictionary Log {
+  string date;
+  string timezone;
+  sequence<Session> sessions;
+};
+
+// A tracker known to the workspace's plans for a given date. `id` is the
+// source-prefixed identifier (e.g. "element:2744974"); `name` is the human
+// label.
+dictionary Tracker {
+  string id;
+  string name;
+};
+
+// A plugin-supplied hint that suggests semantic field values for sessions
+// related to a particular tracker or activity. Mirrors
+// faff_core::models::plan::SessionHint.
+dictionary SessionHint {
+  string title;
+  string? role;
+  string? impact;
+  string? mode;
+  string? subject;
+  sequence<string> trackers;
+};
+
+// A deduplicated past-session shape, used by the TUI as its "intent picker"
+// source. Computed by walking recent logs and grouping sessions by their
+// (title, role, impact, mode, subject, trackers) tuple.
+dictionary SessionPrototype {
+  string? title;
+  string? role;
+  string? impact;
+  string? mode;
+  string? subject;
+  sequence<string> trackers;
+  // Number of past sessions matching this prototype exactly.
+  u32 count;
+  // RFC3339 start time of the most recent matching session.
+  string last_used;
+};
+
+interface FaffWorkspace {
+  [Throws=FaffError]
+  constructor();
+
+  // Today's date in the workspace timezone, ISO-8601 (YYYY-MM-DD).
+  string today();
+
+  // IANA timezone name (e.g. "Europe/Vienna").
+  string timezone();
+
+  // Read the log for a given date. Returns an empty log if no file exists.
+  // `date` must be YYYY-MM-DD.
+  [Throws=FaffError]
+  Log get_log(string date);
+
+  // Start a new session right now in today's log. If a session is already
+  // active it will be stopped at "now" first. All semantic fields are
+  // optional — pass null to leave them empty. `trackers` may be empty.
+  [Throws=FaffError]
+  void start_session(
+    string? title,
+    string? role,
+    string? impact,
+    string? mode,
+    string? subject,
+    sequence<string> trackers,
+    string? note
+  );
+
+  // Stop the currently active session in today's log at "now". Errors if
+  // no session is active.
+  [Throws=FaffError]
+  void stop_current_session();
+
+  // Vocabulary queries — return all values valid in plans for the date.
+  // Each value is source-prefixed (e.g. "local:engineer", "element:42").
+  [Throws=FaffError]
+  sequence<string> get_roles(string date);
+  [Throws=FaffError]
+  sequence<string> get_impacts(string date);
+  [Throws=FaffError]
+  sequence<string> get_modes(string date);
+  [Throws=FaffError]
+  sequence<string> get_subjects(string date);
+
+  // Trackers known to the date's plans, sorted by human name.
+  [Throws=FaffError]
+  sequence<Tracker> get_trackers(string date);
+
+  // Plugin-generated session hints for the date.
+  [Throws=FaffError]
+  sequence<SessionHint> get_session_hints(string date);
+
+  // Walk the most recent `days` days of logs (including today) and return
+  // a deduplicated list of session prototypes ranked by usage count, with
+  // ties broken by most-recently-used. The TUI uses these as the "intent
+  // picker" — the old plan-level Intent concept has been removed from the
+  // core, so the picker is built from history instead.
+  [Throws=FaffError]
+  sequence<SessionPrototype> recent_prototypes(u32 days);
+};
