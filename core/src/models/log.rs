@@ -18,6 +18,8 @@ static DERIVED_VALUE_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
 pub enum LogError {
     #[error("No timeline entries to stop")]
     NoTimelineEntries,
+    #[error("No active session in this log")]
+    NoActiveSession,
     #[error("Invalid time value: {0}")]
     InvalidTime(String),
     #[error("Ambiguous datetime during DST transition: {0}")]
@@ -106,6 +108,26 @@ impl Log {
         let mut new_timeline = self.timeline.clone();
         let last_idx = new_timeline.len() - 1;
         new_timeline[last_idx] = new_timeline[last_idx].with_end(stop_time);
+
+        Ok(Log::new(self.date, self.timezone, new_timeline))
+    }
+
+    /// Replace the active session with a new Session value, preserving its
+    /// position in the timeline. Errors if no session is currently active
+    /// (i.e. the last entry has a non-None `end`, or the timeline is empty).
+    ///
+    /// The caller is responsible for constructing `new_session` such that
+    /// invariants are preserved — typically via `Session::with_fields` on
+    /// the existing active session, which keeps the original start/end and
+    /// reflection intact.
+    pub fn update_active_session(&self, new_session: Session) -> Result<Log, LogError> {
+        if self.active_session().is_none() {
+            return Err(LogError::NoActiveSession);
+        }
+
+        let mut new_timeline = self.timeline.clone();
+        let last_idx = new_timeline.len() - 1;
+        new_timeline[last_idx] = new_session;
 
         Ok(Log::new(self.date, self.timezone, new_timeline))
     }

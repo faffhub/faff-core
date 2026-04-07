@@ -282,6 +282,33 @@ impl Session {
         }
     }
 
+    /// Replace all semantic fields wholesale, preserving start/end and any
+    /// reflection. Used by `LogManager::update_active_session` so the
+    /// caller can hand in the desired final state of the session without
+    /// touching the time-bounded or post-hoc reflection bits.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_fields(
+        &self,
+        title: Option<String>,
+        role: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
+        note: Option<String>,
+    ) -> Self {
+        Self {
+            title,
+            role,
+            impact,
+            mode,
+            subject,
+            trackers,
+            note,
+            ..self.clone()
+        }
+    }
+
     pub fn with_reflection(&self, score: Option<i32>, reflection: Option<String>) -> Self {
         Self {
             reflection_score: score,
