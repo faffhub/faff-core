@@ -29,6 +29,8 @@ pub enum FaffError {
     WorkspaceInit(String),
     #[error("invalid date '{0}': expected YYYY-MM-DD")]
     InvalidDate(String),
+    #[error("no active session")]
+    NoActiveSession,
     #[error("{0}")]
     Other(String),
 }
@@ -185,6 +187,37 @@ impl FaffWorkspace {
         self.rt
             .block_on(self.inner.logs().stop_current_session())
             .map_err(|e| FaffError::Other(e.to_string()))
+    }
+
+    /// Replace the semantic fields of today's currently active session.
+    /// Mirrors `LogManager::update_active_session`.
+    ///
+    /// `anyhow` erases types so we map the "no active session" string back
+    /// to the typed `NoActiveSession` variant on a best-effort basis. The
+    /// rest fall through to `Other`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_active_session(
+        &self,
+        title: Option<String>,
+        role: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
+        note: Option<String>,
+    ) -> Result<(), FaffError> {
+        self.rt
+            .block_on(self.inner.logs().update_active_session(
+                title, role, impact, mode, subject, trackers, note,
+            ))
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.to_lowercase().contains("active session") {
+                    FaffError::NoActiveSession
+                } else {
+                    FaffError::Other(msg)
+                }
+            })
     }
 
     pub fn get_roles(&self, date: String) -> Result<Vec<String>, FaffError> {

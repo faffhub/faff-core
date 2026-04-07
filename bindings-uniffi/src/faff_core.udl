@@ -4,6 +4,7 @@ namespace faff_core {};
 enum FaffError {
   "WorkspaceInit",
   "InvalidDate",
+  "NoActiveSession",
   "Other",
 };
 
@@ -100,6 +101,21 @@ interface FaffWorkspace {
   // no session is active.
   [Throws=FaffError]
   void stop_current_session();
+
+  // Replace the semantic fields of the currently active session in today's
+  // log. Passing null clears a field; trackers may be empty. The session's
+  // start, end, and any reflection are preserved. Errors if no session is
+  // currently active or if any tracker is unknown to today's plans.
+  [Throws=FaffError]
+  void update_active_session(
+    string? title,
+    string? role,
+    string? impact,
+    string? mode,
+    string? subject,
+    sequence<string> trackers,
+    string? note
+  );
 
   // Vocabulary queries — return all values valid in plans for the date.
   // Each value is source-prefixed (e.g. "local:engineer", "element:42").
