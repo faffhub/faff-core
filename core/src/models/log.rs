@@ -683,9 +683,7 @@ mod tests {
             london_tz(),
             vec![sample_session(start1, None), sample_session(start2, None)],
         );
-        let stop_time = london_tz()
-            .with_ymd_and_hms(2025, 3, 15, 11, 0, 0)
-            .unwrap();
+        let stop_time = london_tz().with_ymd_and_hms(2025, 3, 15, 11, 0, 0).unwrap();
         let stopped = log.stop_all_active_sessions(stop_time).unwrap();
         assert!(stopped.active_sessions().is_empty());
         assert_eq!(stopped.timeline[0].end, Some(stop_time));

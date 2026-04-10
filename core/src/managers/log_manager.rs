@@ -708,7 +708,14 @@ note = "Morning session"
             .unwrap();
         let session = Session::new(
             Some("existing".to_string()),
-            None, None, None, None, vec![], session_start, None, None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            session_start,
+            None,
+            None,
         );
         let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
@@ -720,7 +727,13 @@ note = "Morning session"
         ws.logs()
             .start_session(
                 Some("concurrent".to_string()),
-                None, None, None, None, vec![], new_start, None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                new_start,
+                None,
             )
             .await
             .unwrap();
@@ -744,8 +757,28 @@ note = "Morning session"
         let start1 = now - chrono::Duration::hours(2);
         let start2 = now - chrono::Duration::hours(1);
 
-        let s1 = Session::new(Some("a".to_string()), None, None, None, None, vec![], start1, None, None);
-        let s2 = Session::new(Some("b".to_string()), None, None, None, None, vec![], start2, None, None);
+        let s1 = Session::new(
+            Some("a".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start1,
+            None,
+            None,
+        );
+        let s2 = Session::new(
+            Some("b".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start2,
+            None,
+            None,
+        );
         let log = crate::models::Log::new(today, chrono_tz::UTC, vec![s1, s2]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
 
@@ -768,8 +801,28 @@ note = "Morning session"
         let start1 = now - chrono::Duration::hours(2);
         let start2 = now - chrono::Duration::hours(1);
 
-        let s1 = Session::new(Some("alpha".to_string()), None, None, None, None, vec![], start1, None, None);
-        let s2 = Session::new(Some("beta".to_string()), None, None, None, None, vec![], start2, None, None);
+        let s1 = Session::new(
+            Some("alpha".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start1,
+            None,
+            None,
+        );
+        let s2 = Session::new(
+            Some("beta".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start2,
+            None,
+            None,
+        );
         let s1_id = s1.id();
         let log = crate::models::Log::new(today, chrono_tz::UTC, vec![s1, s2]);
         ws.logs().write_log(&log, &HashMap::new()).await.unwrap();

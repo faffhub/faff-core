@@ -232,7 +232,9 @@ impl Session {
         end: Option<DateTime<Tz>>,
         note: Option<String>,
     ) -> Self {
-        let id = Some(Self::compute_id(&start, &title, &role, &impact, &mode, &subject));
+        let id = Some(Self::compute_id(
+            &start, &title, &role, &impact, &mode, &subject,
+        ));
         Self {
             id,
             title,
@@ -315,9 +317,15 @@ impl Session {
         let reflection_score = dict.get("reflection_score").and_then(|v| v.as_integer());
         let reflection = dict.get("reflection").and_then(|v| v.as_string()).cloned();
 
-        let id = dict.get("id").and_then(|v| v.as_string()).cloned().or_else(|| {
-            Some(Self::compute_id(&start, &title, &role, &impact, &mode, &subject))
-        });
+        let id = dict
+            .get("id")
+            .and_then(|v| v.as_string())
+            .cloned()
+            .or_else(|| {
+                Some(Self::compute_id(
+                    &start, &title, &role, &impact, &mode, &subject,
+                ))
+            });
 
         Ok(Self {
             id,
