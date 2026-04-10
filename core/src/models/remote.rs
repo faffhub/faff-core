@@ -31,8 +31,8 @@ pub struct Remote {
     #[serde(default)]
     pub connection: HashMap<String, toml::Value>,
 
-    /// Static ASTRO vocabulary for this remote
-    /// Used when the remote doesn't provide its own ASTRO objects
+    /// Static session field vocabulary for this remote
+    /// Used when the remote doesn't provide its own session field objects
     #[serde(default)]
     pub vocabulary: RemoteVocabulary,
 
@@ -387,9 +387,9 @@ pub struct MappingResult {
     pub trackers: Option<Vec<String>>,
 }
 
-/// Static ASTRO vocabulary for a remote
+/// Static session field vocabulary for a remote
 ///
-/// These are source-scoped ASTRO objects that don't come from the remote API
+/// These are source-scoped session field objects that don't come from the remote API
 /// but should be associated with this remote's source ID.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct RemoteVocabulary {

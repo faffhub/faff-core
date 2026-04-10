@@ -575,7 +575,7 @@ impl PlanManager {
 
     /// Replace a field value across all plans
     ///
-    /// Updates plan-level ASTRO collections
+    /// Updates plan-level session field collections
     ///
     /// # Arguments
     /// * `field` - The field to update (role, impact, mode, subject)
@@ -623,7 +623,7 @@ impl PlanManager {
                 continue;
             }
 
-            // Update plan-level ASTRO collection
+            // Update plan-level session field collection
             match field {
                 "role" => {
                     if plan.roles.iter().any(|v| v == plan_old) {
