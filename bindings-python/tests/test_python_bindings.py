@@ -104,8 +104,8 @@ class TestExceptionMapping:
 
         stop_time = datetime.datetime(2025, 3, 15, 10, 0, 0, tzinfo=tz)
 
-        with pytest.raises(ValueError, match="No timeline entries"):
-            log.stop_active_session(stop_time)
+        with pytest.raises(ValueError, match="No active session to stop"):
+            log.stop_all_active_sessions(stop_time)
 
     def test_ambiguous_datetime_during_dst(self):
         """Test handling of ambiguous times during DST transitions"""
@@ -128,7 +128,7 @@ class TestLogOperations:
         log = Log(date, tz, [])
 
         assert log.is_closed()
-        assert log.active_session() is None
+        assert log.active_sessions() == []
 
     def test_log_with_open_session(self):
         """Test log with an open (no end time) session"""
@@ -140,8 +140,8 @@ class TestLogOperations:
         log = Log(date, tz, [session])
 
         assert not log.is_closed()
-        assert log.active_session() is not None
-        assert log.active_session().title == "work"
+        assert len(log.active_sessions()) == 1
+        assert log.active_sessions()[0].title == "work"
 
     def test_append_session(self):
         """Test appending a session to a log"""
@@ -154,7 +154,7 @@ class TestLogOperations:
         end = datetime.datetime(2025, 3, 15, 10, 0, 0, tzinfo=tz)
         session = Session(start, title="work", end=end)
 
-        new_log = log.append_session(session)
+        new_log = log.start_session(session)
 
         assert len(new_log.timeline) == 1
         assert new_log.timeline[0].title == "work"
@@ -171,7 +171,7 @@ class TestLogOperations:
         log = Log(date, tz, [session])
 
         stop_time = datetime.datetime(2025, 3, 15, 10, 30, 0, tzinfo=tz)
-        stopped_log = log.stop_active_session(stop_time)
+        stopped_log = log.stop_all_active_sessions(stop_time)
 
         assert stopped_log.is_closed()
         assert stopped_log.timeline[0].end == stop_time
