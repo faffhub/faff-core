@@ -6,8 +6,9 @@
 //! that support change notifications.
 
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 
@@ -23,11 +24,8 @@ pub enum StorageEvent {
 /// Handle to an event stream.
 ///
 /// This handle allows multiple subscribers to receive events via broadcast channels.
-/// The watcher continues running until all handles and receivers are dropped.
 pub struct EventStreamHandle {
     sender: broadcast::Sender<StorageEvent>,
-    // Keep a reference to prevent the sender from being dropped
-    _handle: Arc<std::sync::Mutex<Option<std::thread::JoinHandle<()>>>>,
 }
 
 impl EventStreamHandle {
@@ -40,21 +38,79 @@ impl EventStreamHandle {
     }
 }
 
-/// Spawn a filesystem watcher for the given base directory.
+struct Route {
+    logs_dir: PathBuf,
+    plans_dir: PathBuf,
+    sender: broadcast::Sender<StorageEvent>,
+    last_event_time: HashMap<PathBuf, std::time::Instant>,
+}
+
+struct GlobalWatcher {
+    watcher: RecommendedWatcher,
+    routes: Arc<Mutex<Vec<Route>>>,
+}
+
+// Single process-level OS watcher. notify's FSEvents backend (macOS) is designed
+// for one watcher per process — multiple concurrent watchers contend on the FSEvents
+// callback thread and cause spurious event delivery failures.
+static GLOBAL_WATCHER: LazyLock<Mutex<GlobalWatcher>> = LazyLock::new(|| {
+    let routes: Arc<Mutex<Vec<Route>>> = Arc::new(Mutex::new(Vec::new()));
+    let routes_for_thread = routes.clone();
+
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let watcher =
+        RecommendedWatcher::new(event_tx, Config::default()).expect("Failed to create watcher");
+
+    std::thread::spawn(move || {
+        let debounce_duration = Duration::from_millis(200);
+        loop {
+            match event_rx.recv() {
+                Ok(Ok(event)) => {
+                    let mut routes = routes_for_thread.lock().unwrap();
+                    for route in routes.iter_mut() {
+                        if let Some(storage_event) =
+                            process_event(&event, &route.logs_dir, &route.plans_dir)
+                        {
+                            let path = match &storage_event {
+                                StorageEvent::LogChanged(p) | StorageEvent::PlanChanged(p) => {
+                                    p.clone()
+                                }
+                            };
+                            let now = std::time::Instant::now();
+                            let should_emit = route
+                                .last_event_time
+                                .get(&path)
+                                .map(|t| now.duration_since(*t) > debounce_duration)
+                                .unwrap_or(true);
+                            if should_emit {
+                                route.last_event_time.insert(path, now);
+                                let _ = route.sender.send(storage_event);
+                            }
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[faff-core] Filesystem watcher error: {:?}", e);
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    Mutex::new(GlobalWatcher { watcher, routes })
+});
+
+/// Register a filesystem watcher for the given base directory.
 ///
 /// This is used internally by FileSystemStorage to implement event support.
-/// The watcher monitors the `logs/` and `plans/` directories and emits
+/// The watcher monitors the `logs/` and `plans/` subdirectories and emits
 /// semantic events when files change.
 ///
 /// Events are debounced by ~200ms and filtered to only include actual
 /// content changes (not metadata-only changes).
 pub(crate) fn spawn_filesystem_watcher(base_dir: PathBuf) -> EventStreamHandle {
-    // Create broadcast channel with capacity for 100 events
     let (tx, _rx) = broadcast::channel(100);
 
-    let tx_clone = tx.clone();
-
-    // Canonicalize paths to resolve symlinks
     let logs_dir = base_dir
         .join("logs")
         .canonicalize()
@@ -64,72 +120,29 @@ pub(crate) fn spawn_filesystem_watcher(base_dir: PathBuf) -> EventStreamHandle {
         .canonicalize()
         .unwrap_or_else(|_| base_dir.join("plans"));
 
-    // Spawn watcher thread
-    let handle = std::thread::spawn(move || {
-        // Create a channel for receiving raw filesystem events
-        let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let mut global = GLOBAL_WATCHER.lock().unwrap();
 
-        // Create watcher
-        let mut watcher = RecommendedWatcher::new(event_tx, Config::default())
-            .expect("Failed to create filesystem watcher");
+    if logs_dir.exists() {
+        global
+            .watcher
+            .watch(&logs_dir, RecursiveMode::NonRecursive)
+            .expect("Failed to watch logs directory");
+    }
+    if plans_dir.exists() {
+        global
+            .watcher
+            .watch(&plans_dir, RecursiveMode::NonRecursive)
+            .expect("Failed to watch plans directory");
+    }
 
-        // Watch logs and plans directories (non-recursive)
-        if logs_dir.exists() {
-            watcher
-                .watch(&logs_dir, RecursiveMode::NonRecursive)
-                .expect("Failed to watch logs directory");
-        }
-
-        if plans_dir.exists() {
-            watcher
-                .watch(&plans_dir, RecursiveMode::NonRecursive)
-                .expect("Failed to watch plans directory");
-        }
-
-        // Process events with debouncing
-        let mut last_event_time: std::collections::HashMap<PathBuf, std::time::Instant> =
-            std::collections::HashMap::new();
-        let debounce_duration = Duration::from_millis(200);
-
-        loop {
-            match event_rx.recv() {
-                Ok(Ok(event)) => {
-                    if let Some(storage_event) = process_event(&event, &logs_dir, &plans_dir) {
-                        // Get the path for debouncing
-                        let path = match &storage_event {
-                            StorageEvent::LogChanged(p) | StorageEvent::PlanChanged(p) => p.clone(),
-                        };
-
-                        // Check if we should emit this event (debounce)
-                        let now = std::time::Instant::now();
-                        let should_emit = if let Some(last_time) = last_event_time.get(&path) {
-                            now.duration_since(*last_time) > debounce_duration
-                        } else {
-                            true
-                        };
-
-                        if should_emit {
-                            last_event_time.insert(path, now);
-                            // Send event (ignore if no receivers)
-                            let _ = tx_clone.send(storage_event);
-                        }
-                    }
-                }
-                Ok(Err(e)) => {
-                    eprintln!("[faff-core] Filesystem watcher error: {:?}", e);
-                }
-                Err(_) => {
-                    // Channel closed, exit thread
-                    break;
-                }
-            }
-        }
+    global.routes.lock().unwrap().push(Route {
+        logs_dir,
+        plans_dir,
+        sender: tx.clone(),
+        last_event_time: HashMap::new(),
     });
 
-    EventStreamHandle {
-        sender: tx,
-        _handle: Arc::new(std::sync::Mutex::new(Some(handle))),
-    }
+    EventStreamHandle { sender: tx }
 }
 
 /// Process a raw filesystem event and convert it to a semantic StorageEvent.
@@ -153,15 +166,15 @@ fn process_event(event: &Event, logs_dir: &Path, plans_dir: &Path) -> Option<Sto
 
     // Check each path in the event
     for path in &event.paths {
-        // Determine if this is a log or plan file
         if let Some(parent) = path.parent() {
-            if parent == logs_dir {
-                // Check if it's a .toml file
+            let canonical_parent = parent
+                .canonicalize()
+                .unwrap_or_else(|_| parent.to_path_buf());
+            if canonical_parent == logs_dir {
                 if path.extension().and_then(|s| s.to_str()) == Some("toml") {
                     return Some(StorageEvent::LogChanged(path.clone()));
                 }
-            } else if parent == plans_dir {
-                // Check if it's a .toml file
+            } else if canonical_parent == plans_dir {
                 if path.extension().and_then(|s| s.to_str()) == Some("toml") {
                     return Some(StorageEvent::PlanChanged(path.clone()));
                 }
@@ -178,40 +191,56 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    // Write a file repeatedly until the watcher delivers a matching event, with an
+    // overall 5s deadline. This avoids sleep-based synchronization: if FSEvents hasn't
+    // activated the watch path yet on the first write, the retry catches it once it has.
+    async fn write_until_event(
+        file: &std::path::Path,
+        content: &[u8],
+        rx: &mut broadcast::Receiver<StorageEvent>,
+        check: impl Fn(&StorageEvent) -> bool,
+    ) -> StorageEvent {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                fs::write(file, content).unwrap();
+                if let Ok(Ok(event)) =
+                    tokio::time::timeout(Duration::from_millis(500), rx.recv()).await
+                {
+                    if check(&event) {
+                        return event;
+                    }
+                }
+            }
+        })
+        .await
+        .expect("Timed out waiting for filesystem event")
+    }
+
     #[tokio::test]
     async fn test_filesystem_watcher_detects_log_changes() {
         let temp_dir = TempDir::new().unwrap();
         let faff_dir = temp_dir.path().to_path_buf();
 
-        // Create logs directory
         let logs_dir = faff_dir.join("logs");
         fs::create_dir_all(&logs_dir).unwrap();
 
-        // Spawn watcher
         let handle = spawn_filesystem_watcher(faff_dir);
         let mut rx = handle.subscribe();
-
-        // Give watcher time to start
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // Create a log file
         let log_file = logs_dir.join("2024-01-01.toml");
-        fs::write(&log_file, "test content").unwrap();
 
-        // Should receive LogChanged event
-        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
-            .await
-            .expect("Timeout waiting for event")
-            .expect("Failed to receive event");
+        let event = write_until_event(&log_file, b"test content", &mut rx, |e| {
+            matches!(e, StorageEvent::LogChanged(_))
+        })
+        .await;
 
         match event {
             StorageEvent::LogChanged(path) => {
-                // Canonicalize both paths before comparing (handles /var vs /private/var on macOS)
-                let canonical_received = std::fs::canonicalize(path).unwrap();
-                let canonical_expected = std::fs::canonicalize(log_file).unwrap();
-                assert_eq!(canonical_received, canonical_expected);
+                assert_eq!(
+                    std::fs::canonicalize(path).unwrap(),
+                    std::fs::canonicalize(&log_file).unwrap()
+                );
             }
-            _ => panic!("Expected LogChanged event"),
+            _ => unreachable!(),
         }
     }
 
@@ -220,35 +249,26 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let faff_dir = temp_dir.path().to_path_buf();
 
-        // Create plans directory
         let plans_dir = faff_dir.join("plans");
         fs::create_dir_all(&plans_dir).unwrap();
 
-        // Spawn watcher
         let handle = spawn_filesystem_watcher(faff_dir);
         let mut rx = handle.subscribe();
-
-        // Give watcher time to start
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // Create a plan file
         let plan_file = plans_dir.join("test.toml");
-        fs::write(&plan_file, "test content").unwrap();
 
-        // Should receive PlanChanged event
-        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
-            .await
-            .expect("Timeout waiting for event")
-            .expect("Failed to receive event");
+        let event = write_until_event(&plan_file, b"test content", &mut rx, |e| {
+            matches!(e, StorageEvent::PlanChanged(_))
+        })
+        .await;
 
         match event {
             StorageEvent::PlanChanged(path) => {
-                // Canonicalize both paths before comparing (handles /var vs /private/var on macOS)
-                let canonical_received = std::fs::canonicalize(path).unwrap();
-                let canonical_expected = std::fs::canonicalize(plan_file).unwrap();
-                assert_eq!(canonical_received, canonical_expected);
+                assert_eq!(
+                    std::fs::canonicalize(path).unwrap(),
+                    std::fs::canonicalize(&plan_file).unwrap()
+                );
             }
-            _ => panic!("Expected PlanChanged event"),
+            _ => unreachable!(),
         }
     }
 }
