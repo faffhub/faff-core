@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "faff-core"
-version = "0.1.17"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -520,7 +520,7 @@ dependencies = [
 
 [[package]]
 name = "faff-core-python"
-version = "0.1.17"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "faff-core-wasm"
-version = "0.1.17"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "async-trait",

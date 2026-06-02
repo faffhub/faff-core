@@ -358,6 +358,38 @@ impl Session {
         }
     }
 
+    /// Replace all semantic fields wholesale, preserving start, end, id,
+    /// and any reflection. Used by `LogManager::update_session_at` so the
+    /// caller can hand in the desired final state of a session without
+    /// touching the time-bounded, identity, or post-hoc reflection bits.
+    ///
+    /// Note that `id` is preserved intentionally — the id is stable through
+    /// edits to title/role/impact/mode/subject. A fresh id would be
+    /// computed from the new fields, so we rely on `..self.clone()` to
+    /// keep the original stored value.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_fields(
+        &self,
+        title: Option<String>,
+        role: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
+        note: Option<String>,
+    ) -> Self {
+        Self {
+            title,
+            role,
+            impact,
+            mode,
+            subject,
+            trackers,
+            note,
+            ..self.clone()
+        }
+    }
+
     /// Get duration of a closed session
     ///
     /// Returns error if session has no end time (use `elapsed()` instead).

@@ -20,6 +20,8 @@ pub enum LogError {
     NoActiveSession,
     #[error("Session not found: no open session with id starting '{0}'")]
     SessionNotFound(String),
+    #[error("Session not found: no session with id starting '{0}'")]
+    SessionNotFoundAnyStatus(String),
     #[error("Invalid time value: {0}")]
     InvalidTime(String),
     #[error("Ambiguous datetime during DST transition: {0}")]
@@ -100,6 +102,31 @@ impl Log {
 
         let mut new_timeline = self.timeline.clone();
         new_timeline[idx] = new_timeline[idx].with_end(stop_time);
+        Ok(Log::new(self.date, self.timezone, new_timeline))
+    }
+
+    /// Replace the session matched by `id_prefix` with `new_session`.
+    /// Matches against **any** session (open or closed), unlike `stop_session`
+    /// which only matches open sessions. First match wins if the prefix is
+    /// ambiguous; callers should use enough prefix characters to disambiguate
+    /// (the full id is always unique).
+    ///
+    /// The caller is responsible for constructing a session that preserves
+    /// the desired invariants (e.g. via `Session::with_fields` to keep
+    /// id/start/end/reflection intact).
+    pub fn update_session(
+        &self,
+        id_prefix: &str,
+        new_session: Session,
+    ) -> Result<Log, LogError> {
+        let idx = self
+            .timeline
+            .iter()
+            .position(|s| s.id().starts_with(id_prefix))
+            .ok_or_else(|| LogError::SessionNotFoundAnyStatus(id_prefix.to_string()))?;
+
+        let mut new_timeline = self.timeline.clone();
+        new_timeline[idx] = new_session;
         Ok(Log::new(self.date, self.timezone, new_timeline))
     }
 
