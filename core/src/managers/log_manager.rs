@@ -424,6 +424,57 @@ impl LogManager {
         Ok(())
     }
 
+    /// Reschedule the session identified by `date` + `id_prefix`: replace its
+    /// start (and optionally end) times, preserving all semantic fields, the
+    /// id, and any reflection.
+    ///
+    /// Matches open and closed sessions alike (like `update_session`). An
+    /// `end` of `None` leaves the session active. Validates that
+    /// `start <= end` when an end is given; semantic fields and trackers are
+    /// untouched, so no tracker validation is needed.
+    pub async fn reschedule_session(
+        &self,
+        date: NaiveDate,
+        id_prefix: &str,
+        start: chrono::DateTime<Tz>,
+        end: Option<chrono::DateTime<Tz>>,
+    ) -> Result<()> {
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+
+        if let Some(end) = end {
+            if end < start {
+                anyhow::bail!(
+                    "Invalid times: end {} is before start {}",
+                    end.format("%H:%M:%S"),
+                    start.format("%H:%M:%S")
+                );
+            }
+        }
+
+        let plan_trackers = ws.plans().get_trackers(date).await?;
+
+        let log = self.get_log(date).await?;
+        let old = log
+            .timeline
+            .iter()
+            .find(|s| s.id().starts_with(id_prefix))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "session not found: no session with id starting '{}' in log for {}",
+                    id_prefix,
+                    date
+                )
+            })?;
+
+        let updated_session = old.with_times(start, end);
+        let updated_log = log.update_session(id_prefix, updated_session)?;
+        self.write_log(&updated_log, &plan_trackers).await?;
+        Ok(())
+    }
+
     /// Replace a field value across all log sessions
     ///
     /// Updates all sessions' embedded fields
@@ -1147,5 +1198,112 @@ note = "Morning session"
         // Times still intact.
         assert_eq!(s.start, s0_start);
         assert_eq!(s.end, s0_end);
+    }
+
+    // -- reschedule_session tests --------------------------------------------
+
+    #[tokio::test]
+    async fn test_reschedule_session_changes_times() {
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "first", 9, 10);
+        let s0_id = s0.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let new_start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(8, 30, 0).unwrap());
+        let new_end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(11, 15, 0).unwrap());
+        ws.logs()
+            .reschedule_session(date, &s0_id[..8], new_start, Some(new_end))
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        let s = &updated.timeline[0];
+        assert_eq!(s.start, new_start);
+        assert_eq!(s.end, Some(new_end));
+        // Semantic fields and id preserved.
+        assert_eq!(s.title, Some("first".to_string()));
+        assert_eq!(s.role, Some("role".to_string()));
+        assert_eq!(s.id(), s0_id);
+    }
+
+    #[tokio::test]
+    async fn test_reschedule_session_rejects_end_before_start() {
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "first", 9, 10);
+        let id = s0.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let new_start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(11, 0, 0).unwrap());
+        let new_end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(10, 0, 0).unwrap());
+        let err = ws
+            .logs()
+            .reschedule_session(date, &id[..8], new_start, Some(new_end))
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("before start"));
+    }
+
+    #[tokio::test]
+    async fn test_reschedule_session_can_close_open_session() {
+        // Rescheduling an active (end=None) session with an explicit end
+        // closes it; passing None keeps it open.
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(9, 0, 0).unwrap());
+        let open = crate::models::Session::new(
+            Some("in-progress".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            None,
+            None,
+        );
+        let id = open.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![open]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let new_end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(9, 45, 0).unwrap());
+        ws.logs()
+            .reschedule_session(date, &id[..8], start, Some(new_end))
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        assert_eq!(updated.timeline[0].end, Some(new_end));
+    }
+
+    #[tokio::test]
+    async fn test_reschedule_session_unknown_id_errors() {
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "only", 9, 10);
+        let start = s0.start;
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let err = ws
+            .logs()
+            .reschedule_session(date, "deadbeef", start, None)
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("not found"));
     }
 }

@@ -350,6 +350,23 @@ impl Session {
         }
     }
 
+    /// Replace the session's start and end times, preserving every other
+    /// field including the id. The id is intentionally kept stable: although
+    /// it is *computed* from `start` for hand-written sessions, a session that
+    /// has been persisted carries a stored id, and editing its times should
+    /// not re-identify it (same reasoning as `with_fields`).
+    ///
+    /// `end` of `None` leaves the session open/active. Callers are
+    /// responsible for validating ordering (`start <= end`); see
+    /// `LogManager::reschedule_session`.
+    pub fn with_times(&self, start: DateTime<Tz>, end: Option<DateTime<Tz>>) -> Self {
+        Self {
+            start,
+            end,
+            ..self.clone()
+        }
+    }
+
     pub fn with_reflection(&self, score: Option<i32>, reflection: Option<String>) -> Self {
         Self {
             reflection_score: score,
