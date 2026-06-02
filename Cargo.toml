@@ -4,6 +4,7 @@ members = [
     "core",
     "bindings-python",
     "bindings-wasm",
+    "bindings-uniffi",
 ]
 
 [workspace.package]
@@ -44,6 +45,9 @@ notify = "7.0"
 # Python bindings
 pyo3 = "0.26"
 pythonize = "0.26"
+
+# Go (and other foreign) bindings via UniFFI
+uniffi = "0.31.0"
 
 # Dev dependencies
 tempfile = "3.14"
