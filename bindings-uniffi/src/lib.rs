@@ -182,9 +182,11 @@ impl FaffWorkspace {
     ) -> Result<(), FaffError> {
         let now = self.inner.now();
         self.rt
-            .block_on(self.inner.logs().start_session(
-                title, role, impact, mode, subject, trackers, now, note,
-            ))
+            .block_on(
+                self.inner
+                    .logs()
+                    .start_session(title, role, impact, mode, subject, trackers, now, note),
+            )
             .map_err(|e| FaffError::Other(e.to_string()))
     }
 

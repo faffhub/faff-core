@@ -376,7 +376,7 @@ impl Session {
     }
 
     /// Replace all semantic fields wholesale, preserving start, end, id,
-    /// and any reflection. Used by `LogManager::update_session_at` so the
+    /// and any reflection. Used by `LogManager::update_session` so the
     /// caller can hand in the desired final state of a session without
     /// touching the time-bounded, identity, or post-hoc reflection bits.
     ///

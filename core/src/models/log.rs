@@ -114,11 +114,7 @@ impl Log {
     /// The caller is responsible for constructing a session that preserves
     /// the desired invariants (e.g. via `Session::with_fields` to keep
     /// id/start/end/reflection intact).
-    pub fn update_session(
-        &self,
-        id_prefix: &str,
-        new_session: Session,
-    ) -> Result<Log, LogError> {
+    pub fn update_session(&self, id_prefix: &str, new_session: Session) -> Result<Log, LogError> {
         let idx = self
             .timeline
             .iter()
