@@ -148,7 +148,7 @@ impl PyLog {
         let dt_tz = type_mapping::datetime_py_to_rust(stop_time)?;
         match self.inner.stop_session(id_prefix, dt_tz) {
             Ok(log) => Ok(PyLog { inner: log }),
-            Err(LogError::SessionNotFound(msg)) => {
+            Err(LogError::SessionNotFound(msg)) | Err(LogError::SessionNotFoundAnyStatus(msg)) => {
                 Err(PyValueError::new_err(format!("Session not found: {msg}")))
             }
             Err(LogError::NoActiveSession) => {

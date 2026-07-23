@@ -359,6 +359,122 @@ impl LogManager {
         Ok(())
     }
 
+    /// Edit the semantic fields of any session identified by date + id_prefix.
+    /// Time fields (start/end), the session id, and any reflection are
+    /// preserved. Unlike `stop_session`, this matches open and closed
+    /// sessions alike so historical edits work.
+    ///
+    /// `id_prefix` is matched against the start of each session's id, exactly
+    /// like git short SHAs and `stop_session`. Use enough prefix characters
+    /// to disambiguate (first match wins).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_session(
+        &self,
+        date: NaiveDate,
+        id_prefix: &str,
+        title: Option<String>,
+        role: Option<String>,
+        impact: Option<String>,
+        mode: Option<String>,
+        subject: Option<String>,
+        trackers: Vec<String>,
+        note: Option<String>,
+    ) -> Result<()> {
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+
+        let plan_trackers = ws.plans().get_trackers(date).await?;
+
+        // Validate trackers against the plan for the target date.
+        if !trackers.is_empty() {
+            let tracker_ids: std::collections::HashSet<_> = plan_trackers.keys().collect();
+            let session_tracker_set: std::collections::HashSet<_> = trackers.iter().collect();
+
+            if !session_tracker_set.is_subset(&tracker_ids) {
+                let missing: Vec<_> = session_tracker_set
+                    .difference(&tracker_ids)
+                    .map(|s| s.as_str())
+                    .collect();
+                anyhow::bail!(
+                    "Tracker {} not found in plan for {}",
+                    missing.join(", "),
+                    date
+                );
+            }
+        }
+
+        let log = self.get_log(date).await?;
+        let old = log
+            .timeline
+            .iter()
+            .find(|s| s.id().starts_with(id_prefix))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "session not found: no session with id starting '{}' in log for {}",
+                    id_prefix,
+                    date
+                )
+            })?;
+
+        let updated_session = old.with_fields(title, role, impact, mode, subject, trackers, note);
+        let updated_log = log.update_session(id_prefix, updated_session)?;
+        self.write_log(&updated_log, &plan_trackers).await?;
+        Ok(())
+    }
+
+    /// Reschedule the session identified by `date` + `id_prefix`: replace its
+    /// start (and optionally end) times, preserving all semantic fields, the
+    /// id, and any reflection.
+    ///
+    /// Matches open and closed sessions alike (like `update_session`). An
+    /// `end` of `None` leaves the session active. Validates that
+    /// `start <= end` when an end is given; semantic fields and trackers are
+    /// untouched, so no tracker validation is needed.
+    pub async fn reschedule_session(
+        &self,
+        date: NaiveDate,
+        id_prefix: &str,
+        start: chrono::DateTime<Tz>,
+        end: Option<chrono::DateTime<Tz>>,
+    ) -> Result<()> {
+        let ws = self
+            .workspace
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Workspace no longer available"))?;
+
+        if let Some(end) = end {
+            if end < start {
+                anyhow::bail!(
+                    "Invalid times: end {} is before start {}",
+                    end.format("%H:%M:%S"),
+                    start.format("%H:%M:%S")
+                );
+            }
+        }
+
+        let plan_trackers = ws.plans().get_trackers(date).await?;
+
+        let log = self.get_log(date).await?;
+        let old = log
+            .timeline
+            .iter()
+            .find(|s| s.id().starts_with(id_prefix))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "session not found: no session with id starting '{}' in log for {}",
+                    id_prefix,
+                    date
+                )
+            })?;
+
+        let updated_session = old.with_times(start, end);
+        let updated_log = log.update_session(id_prefix, updated_session)?;
+        self.write_log(&updated_log, &plan_trackers).await?;
+        Ok(())
+    }
+
     /// Replace a field value across all log sessions
     ///
     /// Updates all sessions' embedded fields
@@ -832,5 +948,362 @@ note = "Morning session"
         let log = ws.logs().get_log(today).await.unwrap();
         assert_eq!(log.active_sessions().len(), 1);
         assert_eq!(log.active_sessions()[0].title, Some("beta".to_string()));
+    }
+
+    // -- update_session tests ------------------------------------------------
+
+    /// Helper: build a closed session at `h_start`–`h_end` UTC on `date`.
+    fn make_closed_session(
+        date: NaiveDate,
+        title: &str,
+        h_start: u32,
+        h_end: u32,
+    ) -> crate::models::Session {
+        use chrono::TimeZone;
+        let start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(h_start, 0, 0).unwrap());
+        let end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(h_end, 0, 0).unwrap());
+        crate::models::Session::new(
+            Some(title.to_string()),
+            Some("role".to_string()),
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            Some(end),
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_update_session_replaces_fields() {
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "first", 9, 10);
+        let s0_start = s0.start;
+        let s0_end = s0.end;
+        let s0_id = s0.id();
+        let s1 = make_closed_session(date, "second", 10, 11);
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0, s1]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        ws.logs()
+            .update_session(
+                date,
+                &s0_id[..8],
+                Some("first-edited".to_string()),
+                Some("new-role".to_string()),
+                None,
+                None,
+                None,
+                vec![],
+                Some("added a note".to_string()),
+            )
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        assert_eq!(updated.timeline.len(), 2);
+        let s = &updated.timeline[0];
+        assert_eq!(s.title, Some("first-edited".to_string()));
+        assert_eq!(s.role, Some("new-role".to_string()));
+        assert_eq!(s.note, Some("added a note".to_string()));
+        // Times preserved.
+        assert_eq!(s.start, s0_start);
+        assert_eq!(s.end, s0_end);
+        // Session id preserved — stable through edits to semantic fields.
+        assert_eq!(s.id(), s0_id);
+        // Second session untouched.
+        assert_eq!(updated.timeline[1].title, Some("second".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_unknown_id_errors() {
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "only", 9, 10);
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let err = ws
+            .logs()
+            .update_session(
+                date,
+                "deadbeef",
+                Some("x".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                None,
+            )
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_matches_open_sessions() {
+        // Unlike stop_session which is open-only, update_session works on
+        // any session — open or closed.
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(9, 0, 0).unwrap());
+        let open_session = crate::models::Session::new(
+            Some("in-progress".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            None, // no end — active
+            None,
+        );
+        let id = open_session.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![open_session]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        ws.logs()
+            .update_session(
+                date,
+                &id[..8],
+                Some("renamed".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                None,
+            )
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        let s = &updated.timeline[0];
+        assert_eq!(s.title, Some("renamed".to_string()));
+        assert!(s.end.is_none()); // still open
+    }
+
+    #[tokio::test]
+    async fn test_update_session_preserves_reflection() {
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let session = make_closed_session(date, "done", 9, 10)
+            .with_reflection(Some(5), Some("great day".to_string()));
+        let id = session.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![session]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        ws.logs()
+            .update_session(
+                date,
+                &id[..8],
+                Some("done-renamed".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                None,
+            )
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        let s = &updated.timeline[0];
+        assert_eq!(s.title, Some("done-renamed".to_string()));
+        assert_eq!(s.reflection_score, Some(5));
+        assert_eq!(s.reflection, Some("great day".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_rejects_unknown_trackers() {
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "first", 9, 10);
+        let id = s0.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let err = ws
+            .logs()
+            .update_session(
+                date,
+                &id[..8],
+                Some("first-edited".to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec!["bogus:tracker".to_string()],
+                None,
+            )
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_update_session_historical_date() {
+        // Unlike stop_session (today only), update_session targets any date.
+        // Write a log for yesterday, edit a session, verify the edit lands
+        // in yesterday's log.
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let today = ws.today();
+        let yesterday = today - chrono::Duration::days(1);
+
+        let s0 = make_closed_session(yesterday, "yesterday-session", 9, 10);
+        let s0_start = s0.start;
+        let s0_end = s0.end;
+        let id = s0.id();
+        let log = crate::models::Log::new(yesterday, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        ws.logs()
+            .update_session(
+                yesterday,
+                &id[..8],
+                Some("yesterday-edited".to_string()),
+                Some("new-role".to_string()),
+                None,
+                None,
+                None,
+                vec![],
+                Some("edited after the fact".to_string()),
+            )
+            .await
+            .unwrap();
+
+        let updated_yesterday = ws.logs().get_log(yesterday).await.unwrap();
+        assert_eq!(updated_yesterday.timeline.len(), 1);
+        let s = &updated_yesterday.timeline[0];
+        assert_eq!(s.title, Some("yesterday-edited".to_string()));
+        assert_eq!(s.role, Some("new-role".to_string()));
+        assert_eq!(s.note, Some("edited after the fact".to_string()));
+        // Times still intact.
+        assert_eq!(s.start, s0_start);
+        assert_eq!(s.end, s0_end);
+    }
+
+    // -- reschedule_session tests --------------------------------------------
+
+    #[tokio::test]
+    async fn test_reschedule_session_changes_times() {
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "first", 9, 10);
+        let s0_id = s0.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let new_start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(8, 30, 0).unwrap());
+        let new_end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(11, 15, 0).unwrap());
+        ws.logs()
+            .reschedule_session(date, &s0_id[..8], new_start, Some(new_end))
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        let s = &updated.timeline[0];
+        assert_eq!(s.start, new_start);
+        assert_eq!(s.end, Some(new_end));
+        // Semantic fields and id preserved.
+        assert_eq!(s.title, Some("first".to_string()));
+        assert_eq!(s.role, Some("role".to_string()));
+        assert_eq!(s.id(), s0_id);
+    }
+
+    #[tokio::test]
+    async fn test_reschedule_session_rejects_end_before_start() {
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "first", 9, 10);
+        let id = s0.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let new_start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(11, 0, 0).unwrap());
+        let new_end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(10, 0, 0).unwrap());
+        let err = ws
+            .logs()
+            .reschedule_session(date, &id[..8], new_start, Some(new_end))
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("before start"));
+    }
+
+    #[tokio::test]
+    async fn test_reschedule_session_can_close_open_session() {
+        // Rescheduling an active (end=None) session with an explicit end
+        // closes it; passing None keeps it open.
+        use chrono::TimeZone;
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let start = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(9, 0, 0).unwrap());
+        let open = crate::models::Session::new(
+            Some("in-progress".to_string()),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            start,
+            None,
+            None,
+        );
+        let id = open.id();
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![open]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let new_end = chrono_tz::UTC.from_utc_datetime(&date.and_hms_opt(9, 45, 0).unwrap());
+        ws.logs()
+            .reschedule_session(date, &id[..8], start, Some(new_end))
+            .await
+            .unwrap();
+
+        let updated = ws.logs().get_log(date).await.unwrap();
+        assert_eq!(updated.timeline[0].end, Some(new_end));
+    }
+
+    #[tokio::test]
+    async fn test_reschedule_session_unknown_id_errors() {
+        let storage = Arc::new(MockStorage::new());
+        let ws = create_test_workspace(storage.clone()).await;
+
+        let date = ws.today();
+        let s0 = make_closed_session(date, "only", 9, 10);
+        let start = s0.start;
+        let log = crate::models::Log::new(date, chrono_tz::UTC, vec![s0]);
+        ws.logs().write_log(&log, &HashMap::new()).await.unwrap();
+
+        let err = ws
+            .logs()
+            .reschedule_session(date, "deadbeef", start, None)
+            .await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("not found"));
     }
 }
